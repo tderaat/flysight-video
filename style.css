@@ -112,7 +112,7 @@ canvas { width: 100% !important; }
 .modal-backdrop.open { display: flex; }
 .modal {
   background: #1e293b; border-radius: 12px; border: 1px solid #334155;
-  width: 90%; max-width: 900px; max-height: 90vh; overflow-y: auto;
+  width: 90%; max-width: 900px; max-height: 90vh; overflow-y: auto; scrollbar-gutter: stable;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .modal-header {
