@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlySight Insights</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 30 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M15 0C17 0 19 2 19 5C19 8 17 10 16 12C18 12 21 14 22 18C23 22 22 26 20 30C19 33 18 36 18 40C18 44 19 48 20 52C21 56 22 60 21 64C20 68 18 72 17 74C16 76 15 78 15 80C15 78 14 76 13 74C12 72 10 68 9 64C8 60 9 56 10 52C11 48 12 44 12 40C12 36 11 33 10 30C8 26 7 22 8 18C9 14 12 12 14 12C13 10 11 8 11 5C11 2 13 0 15 0Z' fill='%2338bdf8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <svg viewBox="0 0 30 80" width="16" height="36" fill="#38bdf8" xmlns="http://www.w3.org/2000/svg">
+      <!-- Speed skydiver head-down silhouette -->
+      <path d="
+        M15 0
+        C17 0, 19 2, 19 5
+        C19 8, 17 10, 16 12
+        C18 12, 21 14, 22 18
+        C23 22, 22 26, 20 30
+        C19 33, 18 36, 18 40
+        C18 44, 19 48, 20 52
+        C21 56, 22 60, 21 64
+        C20 68, 18 72, 17 74
+        C16 76, 15 78, 15 80
+        C15 78, 14 76, 13 74
+        C12 72, 10 68, 9 64
+        C8 60, 9 56, 10 52
+        C11 48, 12 44, 12 40
+        C12 36, 11 33, 10 30
+        C8 26, 7 22, 8 18
+        C9 14, 12 12, 14 12
+        C13 10, 11 8, 11 5
+        C11 2, 13 0, 15 0
+        Z"
+      />
+      <!-- Inner body curve detail -->
+      <path d="
+        M15 14
+        C16 14, 18 16, 18 20
+        C18 24, 17 28, 16 32
+        C15 36, 15 40, 15 44
+        C15 48, 16 52, 17 56
+        C17 60, 18 64, 17 68
+        C16 70, 15 72, 15 72
+        C15 72, 14 70, 13 68
+        C12 64, 13 60, 13 56
+        C14 52, 15 48, 15 44
+        C15 40, 15 36, 14 32
+        C13 28, 12 24, 12 20
+        C12 16, 14 14, 15 14
+        Z"
+        fill="#0f172a" opacity="0.3"
+      />
+    </svg>
+  </div>
+  <h1>FlySight Insights <span class="byline">by Thomas</span></h1>
+</div>
+
+<div class="upload-area">
+  <div class="dropzone" id="dropzone">
+    <h2>Drop a FlySight CSV here, or click to browse</h2>
+    <p>Files are stored locally in your browser</p>
+    <input type="file" id="fileInput" accept=".csv,.CSV" multiple>
+  </div>
+</div>
+
+<div class="jump-list" id="jumpList"></div>
+
+<div class="chart-section" id="chartSection">
+  <div class="trim-controls">
+    <button class="trim-btn" onclick="renderCurrentJump()">Jump only</button>
+    <button class="trim-btn secondary" onclick="renderCurrentJump(true)">Full flight</button>
+    <button class="trim-btn secondary" id="videoOverlayBtn" onclick="openVideoModal()" style="margin-left:auto;">Create video overlay</button>
+  </div>
+  <div class="chart-container">
+    <div class="chart-title" id="chartTitle"></div>
+    <canvas id="chart"></canvas>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="map-container" id="mapContainer">
+    <div class="map-title">Flight Path</div>
+    <div id="map"></div>
+  </div>
+</div>
+
+<!-- Video Overlay Modal -->
+<div class="modal-backdrop" id="videoModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Video Overlay</h2>
+      <button class="modal-close" onclick="closeVideoModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Step 1: Drop zone for video -->
+      <div id="videoStep1">
+        <div class="video-dropzone" id="videoDropzone">
+          <h3>Drop a video file here, or click to browse</h3>
+          <p>MP4, WebM, or MOV supported</p>
+          <input type="file" id="videoFileInput" accept="video/*">
+        </div>
+      </div>
+
+      <!-- Step 2: Sync & Configure (hidden until video loaded) -->
+      <div id="videoStep2" style="display:none;">
+        <div class="video-preview-row">
+          <div class="video-preview-wrapper">
+            <video id="videoPreview" muted></video>
+            <canvas id="overlayPreviewCanvas"></canvas>
+          </div>
+        </div>
+        <div class="video-controls">
+          <button class="trim-btn" id="videoPlayBtn" onclick="toggleVideoPlay()">Play</button>
+          <span class="video-timecode" id="videoTimecode">0:00.000</span>
+          <input type="range" id="videoScrubber" min="0" max="1000" value="0" step="1">
+          <span class="video-duration" id="videoDuration">/ 0:00</span>
+        </div>
+
+        <!-- Exit sync -->
+        <div class="video-sync-section">
+          <h3>Mark exit moment</h3>
+          <div class="video-sync-row">
+            <button class="trim-btn" onclick="markVideoExit()">Use this moment</button>
+            <span id="videoExitTimecode" class="video-timecode">Not set</span>
+          </div>
+        </div>
+
+        <!-- Widgets (hidden until exit is set) -->
+        <div class="video-options-section" id="widgetsSection" style="display:none;">
+          <h3>Widgets</h3>
+          <div class="widget-section">
+            <div class="widget-picker">
+              <div class="widget-card" draggable="true" data-widget-type="info">
+                <canvas class="widget-preview" id="widgetPreview_info" width="120" height="68"></canvas>
+                <span>Info</span>
+              </div>
+              <div class="widget-card" draggable="true" data-widget-type="vertSpeed">
+                <canvas class="widget-preview" id="widgetPreview_vertSpeed" width="120" height="68"></canvas>
+                <span>Vert. Speed</span>
+              </div>
+              <div class="widget-card" draggable="true" data-widget-type="horzSpeed">
+                <canvas class="widget-preview" id="widgetPreview_horzSpeed" width="120" height="68"></canvas>
+                <span>Horiz. Speed</span>
+              </div>
+              <div class="widget-card" draggable="true" data-widget-type="altGraph">
+                <canvas class="widget-preview" id="widgetPreview_altGraph" width="120" height="68"></canvas>
+                <span>Alt. Graph</span>
+              </div>
+              <div class="widget-card" draggable="true" data-widget-type="altimeter">
+                <canvas class="widget-preview" id="widgetPreview_altimeter" width="120" height="68"></canvas>
+                <span>Altimeter</span>
+              </div>
+              <div class="widget-card" draggable="true" data-widget-type="speedGraph">
+                <canvas class="widget-preview" id="widgetPreview_speedGraph" width="120" height="68"></canvas>
+                <span>Speed Graph</span>
+              </div>
+              <div class="widget-card" draggable="true" data-widget-type="miniMap">
+                <canvas class="widget-preview" id="widgetPreview_miniMap" width="120" height="68"></canvas>
+                <span>Mini Map</span>
+              </div>
+              <div class="widget-card" draggable="true" data-widget-type="gForce">
+                <canvas class="widget-preview" id="widgetPreview_gForce" width="120" height="68"></canvas>
+                <span>G-Force</span>
+              </div>
+            </div>
+          </div>
+          <div class="widget-section widget-section-border" id="widgetSettingsRow" style="display:none;">
+            <div class="widget-section-label">Selected widget</div>
+            <div id="widgetSettingsPanel"></div>
+          </div>
+        </div>
+
+        <!-- Export (hidden until exit is set) -->
+        <div class="video-export-section" id="exportSection" style="display:none;">
+          <button class="trim-btn" id="exportBtn" onclick="startExport()">Export video with overlay</button>
+          <div id="exportProgress" style="display:none;">
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <span id="progressText">Preparing...</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
