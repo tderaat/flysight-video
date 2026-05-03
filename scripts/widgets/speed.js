@@ -170,6 +170,7 @@ function buildSpeedConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
     cb.addEventListener('change', () => {
       widget.config[key] = cb.checked;
       drawOverlayPreview();
+      state.scheduleSaveWidgetLayout();
     });
     lbl.appendChild(cb);
     lbl.appendChild(document.createTextNode(' ' + label));

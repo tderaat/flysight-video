@@ -43,7 +43,7 @@ function getInfoLines(dataIdx, units, config) {
 
   if (config.showDiveAngle && fd.diveAngles) {
     const angle = fd.diveAngles[dataIdx];
-    lines.push(angle.toFixed(1) + '°');
+    lines.push(angle == null ? '—' : angle.toFixed(1) + '°');
     colors.push('#f8fafc');
     labels.push('DIVE ANGLE');
   }
@@ -208,6 +208,7 @@ function buildInfoConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
     cb.addEventListener('change', () => {
       widget.config[key] = cb.checked;
       drawOverlayPreview();
+      state.scheduleSaveWidgetLayout();
     });
     lbl.appendChild(cb);
     lbl.appendChild(document.createTextNode(' ' + label));

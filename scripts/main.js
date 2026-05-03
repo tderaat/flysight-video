@@ -13,14 +13,110 @@ dropzone.addEventListener('drop', e => {
 });
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
+// ── Page-wide drop target ──
+// When the user drags a file anywhere on the page, surface a full-viewport
+// drop zone so they don't have to scroll back to the small dropzone after a
+// jump is loaded. While the video overlay modal is open AND awaiting a video
+// (step 1), we drive a separate full-page overlay that loads the video instead.
+const pageDropOverlay = document.getElementById('pageDropOverlay');
+const videoPageDropOverlay = document.getElementById('videoPageDropOverlay');
+let dragDepth = 0;
+let videoDragDepth = 0;
+
+function isFileDrag(e) {
+  return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+}
+function isVideoModalOpen() {
+  return document.getElementById('videoModal').classList.contains('open');
+}
+function isVideoModalAwaitingDrop() {
+  return isVideoModalOpen() &&
+         document.getElementById('videoStep1').style.display !== 'none';
+}
+function clearVideoPageDropOverlay() {
+  videoDragDepth = 0;
+  videoPageDropOverlay.classList.remove('active');
+}
+function isCsvDrag(e) {
+  if (!e.dataTransfer) return false;
+  const items = e.dataTransfer.items;
+  // Some browsers (Safari, older Firefox) don't expose item types during drag —
+  // allow optimistically so we don't break the common case.
+  if (!items || !items.length) return true;
+  for (const item of items) {
+    if (item.kind !== 'file') continue;
+    const t = (item.type || '').toLowerCase();
+    // Empty type = unknown extension, likely CSV. text/csv is explicit.
+    if (!t || t === 'text/csv' || t === 'application/vnd.ms-excel') return true;
+  }
+  return false;
+}
+
+window.addEventListener('dragenter', e => {
+  if (!isFileDrag(e)) return;
+  if (isVideoModalAwaitingDrop()) {
+    videoDragDepth++;
+    videoPageDropOverlay.classList.add('active');
+    return;
+  }
+  if (isVideoModalOpen() || !isCsvDrag(e)) return;
+  dragDepth++;
+  pageDropOverlay.classList.add('active');
+});
+window.addEventListener('dragover', e => {
+  if (!isFileDrag(e)) return;
+  if (isVideoModalAwaitingDrop()) { e.preventDefault(); return; }
+  if (isVideoModalOpen() || !isCsvDrag(e)) return;
+  e.preventDefault(); // required so 'drop' fires
+});
+window.addEventListener('dragleave', e => {
+  if (!isFileDrag(e)) return;
+  if (isVideoModalAwaitingDrop()) {
+    videoDragDepth = Math.max(0, videoDragDepth - 1);
+    if (videoDragDepth === 0) videoPageDropOverlay.classList.remove('active');
+    return;
+  }
+  if (isVideoModalOpen() || !isCsvDrag(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) pageDropOverlay.classList.remove('active');
+});
+window.addEventListener('drop', e => {
+  if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  if (isVideoModalAwaitingDrop()) {
+    e.preventDefault();
+    clearVideoPageDropOverlay();
+    handleVideoFile(e.dataTransfer.files[0]);
+    return;
+  }
+  if (isVideoModalOpen()) return;
+  e.preventDefault();
+  dragDepth = 0;
+  pageDropOverlay.classList.remove('active');
+  handleFiles(e.dataTransfer.files);
+});
+
+function isCsvFile(file) {
+  return /\.csv$/i.test(file.name);
+}
+
 function handleFiles(files) {
-  Array.from(files).forEach(file => {
+  const all = Array.from(files);
+  const csvFiles = all.filter(isCsvFile);
+  const rejected = all.filter(f => !isCsvFile(f));
+  if (rejected.length) {
+    alert(
+      'Only CSV files can be uploaded here.\n\nRejected: ' +
+      rejected.map(f => f.name).join(', ') +
+      '\n\nTo add a video, click "Create video overlay".'
+    );
+  }
+  csvFiles.forEach(file => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const csv = e.target.result;
       const name = file.name.replace(/\.csv$/i, '');
-      storeJump(name, csv);
-      renderJumpList();
+      await storeJump(name, csv);
+      await renderJumpList();
       selectJump(name);
     };
     reader.readAsText(file);
@@ -28,17 +124,18 @@ function handleFiles(files) {
 }
 
 // ── Jump list rendering ──
-function renderJumpList() {
+async function renderJumpList() {
   const list = document.getElementById('jumpList');
-  const jumps = getStoredJumps();
+  const jumps = await getStoredJumps();
   let scores = {};
   try { scores = JSON.parse(localStorage.getItem('flysight_scores') || '{}'); } catch (e) {}
+  document.body.classList.toggle('has-jumps', jumps.length > 0);
   list.innerHTML = '';
   jumps.forEach(j => {
     const chip = document.createElement('div');
     chip.className = 'jump-chip' + (j.name === state.currentJumpName ? ' active' : '');
     const score = scores[j.name];
-    const scoreLabel = score ? ` (${score.toFixed(1)} km/h)` : '';
+    const scoreLabel = score ? ` <span class="score">(${score.toFixed(1)} km/h)</span>` : '';
     chip.innerHTML = `
       <span onclick="selectJump('${j.name.replace(/'/g, "\\'")}')">${j.name}${scoreLabel}</span>
       <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${j.name.replace(/'/g, "\\'")}')" title="Remove">&times;</button>
@@ -53,13 +150,13 @@ function selectJump(name) {
   renderCurrentJump();
 }
 
-function deleteJump(name) {
-  removeJump(name);
+async function deleteJump(name) {
+  await removeJump(name);
   if (state.currentJumpName === name) {
     state.currentJumpName = null;
     document.getElementById('chartSection').style.display = 'none';
   }
-  renderJumpList();
+  await renderJumpList();
 }
 
 // ── Canvas interaction: drag-from-picker & widget move/resize ──
@@ -163,6 +260,7 @@ function deleteJump(name) {
       widget.x = Math.max(0.05, Math.min(0.95, ds.origX + dx));
       widget.y = Math.max(0.05, Math.min(0.95, ds.origY + dy));
       drawOverlayPreview();
+      state.scheduleSaveWidgetLayout();
     } else if (ds.mode === 'resize') {
       const origDiag = Math.sqrt(ds.origW * ds.origW + ds.origH * ds.origH);
       if (origDiag > 0) {
@@ -173,6 +271,7 @@ function deleteJump(name) {
         const ratio = distNow / distOrig;
         widget.widgetScale = Math.max(0.3, Math.min(3.0, (ds.origScale || 1) * ratio));
         drawOverlayPreview();
+        state.scheduleSaveWidgetLayout();
       }
     }
   });
@@ -211,6 +310,7 @@ function deleteJump(name) {
         altimeter: { x: 0.15, y: 0.15 },
         miniMap: { x: 0.85, y: 0.85 },
         gForce: { x: 0.15, y: 0.5 },
+        image: { x: 0.5, y: 0.5 },
       };
       const defaultPos = defaultPositions[type] || { x: 0.15, y: 0.85 };
       const w = createWidget(type, defaultPos.x, defaultPos.y);
@@ -227,6 +327,8 @@ function deleteJump(name) {
 renderWidgetPreviews();
 
 // ── Init ──
-renderJumpList();
-const jumps = getStoredJumps();
-if (jumps.length > 0) selectJump(jumps[jumps.length - 1].name);
+(async () => {
+  await renderJumpList();
+  const jumps = await getStoredJumps();
+  if (jumps.length > 0) selectJump(jumps[jumps.length - 1].name);
+})();

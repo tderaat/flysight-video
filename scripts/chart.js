@@ -1,6 +1,43 @@
 
-function renderCurrentJump(showFull) {
-  const jumps = getStoredJumps();
+function zoomChart(direction) {
+  if (!state.chartInstance) return;
+  state.chartInstance.zoom(direction > 0 ? 1.2 : 1 / 1.2);
+  // chartjs-plugin-zoom does not fire onZoomComplete for programmatic calls,
+  // so trigger the map re-render explicitly here.
+  syncMapToChart();
+}
+
+function syncMapToChart() {
+  if (!state.chartInstance || !state.lastRenderMap) return;
+  const sx = state.chartInstance.scales.x;
+  state.lastRenderMap(sx.min, sx.max);
+}
+
+function setChartActiveAtIndex(idx) {
+  if (!state.chartInstance) return;
+  const c = state.chartInstance;
+  const active = c.data.datasets.map((_, di) => ({ datasetIndex: di, index: idx }));
+  c.setActiveElements(active);
+  if (c.tooltip) {
+    c.tooltip.setActiveElements(active, { x: 0, y: 0 });
+  }
+  c.update('none');
+  c.draw();
+}
+
+function clearChartActive() {
+  if (!state.chartInstance) return;
+  const c = state.chartInstance;
+  c.setActiveElements([]);
+  if (c.tooltip) {
+    c.tooltip.setActiveElements([], { x: 0, y: 0 });
+  }
+  c.update('none');
+  c.draw();
+}
+
+async function renderCurrentJump(showFull) {
+  const jumps = await getStoredJumps();
   const jump = jumps.find(j => j.name === state.currentJumpName);
   if (!jump) return;
 
@@ -19,6 +56,7 @@ function renderCurrentJump(showFull) {
 
   const { exitIdx, landingIdx, canopyIdx } = detectExitAndLanding(data);
   const exitTime = allTimes[exitIdx];
+  const canopyTimeRel = allTimes[canopyIdx] - exitTime;
 
   if (!showFull) {
     const beforeSec = 5;
@@ -33,19 +71,56 @@ function renderCurrentJump(showFull) {
 
   const times = [], altitudes = [], vertSpeeds = [], horzSpeeds = [], diveAngles = [], sliceLats = [], sliceLons = [], velNs = [], velEs = [];
   for (let i = startIdx; i <= endIdx; i++) {
-    times.push(allTimes[i] - exitTime);
+    const tRel = allTimes[i] - exitTime;
+    times.push(tRel);
     altitudes.push(allAlts[i]);
     vertSpeeds.push(allVelD[i]);
     const vN = parseFloat(data[i].velN) || 0;
     const vE = parseFloat(data[i].velE) || 0;
     const hSpd = Math.sqrt(vN * vN + vE * vE);
     horzSpeeds.push(hSpd);
-    diveAngles.push(Math.atan2(allVelD[i], hSpd) * (180 / Math.PI));
+    if (tRel < -5 || tRel > canopyTimeRel + 5) {
+      diveAngles.push(null);
+    } else {
+      diveAngles.push(Math.atan2(allVelD[i], hSpd) * (180 / Math.PI));
+    }
     velNs.push(vN);
     velEs.push(vE);
     sliceLats.push(parseFloat(data[i].lat));
     sliceLons.push(parseFloat(data[i].lon));
   }
+
+  // Full-data arrays — fed to chart datasets and to map (window-filtered).
+  // Independent of the slice arrays above, which still drive state.currentFlightData
+  // (the contract video overlay widgets depend on).
+  const chartTimes = [], chartAlts = [], chartVertSpeeds = [], chartHorzSpeeds = [], chartDiveAngles = [], chartLats = [], chartLons = [];
+  for (let i = 0; i < data.length; i++) {
+    const tRel = allTimes[i] - exitTime;
+    chartTimes.push(tRel);
+    chartAlts.push(allAlts[i]);
+    chartVertSpeeds.push(allVelD[i]);
+    const vN = parseFloat(data[i].velN) || 0;
+    const vE = parseFloat(data[i].velE) || 0;
+    const hSpd = Math.sqrt(vN * vN + vE * vE);
+    chartHorzSpeeds.push(hSpd);
+    if (tRel < -5 || tRel > canopyTimeRel + 5) {
+      chartDiveAngles.push(null);
+    } else {
+      chartDiveAngles.push(Math.atan2(allVelD[i], hSpd) * (180 / Math.PI));
+    }
+    chartLats.push(parseFloat(data[i].lat));
+    chartLons.push(parseFloat(data[i].lon));
+  }
+
+  // Full-recording y-axis bounds — locks altitude and speed scales to the
+  // entire jump (airplane climb + freefall + canopy + landing) so they don't
+  // rescale when the user pans/zooms across the chart.
+  const chartVertSpeedsKmh = chartVertSpeeds.map(v => v * 3.6);
+  const chartHorzSpeedsKmh = chartHorzSpeeds.map(v => v * 3.6);
+  const yAltMin = Math.min.apply(null, chartAlts);
+  const yAltMax = Math.max.apply(null, chartAlts);
+  const ySpeedMax = Math.max(Math.max.apply(null, chartVertSpeedsKmh), Math.max.apply(null, chartHorzSpeedsKmh));
+  const ySpeedMin = Math.min(0, Math.min.apply(null, chartVertSpeedsKmh), Math.min.apply(null, chartHorzSpeedsKmh));
 
   const exitAlt = allAlts[exitIdx];
   const groundAlt = allAlts[landingIdx];
@@ -167,7 +242,12 @@ function renderCurrentJump(showFull) {
     : '';
 
   document.getElementById('stats').innerHTML = `
-    <div class="stat-card" style="position:relative;">
+    ${speedScoreHtml}
+    <div class="stat-card">
+      <div class="stat-label">Max Vertical Speed</div>
+      <div class="stat-value alt">${maxSpeedKmh} km/h / ${(maxFallSpeed * 2.23694).toFixed(0)} mph</div>
+    </div>
+    <div class="stat-card">
       <span class="exit-badge ${exitBadgeClass}">
         ${exitBadgeIcon}
         <span class="exit-tooltip">${exitTooltip.replace('\n', '<br>')}</span>
@@ -176,19 +256,10 @@ function renderCurrentJump(showFull) {
       <div class="stat-value alt">${exitAlt.toFixed(0)} m / ${(exitAlt * 3.28084).toFixed(0)} ft</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Max Vertical Speed</div>
-      <div class="stat-value alt">${maxSpeedKmh} km/h / ${(maxFallSpeed * 2.23694).toFixed(0)} mph</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Landing Altitude</div>
-      <div class="stat-value alt">${groundAlt.toFixed(0)} m / ${(groundAlt * 3.28084).toFixed(0)} ft</div>
-    </div>
-    <div class="stat-card">
       <div class="stat-label">Speed Window</div>
       <div class="stat-detail alt"><span class="stat-detail-label">Start</span> ${perfWindowStartAlt !== null ? perfWindowStartAlt.toFixed(0) + ' m / ' + (perfWindowStartAlt * 3.28084).toFixed(0) + ' ft' : '—'}</div>
       <div class="stat-detail alt"><span class="stat-detail-label">End</span> ${perfWindowEndAlt.toFixed(0)} m / ${(perfWindowEndAlt * 3.28084).toFixed(0)} ft</div>
     </div>
-    ${speedScoreHtml}
   `;
 
   // ── Chart ──
@@ -198,11 +269,11 @@ function renderCurrentJump(showFull) {
   state.chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: times,
+      labels: chartTimes,
       datasets: [
         {
           label: 'Altitude (m)',
-          data: altitudes,
+          data: chartAlts,
           borderColor: '#38bdf8',
           backgroundColor: 'rgba(56,189,248,0.08)',
           fill: true,
@@ -214,7 +285,7 @@ function renderCurrentJump(showFull) {
         },
         {
           label: 'Vertical Speed (km/h)',
-          data: vertSpeeds.map(v => v * 3.6),
+          data: chartVertSpeeds.map(v => v * 3.6),
           borderColor: '#4ade80',
           backgroundColor: 'rgba(74,222,128,0.08)',
           fill: false,
@@ -226,7 +297,7 @@ function renderCurrentJump(showFull) {
         },
         {
           label: 'Ground Speed (km/h)',
-          data: horzSpeeds.map(v => v * 3.6),
+          data: chartHorzSpeeds.map(v => v * 3.6),
           borderColor: '#ef4444',
           backgroundColor: 'rgba(239,68,68,0.08)',
           fill: false,
@@ -238,7 +309,7 @@ function renderCurrentJump(showFull) {
         },
         {
           label: 'Dive Angle (°)',
-          data: diveAngles,
+          data: chartDiveAngles,
           borderColor: '#f472b6',
           backgroundColor: 'rgba(244,114,182,0.08)',
           fill: false,
@@ -258,8 +329,8 @@ function renderCurrentJump(showFull) {
       onHover: function(event, elements) {
         if (elements.length > 0 && state.mapInstance) {
           const idx = elements[0].index;
-          const lat = sliceLats[idx];
-          const lon = sliceLons[idx];
+          const lat = chartLats[idx];
+          const lon = chartLons[idx];
           if (!isNaN(lat) && !isNaN(lon)) {
             if (!state.hoverMarker) {
               state.hoverMarker = L.circleMarker([lat, lon], {
@@ -272,6 +343,18 @@ function renderCurrentJump(showFull) {
         }
       },
       plugins: {
+        zoom: {
+          pan: { enabled: true, mode: 'x', onPanComplete: syncMapToChart },
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'x',
+            onZoomComplete: syncMapToChart
+          },
+          limits: {
+            x: { min: chartTimes[0], max: chartTimes[chartTimes.length - 1] }
+          }
+        },
         annotation: {
           annotations: {
             exitLine: {
@@ -334,6 +417,7 @@ function renderCurrentJump(showFull) {
           labels: { color: '#cbd5e1', font: { size: 13 }, usePointStyle: true, pointStyle: 'line' }
         },
         tooltip: {
+          animation: false,
           backgroundColor: '#1e293b',
           titleColor: '#f8fafc',
           bodyColor: '#cbd5e1',
@@ -357,6 +441,7 @@ function renderCurrentJump(showFull) {
               } else if (ctx.datasetIndex === 2) {
                 return ' Ground Speed: ' + ctx.parsed.y.toFixed(0) + ' km/h';
               } else {
+                if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
                 return ' Dive Angle: ' + ctx.parsed.y.toFixed(1) + '°';
               }
             }
@@ -366,6 +451,8 @@ function renderCurrentJump(showFull) {
       scales: {
         x: {
           type: 'linear',
+          min: showFull ? undefined : -5,
+          max: showFull ? undefined : (canopyTimeRel + 5),
           title: { display: true, text: 'Time (seconds)', color: '#94a3b8' },
           ticks: {
             color: '#64748b',
@@ -382,6 +469,8 @@ function renderCurrentJump(showFull) {
         yAlt: {
           type: 'linear',
           position: 'left',
+          min: yAltMin,
+          max: yAltMax,
           title: { display: true, text: 'Altitude (m)', color: '#38bdf8' },
           ticks: { color: '#38bdf8' },
           grid: { color: 'rgba(56,189,248,0.08)' }
@@ -389,6 +478,8 @@ function renderCurrentJump(showFull) {
         ySpeed: {
           type: 'linear',
           position: 'right',
+          min: ySpeedMin,
+          max: ySpeedMax,
           title: { display: true, text: 'Speed (km/h)', color: '#4ade80' },
           ticks: { color: '#4ade80' },
           grid: { drawOnChartArea: false }
@@ -406,81 +497,216 @@ function renderCurrentJump(showFull) {
     }
   });
 
-  // ── Map ──
-  const pathCoords = [];
-  for (let i = startIdx; i <= endIdx; i++) {
-    const lat = parseFloat(data[i].lat);
-    const lon = parseFloat(data[i].lon);
-    if (!isNaN(lat) && !isNaN(lon)) pathCoords.push([lat, lon]);
-  }
+  // ── Map: re-rendered any time the chart's visible time window changes ──
+  function renderMap(tMin, tMax) {
+    // Window-filtered arrays (subset of full data within [tMin, tMax])
+    const windowLats = [], windowLons = [], windowTimes = [], windowAlts = [], windowVertSpeeds = [], windowHorzSpeeds = [], windowFullIdx = [];
+    for (let i = 0; i < chartTimes.length; i++) {
+      const t = chartTimes[i];
+      if (t < tMin || t > tMax) continue;
+      windowLats.push(chartLats[i]);
+      windowLons.push(chartLons[i]);
+      windowTimes.push(t);
+      windowAlts.push(chartAlts[i]);
+      windowVertSpeeds.push(chartVertSpeeds[i]);
+      windowHorzSpeeds.push(chartHorzSpeeds[i]);
+      windowFullIdx.push(i);
+    }
 
-  const exitLat = parseFloat(data[exitIdx].lat);
-  const exitLon = parseFloat(data[exitIdx].lon);
-  const landLat = parseFloat(data[landingIdx].lat);
-  const landLon = parseFloat(data[landingIdx].lon);
+    const pathCoords = [];
+    const pathTimes = [];
+    for (let i = 0; i < windowLats.length; i++) {
+      if (!isNaN(windowLats[i]) && !isNaN(windowLons[i])) {
+        pathCoords.push([windowLats[i], windowLons[i]]);
+        pathTimes.push(windowTimes[i]);
+      }
+    }
 
-  if (state.mapInstance) { state.mapInstance.remove(); state.mapInstance = null; }
-  state.hoverMarker = null;
+    if (state.mapInstance) { state.mapInstance.remove(); state.mapInstance = null; }
+    state.hoverMarker = null;
+    state.mapHoverTooltip = null;
 
-  state.mapInstance = L.map('map', { attributionControl: true });
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '&copy; Esri, Maxar, Earthstar Geographics',
-    maxZoom: 19
-  }).addTo(state.mapInstance);
-
-  const exitPathIdx = exitIdx - startIdx;
-  const canopyPathIdx = canopyIdx - startIdx;
-
-  for (let i = 0; i < pathCoords.length - 1; i++) {
-    let color;
-    if (i < exitPathIdx) color = '#38bdf8';
-    else if (i < canopyPathIdx) color = '#ef4444';
-    else color = '#1e1e1e';
-    L.polyline([pathCoords[i], pathCoords[i + 1]], {
-      color,
-      weight: 3,
-      opacity: 0.9
+    state.mapInstance = L.map('map', { attributionControl: true });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+      maxZoom: 19
     }).addTo(state.mapInstance);
+
+    // Color-coded polyline using time-based phase boundaries
+    for (let i = 0; i < pathCoords.length - 1; i++) {
+      let color;
+      if (pathTimes[i] < 0) color = '#38bdf8';
+      else if (pathTimes[i] < canopyTimeRel) color = '#ef4444';
+      else color = '#1e1e1e';
+      L.polyline([pathCoords[i], pathCoords[i + 1]], {
+        color, weight: 3, opacity: 0.9
+      }).addTo(state.mapInstance);
+    }
+
+    // Airplane heading line — only when exit (t=0) is in the visible window
+    if (0 >= tMin && 0 <= tMax) {
+      const exitTimeAbs = allTimes[exitIdx];
+      let headingRefIdx = exitIdx;
+      for (let i = exitIdx; i >= 0; i--) {
+        if (exitTimeAbs - allTimes[i] >= 3) { headingRefIdx = i; break; }
+      }
+      const refLat = parseFloat(data[headingRefIdx].lat);
+      const refLon = parseFloat(data[headingRefIdx].lon);
+      const exitLat = parseFloat(data[exitIdx].lat);
+      const exitLon = parseFloat(data[exitIdx].lon);
+      if (!isNaN(refLat) && !isNaN(refLon) && !isNaN(exitLat) && !isNaN(exitLon) && headingRefIdx !== exitIdx) {
+        const dLat = exitLat - refLat;
+        const dLon = exitLon - refLon;
+        const extendFactor = 8;
+        const lineStart = [exitLat - dLat * extendFactor, exitLon - dLon * extendFactor];
+        const lineEnd = [exitLat + dLat * extendFactor, exitLon + dLon * extendFactor];
+        L.polyline([lineStart, lineEnd], {
+          color: '#94a3b8', weight: 3, dashArray: '8, 8', opacity: 0.7
+        }).addTo(state.mapInstance);
+      }
+    }
+
+    // Markers — only those whose time falls within the visible window
+    const startTime = chartTimes[0];
+    if (startTime >= tMin && startTime <= tMax) {
+      const startLat = parseFloat(data[0].lat);
+      const startLon = parseFloat(data[0].lon);
+      if (!isNaN(startLat) && !isNaN(startLon)) {
+        L.circleMarker([startLat, startLon], {
+          radius: 8, fillColor: '#38bdf8', color: '#000', weight: 2, fillOpacity: 1
+        }).addTo(state.mapInstance).bindTooltip('Start', { permanent: true, direction: 'top', className: 'map-label' });
+      }
+    }
+
+    if (0 >= tMin && 0 <= tMax) {
+      const exitLat = parseFloat(data[exitIdx].lat);
+      const exitLon = parseFloat(data[exitIdx].lon);
+      if (!isNaN(exitLat) && !isNaN(exitLon)) {
+        L.circleMarker([exitLat, exitLon], {
+          radius: 8, fillColor: '#facc15', color: '#000', weight: 2, fillOpacity: 1
+        }).addTo(state.mapInstance).bindTooltip('Exit', { permanent: true, direction: 'top', className: 'map-label' });
+      }
+    }
+
+    if (canopyTimeRel >= tMin && canopyTimeRel <= tMax) {
+      const canopyLat = parseFloat(data[canopyIdx].lat);
+      const canopyLon = parseFloat(data[canopyIdx].lon);
+      if (!isNaN(canopyLat) && !isNaN(canopyLon)) {
+        L.circleMarker([canopyLat, canopyLon], {
+          radius: 8, fillColor: '#f472b6', color: '#000', weight: 2, fillOpacity: 1
+        }).addTo(state.mapInstance).bindTooltip('Canopy', { permanent: true, direction: 'top', className: 'map-label' });
+      }
+    }
+
+    const landingTimeRel = chartTimes[landingIdx];
+    if (landingTimeRel >= tMin && landingTimeRel <= tMax) {
+      const landLat = parseFloat(data[landingIdx].lat);
+      const landLon = parseFloat(data[landingIdx].lon);
+      if (!isNaN(landLat) && !isNaN(landLon)) {
+        L.circleMarker([landLat, landLon], {
+          radius: 8, fillColor: '#4ade80', color: '#000', weight: 2, fillOpacity: 1
+        }).addTo(state.mapInstance).bindTooltip('Landing', { permanent: true, direction: 'top', className: 'map-label' });
+      }
+    }
+
+    if (pathCoords.length > 1) {
+      state.mapInstance.fitBounds(L.latLngBounds(pathCoords).pad(0.15));
+    }
+
+    // Reverse hover: tooltip when mousing along the flight path
+    const HOVER_THRESHOLD_PX = 20;
+    state.mapInstance.on('mousemove', function(e) {
+      if (!state.mapInstance) return;
+      const cursor = e.containerPoint;
+      let bestIdx = -1;
+      let bestDistSq = HOVER_THRESHOLD_PX * HOVER_THRESHOLD_PX;
+      for (let i = 0; i < windowLats.length; i++) {
+        const lat = windowLats[i], lon = windowLons[i];
+        if (isNaN(lat) || isNaN(lon)) continue;
+        const pt = state.mapInstance.latLngToContainerPoint([lat, lon]);
+        const dx = pt.x - cursor.x;
+        const dy = pt.y - cursor.y;
+        const dsq = dx * dx + dy * dy;
+        if (dsq < bestDistSq) {
+          bestDistSq = dsq;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx < 0) {
+        if (state.mapHoverTooltip && state.mapHoverTooltip.isOpen()) {
+          state.mapInstance.closeTooltip(state.mapHoverTooltip);
+        }
+        if (state.hoverMarker) {
+          state.mapInstance.removeLayer(state.hoverMarker);
+          state.hoverMarker = null;
+        }
+        clearChartActive();
+        return;
+      }
+
+      const lat = windowLats[bestIdx];
+      const lon = windowLons[bestIdx];
+      const t = windowTimes[bestIdx];
+      const alt = windowAlts[bestIdx];
+      const vSpd = windowVertSpeeds[bestIdx];
+      const hSpd = windowHorzSpeeds[bestIdx];
+
+      const tStr = (t >= 0 ? 'T+' : 'T') + t.toFixed(1) + 's';
+      const altM = isNaN(alt) ? '—' : Math.round(alt).toLocaleString() + ' m';
+      const altFt = isNaN(alt) ? '' : Math.round(alt * 3.28084).toLocaleString() + ' ft';
+      const vKmh = (vSpd * 3.6).toFixed(1);
+      const vMph = (vSpd * 2.23694).toFixed(1);
+      const hKmh = (hSpd * 3.6).toFixed(1);
+      const hMph = (hSpd * 2.23694).toFixed(1);
+
+      const html =
+        '<div class="map-hover-tooltip-time">' + tStr + '</div>' +
+        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">Alt</span><span>' + altM + '</span><span class="map-hover-tooltip-imperial">' + altFt + '</span></div>' +
+        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">Vert</span><span>' + vKmh + ' km/h</span><span class="map-hover-tooltip-imperial">' + vMph + ' mph</span></div>' +
+        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">Horz</span><span>' + hKmh + ' km/h</span><span class="map-hover-tooltip-imperial">' + hMph + ' mph</span></div>';
+
+      if (!state.mapHoverTooltip) {
+        state.mapHoverTooltip = L.tooltip({
+          permanent: false,
+          direction: 'top',
+          offset: [0, -8],
+          className: 'map-hover-tooltip'
+        });
+      }
+      state.mapHoverTooltip.setLatLng([lat, lon]).setContent(html);
+      if (!state.mapHoverTooltip.isOpen()) {
+        state.mapHoverTooltip.openOn(state.mapInstance);
+      }
+
+      if (!state.hoverMarker) {
+        state.hoverMarker = L.circleMarker([lat, lon], {
+          radius: 7, fillColor: '#fff', color: '#0f172a', weight: 2, fillOpacity: 1
+        }).addTo(state.mapInstance);
+      } else {
+        state.hoverMarker.setLatLng([lat, lon]);
+      }
+
+      // Chart datasets contain full-data, so the chart index == windowFullIdx[bestIdx]
+      setChartActiveAtIndex(windowFullIdx[bestIdx]);
+    });
+
+    state.mapInstance.on('mouseout', function() {
+      if (state.mapHoverTooltip && state.mapHoverTooltip.isOpen()) {
+        state.mapInstance.closeTooltip(state.mapHoverTooltip);
+      }
+      if (state.hoverMarker) {
+        state.mapInstance.removeLayer(state.hoverMarker);
+        state.hoverMarker = null;
+      }
+      clearChartActive();
+    });
   }
 
-  // Airplane heading line
-  const exitTimeAbs = allTimes[exitIdx];
-  let headingRefIdx = exitIdx;
-  for (let i = exitIdx; i >= 0; i--) {
-    if (exitTimeAbs - allTimes[i] >= 3) { headingRefIdx = i; break; }
-  }
-  const refLat = parseFloat(data[headingRefIdx].lat);
-  const refLon = parseFloat(data[headingRefIdx].lon);
+  state.lastRenderMap = renderMap;
 
-  if (!isNaN(refLat) && !isNaN(refLon) && !isNaN(exitLat) && !isNaN(exitLon) && headingRefIdx !== exitIdx) {
-    const dLat = exitLat - refLat;
-    const dLon = exitLon - refLon;
-    const extendFactor = 8;
-    const lineStart = [exitLat - dLat * extendFactor, exitLon - dLon * extendFactor];
-    const lineEnd = [exitLat + dLat * extendFactor, exitLon + dLon * extendFactor];
-    L.polyline([lineStart, lineEnd], {
-      color: '#94a3b8',
-      weight: 3,
-      dashArray: '8, 8',
-      opacity: 0.7
-    }).addTo(state.mapInstance);
-  }
-
-  if (!isNaN(exitLat) && !isNaN(exitLon)) {
-    L.circleMarker([exitLat, exitLon], {
-      radius: 8, fillColor: '#facc15', color: '#000', weight: 2, fillOpacity: 1
-    }).addTo(state.mapInstance).bindTooltip('Exit', { permanent: true, direction: 'top', className: 'map-label' });
-  }
-
-  if (!isNaN(landLat) && !isNaN(landLon)) {
-    L.circleMarker([landLat, landLon], {
-      radius: 8, fillColor: '#4ade80', color: '#000', weight: 2, fillOpacity: 1
-    }).addTo(state.mapInstance).bindTooltip('Landing', { permanent: true, direction: 'top', className: 'map-label' });
-  }
-
-  if (pathCoords.length > 1) {
-    state.mapInstance.fitBounds(L.latLngBounds(pathCoords).pad(0.15));
-  }
+  const initialMin = showFull ? chartTimes[0] : -5;
+  const initialMax = showFull ? chartTimes[chartTimes.length - 1] : (canopyTimeRel + 5);
+  renderMap(initialMin, initialMax);
 
   // Expose flight data for video overlay sync
   state.currentFlightData = { times, altitudes, vertSpeeds, horzSpeeds, diveAngles, lats: sliceLats, lons: sliceLons, velNs, velEs, exitIdx: exitIdx - startIdx, canopyIdx: canopyIdx - startIdx, speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd };

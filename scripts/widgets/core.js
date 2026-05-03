@@ -23,6 +23,7 @@ function buildUnitsConfig(widget, options) {
     rb.addEventListener('change', () => {
       widget.config.units = value;
       drawOverlayPreview();
+      state.scheduleSaveWidgetLayout();
     });
     lbl.appendChild(rb);
     lbl.appendChild(document.createTextNode(' ' + label));
@@ -90,6 +91,13 @@ const WIDGET_TYPES = {
     render: renderGForceWidget,
     renderPreview: renderGForcePreviewCard,
     configUI: (widget) => buildGForceConfigPanel(widget, drawOverlayPreview),
+  },
+  image: {
+    label: 'Image',
+    defaultConfig: { fadeIn: false },
+    render: renderImageWidget,
+    renderPreview: renderImagePreviewCard,
+    configUI: (widget) => buildImageConfigPanel(widget, drawOverlayPreview),
   }
 };
 
@@ -106,14 +114,21 @@ function createWidget(type, x, y) {
     config: { ...def.defaultConfig },
   };
   state.widgets.push(w);
+  state.scheduleSaveWidgetLayout();
   return w;
 }
 
 function removeWidget(id) {
+  const removed = state.widgets.find(w => w.id === id);
+  if (removed && removed._imageObjectURL) {
+    try { URL.revokeObjectURL(removed._imageObjectURL); } catch {}
+    removed._imageObjectURL = null;
+  }
   state.widgets = state.widgets.filter(w => w.id !== id);
   if (state.selectedWidgetId === id) state.selectedWidgetId = null;
   updateWidgetSettingsPanel();
   drawOverlayPreview();
+  state.scheduleSaveWidgetLayout();
 }
 
 // ── Per-widget fade-in opacity ──

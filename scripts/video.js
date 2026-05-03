@@ -8,8 +8,40 @@ function openVideoModal() {
 
 function closeVideoModal() {
   document.getElementById('videoModal').classList.remove('open');
+
   const v = document.getElementById('videoPreview');
-  if (v && !v.paused) v.pause();
+  if (v) {
+    if (!v.paused) v.pause();
+    v.removeAttribute('src');
+    v.load();
+  }
+  const playBtn = document.getElementById('videoPlayBtn');
+  if (playBtn) playBtn.textContent = 'Play';
+
+  if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
+  state.videoObjectURL = null;
+
+  state.videoExitTime = null;
+  document.getElementById('videoExitTimecode').textContent = 'Not set';
+  document.getElementById('videoTimecode').textContent = '0:00.000';
+  document.getElementById('videoDuration').textContent = '/ 0:00.000';
+  document.getElementById('videoScrubber').value = 0;
+
+  // Flush any pending debounced save with the current populated widgets
+  // BEFORE we clear them, otherwise a stale timer would save an empty layout.
+  if (typeof state.flushSaveWidgetLayout === 'function') state.flushSaveWidgetLayout();
+
+  state.widgets = [];
+  state.selectedWidgetId = null;
+  state.widgetDragState = null;
+  if (typeof updateWidgetSettingsPanel === 'function') updateWidgetSettingsPanel();
+
+  document.getElementById('videoStep1').style.display = '';
+  document.getElementById('videoStep2').style.display = 'none';
+  document.getElementById('widgetsSection').style.display = 'none';
+  document.getElementById('exportSection').style.display = 'none';
+
+  if (typeof clearVideoPageDropOverlay === 'function') clearVideoPageDropOverlay();
 }
 
 // Close modal on backdrop click or Escape
@@ -35,12 +67,44 @@ document.addEventListener('keydown', function(e) {
 })();
 
 function handleVideoFile(file) {
+  const isVideoMime = (file.type || '').toLowerCase().startsWith('video/');
+  const isVideoExt = /\.(mp4|webm|mov|m4v)$/i.test(file.name);
+  if (!isVideoMime && !isVideoExt) {
+    alert('Please drop a video file (MP4, WebM, or MOV).');
+    return;
+  }
   if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
   state.videoObjectURL = URL.createObjectURL(file);
   const video = document.getElementById('videoPreview');
-  video.src = state.videoObjectURL;
-  video.muted = true;
-  video.load();
+
+  // Kick off the widget-layout restore in parallel with video loading. Doing it
+  // here (rather than inside loadedmetadata) avoids any race with the loadeddata
+  // event firing before the restore completes — state.widgets is populated as
+  // soon as IDB returns, and the next drawOverlayPreview (from loadeddata,
+  // timeupdate, or markVideoExit) renders them.
+  (async () => {
+    try {
+      const saved = await loadWidgetLayout();
+      if (!saved || !saved.length) return;
+      state.widgets = saved.map(w => ({
+        id: w.id,
+        type: w.type,
+        x: w.x,
+        y: w.y,
+        widgetScale: w.widgetScale,
+        config: { ...w.config },
+      }));
+      const maxId = state.widgets.reduce((m, w) => Math.max(m, w.id || 0), 0);
+      state.nextWidgetId = maxId + 1;
+      state.selectedWidgetId = null;
+      if (typeof updateWidgetSettingsPanel === 'function') updateWidgetSettingsPanel();
+      drawOverlayPreview();
+    } catch {
+      // Fall back to empty layout silently.
+    }
+  })();
+
+  // Attach listeners BEFORE setting src so we never miss the metadata event.
   video.addEventListener('loadedmetadata', function onMeta() {
     video.removeEventListener('loadedmetadata', onMeta);
     document.getElementById('videoDuration').textContent = '/ ' + formatVideoTimecode(video.duration);
@@ -50,11 +114,17 @@ function handleVideoFile(file) {
     // Reset exit
     state.videoExitTime = null;
     document.getElementById('videoExitTimecode').textContent = 'Not set';
-    document.getElementById('videoExitManual').value = '';
+    // Redraw — by now any in-flight restore has likely landed, and even if not,
+    // drawOverlayPreview will re-fire from the loadeddata listener.
+    drawOverlayPreview();
   });
   video.addEventListener('error', function() {
     alert('Could not load this video file. Try a different format (MP4, WebM).');
   }, { once: true });
+
+  video.src = state.videoObjectURL;
+  video.muted = true;
+  video.load();
 }
 
 // Playback controls
