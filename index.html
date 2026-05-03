@@ -81,7 +81,8 @@
 <main class="main-content">
 <div class="chart-section" id="chartSection">
   <div class="trim-controls">
-    <button class="trim-btn" id="videoOverlayBtn" onclick="openVideoModal()" style="margin-left:auto;">Create video overlay</button>
+    <button class="trim-btn" id="compareJumpsBtn" onclick="openCompareModal()" style="margin-left:auto;">Compare jumps</button>
+    <button class="trim-btn" id="videoOverlayBtn" onclick="openVideoModal()">Create video overlay</button>
   </div>
   <div class="chart-container">
     <div class="chart-header">
@@ -234,6 +235,47 @@
   </div>
 </div>
 
+<!-- Compare Jumps Modal -->
+<div class="modal-backdrop" id="compareModal">
+  <div class="modal compare-modal">
+    <div class="modal-header compare-header">
+      <h2>Compare jumps</h2>
+      <div class="compare-view-tabs" id="compareViewTabs">
+        <button type="button" class="compare-view-tab active" data-view="topMap">Top view</button>
+        <button type="button" class="compare-view-tab" data-view="view3d">3D view</button>
+        <button type="button" class="compare-view-tab" data-view="vertSpeedTable">Vert. speed</button>
+        <button type="button" class="compare-view-tab" data-view="diveAngleTable">Dive angle</button>
+      </div>
+      <button class="modal-close" onclick="closeCompareModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="compare-grid">
+        <div class="compare-left">
+          <div class="compare-jumps-list" id="compareJumpsList"></div>
+        </div>
+        <div class="compare-right">
+          <div class="compare-view-container">
+            <div class="compare-view" data-view="topMap">
+              <div id="compareMap"></div>
+            </div>
+            <div class="compare-view" data-view="view3d" hidden>
+              <canvas id="compare3dCanvas"></canvas>
+              <div class="compare-3d-hint">Drag to rotate · right-drag (or shift-drag) to pan · scroll to zoom</div>
+            </div>
+            <div class="compare-view compare-table-view" data-view="vertSpeedTable" hidden>
+              <div class="compare-table-scroll"><table id="compareVertSpeedTable" class="compare-table"></table></div>
+            </div>
+            <div class="compare-view compare-table-view" data-view="diveAngleTable" hidden>
+              <div class="compare-table-scroll"><table id="compareDiveAngleTable" class="compare-table"></table></div>
+            </div>
+            <div class="compare-empty" id="compareEmpty">Select one or more jumps from the left.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- App scripts — loaded in dependency order (leaf modules first) -->
 <script src="scripts/state.js"></script>
 <script src="scripts/storage.js"></script>
@@ -249,6 +291,7 @@
 <script src="scripts/widgets/core.js"></script>
 <script src="scripts/chart.js"></script>
 <script src="scripts/video.js"></script>
+<script src="scripts/compare.js"></script>
 <script src="scripts/main.js"></script>
 
 </body>

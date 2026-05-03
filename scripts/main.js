@@ -116,6 +116,7 @@ function handleFiles(files) {
       const csv = e.target.result;
       const name = file.name.replace(/\.csv$/i, '');
       await storeJump(name, csv);
+      if (state.compareDataCache) state.compareDataCache.delete(name);
       await renderJumpList();
       selectJump(name);
     };
@@ -152,6 +153,8 @@ function selectJump(name) {
 
 async function deleteJump(name) {
   await removeJump(name);
+  if (state.compareDataCache) state.compareDataCache.delete(name);
+  if (state.compareSelected) state.compareSelected.delete(name);
   if (state.currentJumpName === name) {
     state.currentJumpName = null;
     document.getElementById('chartSection').style.display = 'none';
