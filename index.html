@@ -261,6 +261,21 @@
             <div class="compare-view" data-view="view3d" hidden>
               <canvas id="compare3dCanvas"></canvas>
               <div class="compare-3d-hint">Drag to rotate · right-drag (or shift-drag) to pan · scroll to zoom</div>
+              <button type="button" class="compare-3d-play" id="compare3dPlay" aria-label="Auto-rotate 3D view">
+                <svg viewBox="0 0 24 24" class="compare-3d-play-icon" data-icon="rotate" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 4 22 10 16 10"/><path d="M20 14a8 8 0 1 1-2.5-7L22 10"/></svg>
+                <svg viewBox="0 0 12 12" class="compare-3d-play-icon" data-icon="pause" hidden><rect x="3" y="2" width="2.5" height="8" fill="currentColor"/><rect x="6.5" y="2" width="2.5" height="8" fill="currentColor"/></svg>
+              </button>
+              <div class="compare-3d-scrub" id="compare3dScrub">
+                <span class="compare-3d-scrub-time start" id="compare3dScrubStart">--:--:--</span>
+                <input type="range" id="compare3dScrubSlider" min="0" max="10000" value="10000" step="1">
+                <span class="compare-3d-scrub-time" id="compare3dScrubTime">--:--:--</span>
+                <button class="compare-3d-clip-btn" id="compare3dClip" type="button">Create clip</button>
+                <div class="compare-3d-clip-menu" id="compare3dClipMenu" hidden>
+                  <button type="button" data-mode="30">30-second clip</button>
+                  <button type="button" data-mode="realtime" id="compare3dClipMenuRealtime">Full real-time</button>
+                </div>
+              </div>
+              <div class="compare-3d-tooltip" id="compare3dTooltip" hidden></div>
             </div>
             <div class="compare-view compare-table-view" data-view="vertSpeedTable" hidden>
               <div class="compare-table-scroll"><table id="compareVertSpeedTable" class="compare-table"></table></div>

@@ -7,11 +7,15 @@ function parseFlySightCSV(csvText) {
 }
 
 function parseTimestamp(s) {
+  // FlySight CSV times are in UTC (`...Z` suffix). Parse as UTC so that
+  // absolute timestamps round-trip to the user's local time correctly when
+  // formatted with Date#getHours / toLocaleTimeString. Relative differences
+  // are unchanged because every row uses the same parser.
   const [datePart, timePart] = s.replace('Z','').split('T');
   const [y, mo, d] = datePart.split('-').map(Number);
   const [h, mi, rest] = timePart.split(':');
   const [sec, frac] = rest.split('.');
-  return new Date(y, mo-1, d, Number(h), Number(mi), Number(sec), Number(frac || 0) * 10).getTime();
+  return Date.UTC(y, mo-1, d, Number(h), Number(mi), Number(sec), Number(frac || 0) * 10);
 }
 
 function detectExitAndLanding(data) {
