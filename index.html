@@ -13,8 +13,35 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 30 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M15 0C17 0 19 2 19 5C19 8 17 10 16 12C18 12 21 14 22 18C23 22 22 26 20 30C19 33 18 36 18 40C18 44 19 48 20 52C21 56 22 60 21 64C20 68 18 72 17 74C16 76 15 78 15 80C15 78 14 76 13 74C12 72 10 68 9 64C8 60 9 56 10 52C11 48 12 44 12 40C12 36 11 33 10 30C8 26 7 22 8 18C9 14 12 12 14 12C13 10 11 8 11 5C11 2 13 0 15 0Z' fill='%2338bdf8'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
+<script>
+  // Apply the persisted theme before paint to avoid a flash. Full
+  // dropdown wiring is in scripts/theme.js (loaded later).
+  (function() {
+    var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green'];
+    var t = null;
+    try {
+      var m = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
+      if (m) t = decodeURIComponent(m[1]);
+    } catch (e) {}
+    if (!t || THEMES.indexOf(t) < 0) {
+      try { t = localStorage.getItem('theme'); } catch (e) {}
+    }
+    if (THEMES.indexOf(t) < 0) t = 'dark-blue';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 </head>
 <body>
+
+<div class="theme-picker">
+  <label class="theme-picker-label" for="themeSelect">Theme</label>
+  <select id="themeSelect" class="theme-select" aria-label="Select color theme">
+    <option value="dark-blue">Dark · Blue</option>
+    <option value="light">Light · Gray</option>
+    <option value="dark-red">Dark · Red</option>
+    <option value="dark-green">Dark · Green</option>
+  </select>
+</div>
 
 <div class="page-layout">
 <aside class="sidebar">
@@ -267,13 +294,8 @@
               </button>
               <div class="compare-3d-scrub" id="compare3dScrub">
                 <span class="compare-3d-scrub-time start" id="compare3dScrubStart">--:--:--</span>
-                <input type="range" id="compare3dScrubSlider" min="0" max="10000" value="10000" step="1">
+                <input type="range" id="compare3dScrubSlider" min="0" max="1000" value="1000" step="1">
                 <span class="compare-3d-scrub-time" id="compare3dScrubTime">--:--:--</span>
-                <button class="compare-3d-clip-btn" id="compare3dClip" type="button">Create clip</button>
-                <div class="compare-3d-clip-menu" id="compare3dClipMenu" hidden>
-                  <button type="button" data-mode="30">30-second clip</button>
-                  <button type="button" data-mode="realtime" id="compare3dClipMenuRealtime">Full real-time</button>
-                </div>
               </div>
               <div class="compare-3d-tooltip" id="compare3dTooltip" hidden></div>
             </div>
@@ -293,6 +315,7 @@
 
 <!-- App scripts — loaded in dependency order (leaf modules first) -->
 <script src="scripts/state.js"></script>
+<script src="scripts/theme.js"></script>
 <script src="scripts/storage.js"></script>
 <script src="scripts/csv.js"></script>
 <script src="scripts/widgets/info.js"></script>

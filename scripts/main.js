@@ -111,26 +111,50 @@ function handleFiles(files) {
     );
   }
   csvFiles.forEach(file => {
+    const name = file.name.replace(/\.csv$/i, '');
+    // Show a loading chip in the sidebar immediately so the user sees feedback
+    // while a large CSV is being read, parsed, and stored.
+    if (!state.loadingJumps.some(l => l.name === name)) {
+      state.loadingJumps.push({ name });
+    }
+    renderJumpList();
+
+    const finishLoading = () => {
+      state.loadingJumps = state.loadingJumps.filter(l => l.name !== name);
+    };
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       const csv = e.target.result;
-      const name = file.name.replace(/\.csv$/i, '');
       await storeJump(name, csv);
       if (state.compareDataCache) state.compareDataCache.delete(name);
+      finishLoading();
       await renderJumpList();
       selectJump(name);
+    };
+    reader.onerror = () => {
+      finishLoading();
+      renderJumpList();
+      alert(`Failed to read ${file.name}.`);
     };
     reader.readAsText(file);
   });
 }
 
 // ── Jump list rendering ──
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
 async function renderJumpList() {
   const list = document.getElementById('jumpList');
   const jumps = await getStoredJumps();
   let scores = {};
   try { scores = JSON.parse(localStorage.getItem('flysight_scores') || '{}'); } catch (e) {}
-  document.body.classList.toggle('has-jumps', jumps.length > 0);
+  const hasContent = jumps.length > 0 || state.loadingJumps.length > 0;
+  document.body.classList.toggle('has-jumps', hasContent);
   list.innerHTML = '';
   jumps.forEach(j => {
     const chip = document.createElement('div');
@@ -140,6 +164,18 @@ async function renderJumpList() {
     chip.innerHTML = `
       <span onclick="selectJump('${j.name.replace(/'/g, "\\'")}')">${j.name}${scoreLabel}</span>
       <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${j.name.replace(/'/g, "\\'")}')" title="Remove">&times;</button>
+    `;
+    list.appendChild(chip);
+  });
+  // Loading placeholders appear at the bottom in insertion order so the user
+  // can see exactly which files are still being processed.
+  state.loadingJumps.forEach(l => {
+    const chip = document.createElement('div');
+    chip.className = 'jump-chip loading';
+    chip.innerHTML = `
+      <span class="jump-spinner" aria-hidden="true"></span>
+      <span class="loading-name">${escapeHtml(l.name)}</span>
+      <span class="loading-label">Loading…</span>
     `;
     list.appendChild(chip);
   });

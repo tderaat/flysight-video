@@ -262,6 +262,16 @@ async function renderCurrentJump(showFull) {
     </div>
   `;
 
+  // ── Theme-aware colors (read fresh each render so theme switches take effect) ──
+  const themeAccent     = getThemeColor('accent')      || '#38bdf8';
+  const themeAccentFill = getThemeColor('accent-fill') || hexToRgba(themeAccent, 0.08);
+  const themeBgCard     = getThemeColor('bg-card')     || '#1e293b';
+  const themeBorder     = getThemeColor('border')      || '#334155';
+  const themeText       = getThemeColor('text-mid')    || '#cbd5e1';
+  const themeTextStrong = getThemeColor('text-strong') || '#f8fafc';
+  const themeTextMuted  = getThemeColor('text-muted')  || '#94a3b8';
+  const themeTextDim    = getThemeColor('text-dim')    || '#64748b';
+
   // ── Chart ──
   if (state.chartInstance) state.chartInstance.destroy();
 
@@ -274,8 +284,8 @@ async function renderCurrentJump(showFull) {
         {
           label: 'Altitude (m)',
           data: chartAlts,
-          borderColor: '#38bdf8',
-          backgroundColor: 'rgba(56,189,248,0.08)',
+          borderColor: themeAccent,
+          backgroundColor: themeAccentFill,
           fill: true,
           yAxisID: 'yAlt',
           pointRadius: 0,
@@ -414,14 +424,14 @@ async function renderCurrentJump(showFull) {
           }
         },
         legend: {
-          labels: { color: '#cbd5e1', font: { size: 13 }, usePointStyle: true, pointStyle: 'line' }
+          labels: { color: themeText, font: { size: 13 }, usePointStyle: true, pointStyle: 'line' }
         },
         tooltip: {
           animation: false,
-          backgroundColor: '#1e293b',
-          titleColor: '#f8fafc',
-          bodyColor: '#cbd5e1',
-          borderColor: '#334155',
+          backgroundColor: themeBgCard,
+          titleColor: themeTextStrong,
+          bodyColor: themeText,
+          borderColor: themeBorder,
           borderWidth: 1,
           callbacks: {
             title: function(items) {
@@ -453,9 +463,9 @@ async function renderCurrentJump(showFull) {
           type: 'linear',
           min: showFull ? undefined : -5,
           max: showFull ? undefined : (canopyTimeRel + 5),
-          title: { display: true, text: 'Time (seconds)', color: '#94a3b8' },
+          title: { display: true, text: 'Time (seconds)', color: themeTextMuted },
           ticks: {
-            color: '#64748b',
+            color: themeTextDim,
             callback: v => {
               const abs = Math.abs(v);
               const m = Math.floor(abs / 60);
@@ -471,9 +481,9 @@ async function renderCurrentJump(showFull) {
           position: 'left',
           min: yAltMin,
           max: yAltMax,
-          title: { display: true, text: 'Altitude (m)', color: '#38bdf8' },
-          ticks: { color: '#38bdf8' },
-          grid: { color: 'rgba(56,189,248,0.08)' }
+          title: { display: true, text: 'Altitude (m)', color: themeAccent },
+          ticks: { color: themeAccent },
+          grid: { color: themeAccentFill }
         },
         ySpeed: {
           type: 'linear',
@@ -532,10 +542,12 @@ async function renderCurrentJump(showFull) {
       maxZoom: 19
     }).addTo(state.mapInstance);
 
-    // Color-coded polyline using time-based phase boundaries
+    // Color-coded polyline using time-based phase boundaries. Pre-exit
+    // segments use the active theme accent so the airplane track matches
+    // the altitude line on the chart.
     for (let i = 0; i < pathCoords.length - 1; i++) {
       let color;
-      if (pathTimes[i] < 0) color = '#38bdf8';
+      if (pathTimes[i] < 0) color = themeAccent;
       else if (pathTimes[i] < canopyTimeRel) color = '#ef4444';
       else color = '#1e1e1e';
       L.polyline([pathCoords[i], pathCoords[i + 1]], {
@@ -573,7 +585,7 @@ async function renderCurrentJump(showFull) {
       const startLon = parseFloat(data[0].lon);
       if (!isNaN(startLat) && !isNaN(startLon)) {
         L.circleMarker([startLat, startLon], {
-          radius: 8, fillColor: '#38bdf8', color: '#000', weight: 2, fillOpacity: 1
+          radius: 8, fillColor: themeAccent, color: '#000', weight: 2, fillOpacity: 1
         }).addTo(state.mapInstance).bindTooltip('Start', { permanent: true, direction: 'top', className: 'map-label' });
       }
     }

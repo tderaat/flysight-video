@@ -19,6 +19,11 @@ var state = {
   hoverMarker: null,
   mapHoverTooltip: null,
   lastRenderMap: null,
+
+  // Files currently being read/stored — surfaced in the sidebar as
+  // disabled loading chips so the user sees feedback while large CSVs are
+  // ingested. Array of { name } objects so insertion order is preserved.
+  loadingJumps: [],
 };
 
 // ── Video time → flight data index mapping ──

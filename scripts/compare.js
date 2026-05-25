@@ -28,10 +28,6 @@ state.compare3dProjected = []; // [{ name, color, screen: [[x,y], ...] }] — re
 state.compare3dAnimating = false;
 state.compare3dRafId = null;
 state.compare3dLastFrameTs = 0;
-// Default-on behaviour: rotation auto-starts when the user enters the 3D
-// view, unless they have explicitly paused it during this modal session.
-// Reset on modal open. Clicking the rotate button toggles this flag.
-state.compare3dRotateUserPaused = false;
 const COMPARE_3D_AUTO_ROTATE_DEG_PER_SEC = 10;
 
 // Time scrubber represents an ABSOLUTE wall-clock instant, in ms since
@@ -44,13 +40,6 @@ const COMPARE_3D_AUTO_ROTATE_DEG_PER_SEC = 10;
 state.compare3dScrubMin = 0;
 state.compare3dScrubMax = 0;
 state.compare3dScrubMs = 0;
-// Clip recording state. While recording, scrubMs is driven by an rAF loop
-// that linearly advances from scrubMin to scrubMax over the chosen duration,
-// then holds at 100% for COMPARE_CLIP_TAIL_SEC before stopping the recorder.
-state.compareClipRecording = false;
-state.compareClipRafId = null;
-state.compareClipRecorder = null;
-const COMPARE_CLIP_TAIL_SEC = 3;
 
 const COMPARE_TABLE_TIMES = [0, 5, 10, 15, 20, 25, 30];
 
@@ -162,16 +151,8 @@ function getCompareData(jump) {
 
 async function openCompareModal() {
   document.getElementById('compareModal').classList.add('open');
-  // Fresh modal session — clear the manual-pause memory so rotation auto-
-  // starts on the first 3D view entry.
-  state.compare3dRotateUserPaused = false;
   await renderCompareJumpsList();
   renderCompareView();
-  // If the modal reopens on the 3D view (e.g. user closed and reopened),
-  // setCompareView won't run its view-enter logic, so kick off rotation here.
-  if (state.compareActiveView === 'view3d' && !state.compare3dAnimating) {
-    startCompare3dAnimation();
-  }
 }
 
 function closeCompareModal() {
@@ -181,7 +162,6 @@ function closeCompareModal() {
     state.compareMapInstance = null;
   }
   if (state.compare3dAnimating) stopCompare3dAnimation();
-  if (state.compareClipRecording) abortCompareClip();
 }
 
 function setCompareView(view) {
@@ -204,12 +184,8 @@ function setCompareView(view) {
     const tooltip = document.getElementById('compare3dTooltip');
     if (tooltip) tooltip.hidden = true;
     if (state.compare3dAnimating) stopCompare3dAnimation();
-    if (state.compareClipRecording) abortCompareClip();
   } else {
     refreshCompare3dScrub();
-    if (!state.compare3dAnimating && !state.compare3dRotateUserPaused) {
-      startCompare3dAnimation();
-    }
   }
   renderCompareView();
 }
@@ -560,32 +536,6 @@ function loadCompareGroundTexture(b) {
   }
 
   return Promise.all(fetches).then(() => {
-    // Soft-edge fade-to-black. Two passes in texture space so the effect
-    // gets warped onto the 3D ground quad along with the tiles:
-    //   1. multiply with a radial black gradient — pixels in the outer ring
-    //      darken progressively toward black,
-    //   2. destination-in with a radial alpha gradient — outer ring also
-    //      fades to fully transparent, so the texture vanishes into the
-    //      already-dark canvas background.
-    const cx = cnv.width / 2;
-    const cy = cnv.height / 2;
-    const maxR = Math.hypot(cx, cy);
-
-    const darken = ctx.createRadialGradient(cx, cy, maxR * 0.08, cx, cy, maxR * 0.6);
-    darken.addColorStop(0, 'rgba(255, 255, 255, 1)'); // no darken in centre
-    darken.addColorStop(1, 'rgba(0, 0, 0, 1)');       // full black at ~60% radius
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = darken;
-    ctx.fillRect(0, 0, cnv.width, cnv.height);
-
-    const fade = ctx.createRadialGradient(cx, cy, maxR * 0.1, cx, cy, maxR * 0.55);
-    fade.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    fade.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = fade;
-    ctx.fillRect(0, 0, cnv.width, cnv.height);
-    ctx.globalCompositeOperation = 'source-over';
-
     const [latNW, lonNW] = compareTileToLatLon(minTx, minTy, z);
     const [latSE, lonSE] = compareTileToLatLon(maxTx + 1, maxTy + 1, z);
     const tex = {
@@ -613,7 +563,7 @@ function renderCompare3d() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const W = rect.width, H = rect.height;
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = (typeof getThemeColor === 'function' && getThemeColor('bg-inset')) || '#0f172a';
   ctx.fillRect(0, 0, W, H);
 
   const entries = getSelectedCompareEntries();
@@ -670,44 +620,23 @@ function renderCompare3d() {
 
   // Per-jump truncation: each jump's own elapsed time is derived from the
   // global scrub position (in absolute ms) minus its own exit timestamp.
-  // We also keep the fractional position between samples (`headFrac`) so the
-  // head-of-track dot and its speed label can interpolate smoothly between
-  // 10 Hz CSV samples — otherwise the dot snaps to discrete positions and
-  // looks "laggy" in recorded clips, especially at high time-compression.
-  // cutoff = 0 means the jump hasn't started at this clock time yet.
+  // headIdx is the index of the latest visible point — used for the speed
+  // dot. cutoff = 0 means the jump hasn't started at this clock time yet.
   const scrubMs = state.compare3dScrubMs;
   const useScrub = state.compare3dScrubMax > state.compare3dScrubMin;
   const tracks = fullTracks.map(({ name, data, pts: fullPts }) => {
     let cutoff = fullPts.length;
-    let headFrac = 0; // 0..1 fraction past the cutoff-1 sample toward cutoff
-    // Per-jump elapsed seconds since its own exit. Used to gate the head
-    // dot/tooltip so it only appears after the exit moment is reached
-    // (otherwise the dot would float over the airplane approach segment).
-    let elapsedSec = Infinity;
     if (useScrub && typeof data.exitTimestampMs === 'number') {
-      elapsedSec = (scrubMs - data.exitTimestampMs) / 1000;
+      const elapsed = (scrubMs - data.exitTimestampMs) / 1000;
       cutoff = 0;
       for (let i = 0; i < data.times.length; i++) {
-        if (data.times[i] <= elapsedSec) cutoff = i + 1;
+        if (data.times[i] <= elapsed) cutoff = i + 1;
         else break;
-      }
-      if (cutoff > 0 && cutoff < data.times.length) {
-        const t0 = data.times[cutoff - 1];
-        const t1 = data.times[cutoff];
-        if (t1 > t0) {
-          headFrac = Math.max(0, Math.min(1, (elapsedSec - t0) / (t1 - t0)));
-        }
       }
     }
     return {
       name,
       color: compareJumpColor(name),
-      fullPts,
-      cutoff,
-      headFrac,
-      elapsedSec,
-      // Convenience: truncated points used by the existing draw loop for the
-      // line itself. Sub-sample interpolation only affects the head marker.
       pts: cutoff === fullPts.length ? fullPts : fullPts.slice(0, cutoff),
       headIdx: cutoff - 1,
     };
@@ -749,13 +678,11 @@ function renderCompare3d() {
     });
   });
   if (isFinite(minLat) && isFinite(minLon)) {
-    // Pad each side so the satellite ground plane covers ~4× the linear
-    // extent of the track footprint. With the soft radial fade applied to
-    // the cached texture, only the centre is fully opaque; the outer ring
-    // gradually darkens and fades to transparent so the edges blend into
-    // the dark background.
-    const padLat = Math.max(0.002, (maxLat - minLat) * 2.5);
-    const padLon = Math.max(0.002, (maxLon - minLon) * 2.5);
+    // Pad each side enough so the satellite ground plane covers ~2× the
+    // linear extent of the track footprint (i.e. the previous 1.2× extent
+    // doubled). 0.7 per side → final width = 1 + 2·0.7 = 2.4× the raw extent.
+    const padLat = Math.max(0.0006, (maxLat - minLat) * 0.7);
+    const padLon = Math.max(0.0006, (maxLon - minLon) * 0.7);
     const bbox = {
       minLat: minLat - padLat,
       maxLat: maxLat + padLat,
@@ -798,7 +725,7 @@ function renderCompare3d() {
     } else {
       // Texture not ready — show a slate frame and kick off a fetch. Trigger
       // a re-render once the tiles have stitched.
-      ctx.strokeStyle = '#334155';
+      ctx.strokeStyle = (typeof getThemeColor === 'function' && getThemeColor('border')) || '#334155';
       ctx.lineWidth = 1;
       const slateCorners = [
         [-maxXZ, minY, -maxXZ],
@@ -816,7 +743,7 @@ function renderCompare3d() {
     }
   }
   // Vertical post at the origin so the user can see where the exit pivot is
-  ctx.strokeStyle = '#475569';
+  ctx.strokeStyle = (typeof getThemeColor === 'function' && getThemeColor('border-strong')) || '#475569';
   ctx.beginPath();
   const ground0 = project(0, minY, 0);
   const top0 = project(0, maxY, 0);
@@ -827,38 +754,10 @@ function renderCompare3d() {
   // Tracks — also cache projected screen positions for hover hit-testing.
   state.compare3dProjected = tracks.map(t => {
     const screen = t.pts.map(p => project(p[0], p[1], p[2]));
-    // Sub-sample interpolated head position. When the scrubber falls between
-    // two data samples, project the next one too and lerp — that makes the
-    // head dot move smoothly during clip recording instead of stepping at
-    // the underlying 10 Hz sample rate.
-    let interpHead = null;
-    let interpSpeed = null;
-    if (t.cutoff > 0 && t.cutoff < t.fullPts.length && t.headFrac > 0) {
-      const nextWorld = t.fullPts[t.cutoff];
-      const next = project(nextWorld[0], nextWorld[1], nextWorld[2]);
-      const prev = screen[t.cutoff - 1];
-      const f = t.headFrac;
-      interpHead = [
-        prev[0] * (1 - f) + next[0] * f,
-        prev[1] * (1 - f) + next[1] * f,
-      ];
-      const data0 = state.compareDataCache.get(t.name);
-      if (data0) {
-        const v0 = data0.vertSpeeds[t.cutoff - 1];
-        const v1 = data0.vertSpeeds[t.cutoff];
-        if (v0 != null && v1 != null && isFinite(v0) && isFinite(v1)) {
-          interpSpeed = v0 * (1 - f) + v1 * f;
-        }
-      }
-    }
-
     ctx.strokeStyle = t.color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     screen.forEach((p, i) => i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]));
-    // Extend the line to the interpolated head so the polyline visually
-    // ends exactly where the dot is, not at the previous sample.
-    if (interpHead && screen.length > 0) ctx.lineTo(interpHead[0], interpHead[1]);
     ctx.stroke();
     // Exit dot at the actual exit point — only when it's actually been
     // reached (otherwise the scrubber is still showing pre-exit data).
@@ -883,12 +782,9 @@ function renderCompare3d() {
     const showHead = useScrub
       && state.compare3dScrubMs < state.compare3dScrubMax
       && t.headIdx >= 0 && t.headIdx < screen.length
-      && data
-      // Suppress the dot + tooltip during the pre-exit segment so the head
-      // marker only appears once the jump has actually started.
-      && t.elapsedSec >= 0;
+      && data;
     if (showHead) {
-      const [hx, hy] = interpHead || screen[t.headIdx];
+      const [hx, hy] = screen[t.headIdx];
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = t.color;
       ctx.lineWidth = 2;
@@ -896,7 +792,7 @@ function renderCompare3d() {
       ctx.arc(hx, hy, 4.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      const v = interpSpeed != null ? interpSpeed : data.vertSpeeds[t.headIdx];
+      const v = data.vertSpeeds[t.headIdx];
       if (v != null && isFinite(v)) {
         const nameText = t.name;
         const speedText = v.toFixed(1) + ' km/h';
@@ -1124,22 +1020,15 @@ function refreshCompare3dScrub() {
     state.compare3dScrubMax = 0;
     state.compare3dScrubMs = 0;
   } else {
-    // Start the slider (and clip recordings) a few seconds BEFORE the earliest
-    // exit so the airplane-approach segment is included as a lead-in. The
-    // -5 s pre-exit slice is already cached in each jump's data window.
-    const LEAD_IN_MS = 5 * 1000;
-    state.compare3dScrubMin = min - LEAD_IN_MS;
+    state.compare3dScrubMin = min;
     state.compare3dScrubMax = max;
     // Default to 100% on first load. On selection change, clamp into new range
     // (preserves the user's chosen position when possible).
-    if (!isFinite(state.compare3dScrubMs)
-        || state.compare3dScrubMs < state.compare3dScrubMin
-        || state.compare3dScrubMs > state.compare3dScrubMax) {
-      state.compare3dScrubMs = state.compare3dScrubMax;
+    if (!isFinite(state.compare3dScrubMs) || state.compare3dScrubMs < min || state.compare3dScrubMs > max) {
+      state.compare3dScrubMs = max;
     }
   }
   syncCompare3dScrubUI();
-  syncCompareClipButton();
 }
 
 function syncCompare3dScrubUI() {
@@ -1151,14 +1040,13 @@ function syncCompare3dScrubUI() {
   const max = state.compare3dScrubMax;
   const ms = state.compare3dScrubMs;
   if (max > min) {
-    const pct = Math.max(0, Math.min(10000, Math.round(((ms - min) / (max - min)) * 10000)));
+    const pct = Math.max(0, Math.min(1000, Math.round(((ms - min) / (max - min)) * 1000)));
     slider.value = String(pct);
-    // Stay disabled while recording; otherwise enabled when there's data.
-    slider.disabled = !!state.compareClipRecording;
+    slider.disabled = false;
     label.textContent = formatScrubClock(ms);
     if (startLabel) startLabel.textContent = formatScrubClock(min);
   } else {
-    slider.value = '10000';
+    slider.value = '1000';
     slider.disabled = true;
     label.textContent = '--:--:--';
     if (startLabel) startLabel.textContent = '--:--:--';
@@ -1216,20 +1104,13 @@ document.querySelectorAll('.compare-view-tab').forEach(btn => {
   btn.addEventListener('click', () => setCompareView(btn.dataset.view));
 });
 
-// Play / pause button for the 3D auto-rotate. Clicking explicitly toggles
-// rotation AND records the user's intent — so a manual pause survives
-// view switches but is reset when the modal is reopened.
+// Play / pause button for the 3D auto-rotate
 (function() {
   const btn = document.getElementById('compare3dPlay');
   if (!btn) return;
   btn.addEventListener('click', () => {
-    if (state.compare3dAnimating) {
-      stopCompare3dAnimation();
-      state.compare3dRotateUserPaused = true;
-    } else {
-      startCompare3dAnimation();
-      state.compare3dRotateUserPaused = false;
-    }
+    if (state.compare3dAnimating) stopCompare3dAnimation();
+    else startCompare3dAnimation();
   });
 })();
 
@@ -1239,210 +1120,14 @@ document.querySelectorAll('.compare-view-tab').forEach(btn => {
   const slider = document.getElementById('compare3dScrubSlider');
   if (!slider) return;
   slider.addEventListener('input', () => {
-    if (state.compareClipRecording) return; // ignore manual drag during recording
     const min = state.compare3dScrubMin;
     const max = state.compare3dScrubMax;
     if (max <= min) return;
-    const pct = Number(slider.value) / 10000;
+    const pct = Number(slider.value) / 1000;
     state.compare3dScrubMs = min + pct * (max - min);
     const label = document.getElementById('compare3dScrubTime');
     if (label) label.textContent = formatScrubClock(state.compare3dScrubMs);
     if (state.compareActiveView === 'view3d') renderCompare3d();
-  });
-})();
-
-// ── "Create clip" button: record a 30-second video of the slider sweeping
-// from 0% to 100%, captured from the 3D canvas via MediaRecorder. ──
-function syncCompareClipButton() {
-  const btn = document.getElementById('compare3dClip');
-  if (!btn) return;
-  const recording = !!state.compareClipRecording;
-  btn.classList.toggle('recording', recording);
-  btn.textContent = recording ? 'Recording' : 'Create clip';
-  // Only enable when there's actual data to scrub through.
-  const canRecord = !recording && state.compare3dScrubMax > state.compare3dScrubMin;
-  btn.disabled = !canRecord;
-}
-
-function pickCompareClipMimeType() {
-  if (typeof MediaRecorder === 'undefined') return null;
-  const candidates = [
-    'video/mp4;codecs=avc1',
-    'video/mp4',
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm',
-  ];
-  for (const m of candidates) {
-    try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) {}
-  }
-  return null;
-}
-
-async function createCompareClip(durationSec) {
-  if (state.compareClipRecording) return;
-  const min = state.compare3dScrubMin;
-  const max = state.compare3dScrubMax;
-  if (max <= min) return;
-  if (!isFinite(durationSec) || durationSec <= 0) return;
-
-  const canvas = document.getElementById('compare3dCanvas');
-  if (!canvas) return;
-  const mimeType = pickCompareClipMimeType();
-  if (!mimeType) {
-    alert('Sorry — your browser does not expose MediaRecorder for canvas video capture.');
-    return;
-  }
-
-  let stream;
-  try { stream = canvas.captureStream(30); } catch (e) {
-    alert('Could not capture the 3D canvas: ' + e.message);
-    return;
-  }
-  // Very high bitrate so the encoder isn't the bottleneck. Canvas resolution
-  // is whatever device-pixel-ratio gives at the modal's CSS size — the
-  // bitrate alone is the lever for visible compression artifacts now.
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 50_000_000 });
-  const chunks = [];
-  recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-
-  state.compareClipRecording = true;
-  state.compareClipRecorder = recorder;
-  syncCompareClipButton();
-  document.getElementById('compare3dScrubSlider').disabled = true;
-  document.getElementById('compare3dPlay').disabled = true;
-
-  // Reset to 0% and render one frame before the recorder starts so the
-  // first frame of the clip is the start, not whatever was on screen.
-  state.compare3dScrubMs = min;
-  syncCompare3dScrubUI();
-  renderCompare3d();
-
-  recorder.start();
-
-  return new Promise(resolve => {
-    const startedAt = performance.now();
-    const scrubMs = durationSec * 1000;
-    const tailMs = COMPARE_CLIP_TAIL_SEC * 1000;
-    const totalMs = scrubMs + tailMs;
-    function tick() {
-      if (!state.compareClipRecording) return; // aborted
-      const elapsed = performance.now() - startedAt;
-      // Linear scrub from 0% → 100% over `scrubMs`, then hold at 100% for
-      // `tailMs` so the final frame stays on screen for a few seconds.
-      const t = Math.min(elapsed / scrubMs, 1);
-      state.compare3dScrubMs = min + t * (max - min);
-      syncCompare3dScrubUI();
-      renderCompare3d();
-      if (elapsed < totalMs) {
-        state.compareClipRafId = requestAnimationFrame(tick);
-      } else {
-        // Stop & save
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: mimeType });
-          const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
-          const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'flysight-compare-' + stamp + '.' + ext;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-
-          state.compareClipRecording = false;
-          state.compareClipRecorder = null;
-          state.compareClipRafId = null;
-          syncCompareClipButton();
-          document.getElementById('compare3dScrubSlider').disabled = false;
-          document.getElementById('compare3dPlay').disabled = false;
-          resolve();
-        };
-        try { recorder.stop(); } catch (e) {}
-      }
-    }
-    state.compareClipRafId = requestAnimationFrame(tick);
-  });
-}
-
-function abortCompareClip() {
-  if (!state.compareClipRecording) return;
-  if (state.compareClipRafId != null) {
-    cancelAnimationFrame(state.compareClipRafId);
-    state.compareClipRafId = null;
-  }
-  const r = state.compareClipRecorder;
-  if (r && r.state !== 'inactive') {
-    try { r.ondataavailable = null; r.onstop = null; r.stop(); } catch (e) {}
-  }
-  state.compareClipRecorder = null;
-  state.compareClipRecording = false;
-  syncCompareClipButton();
-  const slider = document.getElementById('compare3dScrubSlider');
-  const playBtn = document.getElementById('compare3dPlay');
-  if (slider) slider.disabled = false;
-  if (playBtn) playBtn.disabled = false;
-}
-
-function formatRealtimeDurationLabel(seconds) {
-  if (!isFinite(seconds) || seconds <= 0) return '';
-  const s = Math.round(seconds);
-  if (s < 60) return s + ' s';
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  if (m < 60) return rem === 0 ? m + ' min' : m + 'm ' + rem + 's';
-  const h = Math.floor(m / 60);
-  const mRem = m % 60;
-  return mRem === 0 ? h + ' h' : h + 'h ' + mRem + 'm';
-}
-
-function showCompareClipMenu(open) {
-  const menu = document.getElementById('compare3dClipMenu');
-  if (!menu) return;
-  if (open) {
-    const realtimeBtn = document.getElementById('compare3dClipMenuRealtime');
-    if (realtimeBtn) {
-      const seconds = (state.compare3dScrubMax - state.compare3dScrubMin) / 1000;
-      const label = formatRealtimeDurationLabel(seconds);
-      realtimeBtn.textContent = label
-        ? 'Full real-time (' + label + ')'
-        : 'Full real-time';
-    }
-  }
-  menu.hidden = !open;
-}
-
-(function() {
-  const btn = document.getElementById('compare3dClip');
-  const menu = document.getElementById('compare3dClipMenu');
-  if (!btn || !menu) return;
-
-  btn.addEventListener('click', e => {
-    e.stopPropagation();
-    if (state.compareClipRecording) return;
-    showCompareClipMenu(menu.hidden);
-  });
-
-  menu.addEventListener('click', e => {
-    const target = e.target.closest('button[data-mode]');
-    if (!target) return;
-    e.stopPropagation();
-    showCompareClipMenu(false);
-    const mode = target.dataset.mode;
-    let durationSec;
-    if (mode === '30') {
-      durationSec = 30;
-    } else if (mode === 'realtime') {
-      durationSec = (state.compare3dScrubMax - state.compare3dScrubMin) / 1000;
-    }
-    createCompareClip(durationSec);
-  });
-
-  // Click anywhere else to dismiss the menu.
-  document.addEventListener('click', () => showCompareClipMenu(false));
-  // Escape also dismisses.
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !menu.hidden) showCompareClipMenu(false);
   });
 })();
 
