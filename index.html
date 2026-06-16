@@ -11,6 +11,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- WebCodecs muxers for "Reliable mode" overlay export (UMD globals Mp4Muxer / WebMMuxer). Optional: export falls back to MediaRecorder if these or WebCodecs are unavailable. -->
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/webm-muxer@5.0.3/build/webm-muxer.min.js"></script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 30 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M15 0C17 0 19 2 19 5C19 8 17 10 16 12C18 12 21 14 22 18C23 22 22 26 20 30C19 33 18 36 18 40C18 44 19 48 20 52C21 56 22 60 21 64C20 68 18 72 17 74C16 76 15 78 15 80C15 78 14 76 13 74C12 72 10 68 9 64C8 60 9 56 10 52C11 48 12 44 12 40C12 36 11 33 10 30C8 26 7 22 8 18C9 14 12 12 14 12C13 10 11 8 11 5C11 2 13 0 15 0Z' fill='%2338bdf8'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <script>
@@ -117,8 +120,8 @@
       <div class="chart-controls">
         <button class="trim-btn secondary" onclick="renderCurrentJump()">Jump only</button>
         <button class="trim-btn secondary" onclick="renderCurrentJump(true)">Full flight</button>
-        <button class="trim-btn secondary icon-btn" onclick="zoomChart(1)" title="Zoom in">+</button>
-        <button class="trim-btn secondary icon-btn" onclick="zoomChart(-1)" title="Zoom out">−</button>
+        <button class="trim-btn secondary icon-btn" onclick="zoomChart(1)" data-tip="Zoom in">+</button>
+        <button class="trim-btn secondary icon-btn" onclick="zoomChart(-1)" data-tip="Zoom out">−</button>
       </div>
     </div>
     <canvas id="chart"></canvas>
@@ -195,10 +198,19 @@
 
             <!-- Export (hidden until exit is set) -->
             <div class="video-export-section" id="exportSection" style="display:none;">
+              <label class="export-mode-toggle">
+                <input type="checkbox" id="reliableModeToggle">
+                Reliable mode (slow machines)
+              </label>
+              <label class="export-mode-toggle">
+                <input type="checkbox" id="fullDescentToggle">
+                Include full descent (to landing)
+              </label>
               <button class="trim-btn" id="exportBtn" onclick="startExport()">Export video with overlay</button>
               <div id="exportProgress" style="display:none;">
                 <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
                 <span id="progressText">Preparing...</span>
+                <button class="export-cancel-btn" id="exportCancelBtn" onclick="cancelExport()">Cancel</button>
               </div>
             </div>
           </div>
@@ -294,8 +306,13 @@
               </button>
               <div class="compare-3d-scrub" id="compare3dScrub">
                 <span class="compare-3d-scrub-time start" id="compare3dScrubStart">--:--:--</span>
-                <input type="range" id="compare3dScrubSlider" min="0" max="1000" value="1000" step="1">
+                <input type="range" id="compare3dScrubSlider" min="0" max="10000" value="10000" step="1">
                 <span class="compare-3d-scrub-time" id="compare3dScrubTime">--:--:--</span>
+                <button class="compare-3d-clip-btn" id="compare3dClip" type="button">Create clip</button>
+                <div class="compare-3d-clip-menu" id="compare3dClipMenu" hidden>
+                  <button type="button" data-mode="30">30-second clip</button>
+                  <button type="button" data-mode="realtime" id="compare3dClipMenuRealtime">Full real-time</button>
+                </div>
               </div>
               <div class="compare-3d-tooltip" id="compare3dTooltip" hidden></div>
             </div>
@@ -309,6 +326,24 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="renameModal">
+  <div class="modal rename-modal">
+    <div class="modal-header">
+      <h2>Rename jump</h2>
+      <button class="modal-close" onclick="closeRenameModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="renameForm" onsubmit="event.preventDefault(); confirmRename();">
+        <input type="text" id="renameInput" class="rename-input" autocomplete="off" spellcheck="false">
+        <div class="rename-actions">
+          <button type="button" class="rename-cancel" onclick="closeRenameModal()">Cancel</button>
+          <button type="submit" class="rename-save">Save</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>

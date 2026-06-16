@@ -99,7 +99,22 @@ function isCsvFile(file) {
   return /\.csv$/i.test(file.name);
 }
 
-function handleFiles(files) {
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
+
+// Yield to the browser so any pending DOM mutations actually paint before
+// we start CPU-heavy CSV parsing (otherwise the loading spinner never shows).
+function nextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}
+
+async function handleFiles(files) {
   const all = Array.from(files);
   const csvFiles = all.filter(isCsvFile);
   const rejected = all.filter(f => !isCsvFile(f));
@@ -110,42 +125,52 @@ function handleFiles(files) {
       '\n\nTo add a video, click "Create video overlay".'
     );
   }
+  if (!csvFiles.length) return;
+
+  // Register every dropped file as "loading" up front and render the sidebar
+  // so the user sees spinner chips immediately — even before FileReader
+  // finishes on the first byte. Yield to the browser so the chips paint
+  // before we kick off the parse work for the first file.
   csvFiles.forEach(file => {
+    state.loadingJumps.add(file.name.replace(/\.csv$/i, ''));
+  });
+  await renderJumpList();
+  await nextPaint();
+
+  let lastName = null;
+  for (const file of csvFiles) {
     const name = file.name.replace(/\.csv$/i, '');
-    // Show a loading chip in the sidebar immediately so the user sees feedback
-    // while a large CSV is being read, parsed, and stored.
-    if (!state.loadingJumps.some(l => l.name === name)) {
-      state.loadingJumps.push({ name });
-    }
-    renderJumpList();
-
-    const finishLoading = () => {
-      state.loadingJumps = state.loadingJumps.filter(l => l.name !== name);
-    };
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const csv = e.target.result;
+    try {
+      const csv = await readFileAsText(file);
       await storeJump(name, csv);
       if (state.compareDataCache) state.compareDataCache.delete(name);
-      finishLoading();
-      await renderJumpList();
-      selectJump(name);
-    };
-    reader.onerror = () => {
-      finishLoading();
-      renderJumpList();
-      alert(`Failed to read ${file.name}.`);
-    };
-    reader.readAsText(file);
-  });
+      lastName = name;
+    } catch (e) {
+      // Individual file failures shouldn't block the rest of the batch.
+      console.error('Failed to load', file.name, e);
+    }
+    state.loadingJumps.delete(name);
+    await renderJumpList();
+    // Yield before the next file's CPU work so this row's spinner clears
+    // and any other still-loading rows keep animating smoothly.
+    await nextPaint();
+  }
+
+  if (lastName) selectJump(lastName);
 }
 
 // ── Jump list rendering ──
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
+function makeLoadingChip(name) {
+  // Use textContent for the name so quotes / HTML chars in filenames can't
+  // break the markup or open an XSS hole.
+  const chip = document.createElement('div');
+  chip.className = 'jump-chip loading';
+  chip.innerHTML = '<span class="spinner" aria-hidden="true"></span>';
+  const label = document.createElement('span');
+  label.className = 'jump-loading-name';
+  label.textContent = name;
+  chip.appendChild(label);
+  return chip;
 }
 
 async function renderJumpList() {
@@ -153,31 +178,37 @@ async function renderJumpList() {
   const jumps = await getStoredJumps();
   let scores = {};
   try { scores = JSON.parse(localStorage.getItem('flysight_scores') || '{}'); } catch (e) {}
-  const hasContent = jumps.length > 0 || state.loadingJumps.length > 0;
-  document.body.classList.toggle('has-jumps', hasContent);
+  const hasLoading = state.loadingJumps.size > 0;
+  document.body.classList.toggle('has-jumps', jumps.length > 0 || hasLoading);
   list.innerHTML = '';
+  const storedNames = new Set(jumps.map(j => j.name));
   jumps.forEach(j => {
+    // If a stored jump is being reprocessed (same filename re-dropped), show
+    // it as a spinner row instead of the regular chip until the new parse
+    // finishes.
+    if (state.loadingJumps.has(j.name)) {
+      list.appendChild(makeLoadingChip(j.name));
+      return;
+    }
     const chip = document.createElement('div');
     chip.className = 'jump-chip' + (j.name === state.currentJumpName ? ' active' : '');
     const score = scores[j.name];
     const scoreLabel = score ? ` <span class="score">(${score.toFixed(1)} km/h)</span>` : '';
+    const safeName = j.name.replace(/'/g, "\\'");
+    chip.setAttribute('onclick', `selectJump('${safeName}')`);
     chip.innerHTML = `
-      <span onclick="selectJump('${j.name.replace(/'/g, "\\'")}')">${j.name}${scoreLabel}</span>
-      <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${j.name.replace(/'/g, "\\'")}')" title="Remove">&times;</button>
+      <span>${j.name}${scoreLabel}</span>
+      <button class="edit-btn" onclick="event.stopPropagation(); openRenameModal('${safeName}')" data-tip="Rename">&#x270E;</button>
+      <button class="download-btn" onclick="event.stopPropagation(); downloadJump('${safeName}')" data-tip="Download CSV">&#x2913;</button>
+      <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${safeName}')" data-tip="Remove">&times;</button>
     `;
     list.appendChild(chip);
   });
-  // Loading placeholders appear at the bottom in insertion order so the user
-  // can see exactly which files are still being processed.
-  state.loadingJumps.forEach(l => {
-    const chip = document.createElement('div');
-    chip.className = 'jump-chip loading';
-    chip.innerHTML = `
-      <span class="jump-spinner" aria-hidden="true"></span>
-      <span class="loading-name">${escapeHtml(l.name)}</span>
-      <span class="loading-label">Loading…</span>
-    `;
-    list.appendChild(chip);
+  // Append loading chips for filenames that haven't landed in IndexedDB yet
+  // (i.e. brand-new uploads, not re-uploads of an existing jump).
+  state.loadingJumps.forEach(name => {
+    if (storedNames.has(name)) return;
+    list.appendChild(makeLoadingChip(name));
   });
 }
 
@@ -187,10 +218,100 @@ function selectJump(name) {
   renderCurrentJump();
 }
 
+async function downloadJump(name) {
+  const jumps = await getStoredJumps();
+  const jump = jumps.find(j => j.name === name);
+  if (!jump) return;
+  const blob = new Blob([jump.csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name.toLowerCase().endsWith('.csv') ? name : name + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Rename jump ──
+// Opens a small modal with the current name pre-filled. Saving re-keys the
+// IndexedDB row and migrates the side-channel state (scores, exit override,
+// compare caches, active selection) that's also keyed by jump name.
+function openRenameModal(name) {
+  const modal = document.getElementById('renameModal');
+  const input = document.getElementById('renameInput');
+  modal.dataset.oldName = name;
+  input.value = name;
+  modal.classList.add('open');
+  input.focus();
+  input.select();
+}
+
+function closeRenameModal() {
+  const modal = document.getElementById('renameModal');
+  modal.classList.remove('open');
+  delete modal.dataset.oldName;
+}
+
+// Escape dismisses the rename modal (backdrop clicks are ignored, matching the
+// other modals).
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('renameModal').classList.contains('open')) {
+    closeRenameModal();
+  }
+});
+
+async function confirmRename() {
+  const modal = document.getElementById('renameModal');
+  const oldName = modal.dataset.oldName;
+  const newName = document.getElementById('renameInput').value.trim();
+  if (!oldName) return closeRenameModal();
+  if (!newName || newName === oldName) return closeRenameModal();
+
+  const jumps = await getStoredJumps();
+  if (jumps.some(j => j.name === newName)) {
+    alert('A jump named "' + newName + '" already exists. Choose a different name.');
+    return;
+  }
+
+  const ok = await renameJump(oldName, newName);
+  if (!ok) return closeRenameModal();
+
+  // Migrate side-channel state keyed by jump name.
+  migrateLocalStorageKey('flysight_scores', oldName, newName);
+  migrateLocalStorageKey('flysight_exit_overrides', oldName, newName);
+  if (state.compareDataCache && state.compareDataCache.has(oldName)) {
+    state.compareDataCache.set(newName, state.compareDataCache.get(oldName));
+    state.compareDataCache.delete(oldName);
+  }
+  if (state.compareSelected && state.compareSelected.has(oldName)) {
+    state.compareSelected.delete(oldName);
+    state.compareSelected.add(newName);
+  }
+  if (state.currentJumpName === oldName) state.currentJumpName = newName;
+
+  closeRenameModal();
+  await renderJumpList();
+}
+
+// Move a value from one key to another inside a small JSON object stored in
+// localStorage (used for the per-jump scores / exit-override maps).
+function migrateLocalStorageKey(storeKey, oldName, newName) {
+  try {
+    const obj = JSON.parse(localStorage.getItem(storeKey) || '{}');
+    if (Object.prototype.hasOwnProperty.call(obj, oldName)) {
+      obj[newName] = obj[oldName];
+      delete obj[oldName];
+      localStorage.setItem(storeKey, JSON.stringify(obj));
+    }
+  } catch (e) { /* ignore */ }
+}
+
 async function deleteJump(name) {
   await removeJump(name);
   if (state.compareDataCache) state.compareDataCache.delete(name);
   if (state.compareSelected) state.compareSelected.delete(name);
+  if (typeof clearExitOverride === 'function') clearExitOverride(name);
   if (state.currentJumpName === name) {
     state.currentJumpName = null;
     document.getElementById('chartSection').style.display = 'none';

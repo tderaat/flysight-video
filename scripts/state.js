@@ -20,10 +20,10 @@ var state = {
   mapHoverTooltip: null,
   lastRenderMap: null,
 
-  // Files currently being read/stored — surfaced in the sidebar as
-  // disabled loading chips so the user sees feedback while large CSVs are
-  // ingested. Array of { name } objects so insertion order is preserved.
-  loadingJumps: [],
+  // Names of jumps currently being read / stored / parsed after a CSV drop.
+  // Rendered as loading chips in the sidebar so users see progress while
+  // large files are processed.
+  loadingJumps: new Set(),
 };
 
 // ── Video time → flight data index mapping ──

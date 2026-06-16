@@ -103,6 +103,31 @@ async function removeJump(name) {
   });
 }
 
+// Rename a stored jump. `name` is the keyPath, so this re-keys the row:
+// read the old row, write a new row under `newName` (preserving csv + addedAt),
+// then delete the old one — all in a single transaction so it's atomic.
+// Resolves true on success, false if the old jump no longer exists.
+async function renameJump(oldName, newName) {
+  if (oldName === newName) return true;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_JUMPS, 'readwrite');
+    const store = tx.objectStore(STORE_JUMPS);
+    const getReq = store.get(oldName);
+    let found = false;
+    getReq.onsuccess = () => {
+      const row = getReq.result;
+      if (!row) return; // tx will still complete; resolve(false) below
+      found = true;
+      store.put({ name: newName, csv: row.csv, addedAt: row.addedAt || Date.now() });
+      store.delete(oldName);
+    };
+    tx.oncomplete = () => resolve(found);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 // ── Settings store: generic key/value ──
 async function getSetting(key) {
   const db = await openDB();

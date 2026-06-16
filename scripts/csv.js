@@ -18,7 +18,11 @@ function parseTimestamp(s) {
   return Date.UTC(y, mo-1, d, Number(h), Number(mi), Number(sec), Number(frac || 0) * 10);
 }
 
-function detectExitAndLanding(data) {
+// `forcedExitIdx` (optional): when a finite index is supplied, automatic exit
+// detection is skipped and exit is pinned to that data row. Canopy and landing
+// detection still run relative to it. Used by the chart's "Set exit point here"
+// context-menu action to let the user correct a mis-detected exit.
+function detectExitAndLanding(data, forcedExitIdx) {
   const alts = data.map(r => parseFloat(r.hMSL));
   const veld = data.map(r => parseFloat(r.velD));
   const veln = data.map(r => parseFloat(r.velN));
@@ -26,27 +30,32 @@ function detectExitAndLanding(data) {
   const maxAlt = Math.max(...alts);
   const maxIdx = alts.indexOf(maxAlt);
 
-  // Exit: sustained velD > 5 m/s, validated by reaching freefall speed
-  // (>= 40 km/h ≈ 11.11 m/s) within ~5 seconds. The 5 m/s onset sits
-  // well above plausible airplane dive rates (~3-4 m/s), which would
-  // otherwise satisfy a lower threshold and anchor exit too early.
-  const FREEFALL_ONSET_MPS = 5;
-  const FREEFALL_VALIDATION_MPS = 40 / 3.6;
-  const VALIDATION_WINDOW_SAMPLES = 50;
-  let exitIdx = maxIdx;
-  for (let i = maxIdx; i < data.length - 20; i++) {
-    let sustained = true;
-    for (let j = i; j < i + 20 && j < data.length; j++) {
-      if (veld[j] <= FREEFALL_ONSET_MPS) { sustained = false; break; }
-    }
-    if (!sustained) continue;
+  let exitIdx;
+  if (Number.isFinite(forcedExitIdx) && forcedExitIdx >= 0 && forcedExitIdx < data.length) {
+    exitIdx = forcedExitIdx;
+  } else {
+    // Exit: sustained velD > 5 m/s, validated by reaching freefall speed
+    // (>= 40 km/h ≈ 11.11 m/s) within ~5 seconds. The 5 m/s onset sits
+    // well above plausible airplane dive rates (~3-4 m/s), which would
+    // otherwise satisfy a lower threshold and anchor exit too early.
+    const FREEFALL_ONSET_MPS = 5;
+    const FREEFALL_VALIDATION_MPS = 40 / 3.6;
+    const VALIDATION_WINDOW_SAMPLES = 50;
+    exitIdx = maxIdx;
+    for (let i = maxIdx; i < data.length - 20; i++) {
+      let sustained = true;
+      for (let j = i; j < i + 20 && j < data.length; j++) {
+        if (veld[j] <= FREEFALL_ONSET_MPS) { sustained = false; break; }
+      }
+      if (!sustained) continue;
 
-    let reachedFreefall = false;
-    const validationEnd = Math.min(i + VALIDATION_WINDOW_SAMPLES, data.length);
-    for (let k = i; k < validationEnd; k++) {
-      if (veld[k] >= FREEFALL_VALIDATION_MPS) { reachedFreefall = true; break; }
+      let reachedFreefall = false;
+      const validationEnd = Math.min(i + VALIDATION_WINDOW_SAMPLES, data.length);
+      for (let k = i; k < validationEnd; k++) {
+        if (veld[k] >= FREEFALL_VALIDATION_MPS) { reachedFreefall = true; break; }
+      }
+      if (reachedFreefall) { exitIdx = i; break; }
     }
-    if (reachedFreefall) { exitIdx = i; break; }
   }
 
   // Landing: alt near min, AND for the next ~2 seconds all of:

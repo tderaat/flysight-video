@@ -1,4 +1,77 @@
 
+// ── Manual exit-point overrides ──
+// Persisted per jump in localStorage as the exit time in *recording-relative*
+// seconds (robust against re-parsing since the CSV for a given name is
+// immutable). Kept synchronous/tiny, mirroring flysight_scores.
+function getExitOverrides() {
+  try { return JSON.parse(localStorage.getItem('flysight_exit_overrides') || '{}'); }
+  catch (e) { return {}; }
+}
+
+function getExitOverride(name) {
+  const v = getExitOverrides()[name];
+  return Number.isFinite(v) ? v : null;
+}
+
+function setExitOverride(name, recordingTimeSec) {
+  const o = getExitOverrides();
+  o[name] = recordingTimeSec;
+  try { localStorage.setItem('flysight_exit_overrides', JSON.stringify(o)); } catch (e) { /* ignore */ }
+}
+
+function clearExitOverride(name) {
+  const o = getExitOverrides();
+  delete o[name];
+  try { localStorage.setItem('flysight_exit_overrides', JSON.stringify(o)); } catch (e) { /* ignore */ }
+}
+
+// ── Chart series on/off persistence ──
+// Which datasets the user has toggled via the chart legend, persisted globally
+// (not per-jump) as a map of dataset label -> visible boolean. Tiny + synchronous,
+// mirroring flysight_scores / flysight_exit_overrides.
+function getChartSeriesVisibility() {
+  try { return JSON.parse(localStorage.getItem('flysight_chart_series') || '{}'); }
+  catch (e) { return {}; }
+}
+
+function saveChartSeriesVisibility(chart) {
+  const map = {};
+  chart.data.datasets.forEach((d, i) => { map[d.label] = chart.isDatasetVisible(i); });
+  try { localStorage.setItem('flysight_chart_series', JSON.stringify(map)); } catch (e) { /* ignore */ }
+}
+
+// Format a FlySight ISO 8601 timestamp (e.g. "2025-09-14T12:15:08.10Z") into
+// separate UTC date ("2025-09-14") and time ("12:15:08 UTC") parts. Falls back
+// to the raw string (as the date, empty time) if it can't be parsed.
+function formatUtcTimestamp(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return { date: iso || '—', time: '' };
+  const pad = n => String(n).padStart(2, '0');
+  return {
+    date: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`,
+    time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`
+  };
+}
+
+// Convert a FlySight ISO 8601 timestamp to Amsterdam local time, DST-aware via
+// Intl (Europe/Amsterdam → CET/CEST). Returns "2025-09-14 14:15:08 CEST", or
+// '' if the timestamp can't be parsed.
+function formatAmsterdamTimestamp(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Amsterdam',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false, timeZoneName: 'short'
+    }).formatToParts(d).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${parts.timeZoneName}`;
+  } catch (e) {
+    return '';
+  }
+}
+
 function zoomChart(direction) {
   if (!state.chartInstance) return;
   state.chartInstance.zoom(direction > 0 ? 1.2 : 1 / 1.2);
@@ -54,9 +127,28 @@ async function renderCurrentJump(showFull) {
 
   let startIdx = 0, endIdx = data.length - 1;
 
-  const { exitIdx, landingIdx, canopyIdx } = detectExitAndLanding(data);
+  // Apply a manual exit override (set via the chart's right-click menu), snapped
+  // to the nearest sample. Falls back to automatic detection when none is set.
+  const exitOverrideSec = getExitOverride(state.currentJumpName);
+  let forcedExitIdx;
+  if (exitOverrideSec !== null) {
+    let best = 0, bestDiff = Infinity;
+    for (let i = 0; i < allTimes.length; i++) {
+      const d = Math.abs(allTimes[i] - exitOverrideSec);
+      if (d < bestDiff) { bestDiff = d; best = i; }
+    }
+    forcedExitIdx = best;
+  }
+
+  const { exitIdx, landingIdx, canopyIdx } = detectExitAndLanding(data, forcedExitIdx);
   const exitTime = allTimes[exitIdx];
   const canopyTimeRel = allTimes[canopyIdx] - exitTime;
+
+  // Context the chart's right-click "Set exit" handler needs to convert a
+  // clicked x-value (time relative to the current exit) back into an absolute
+  // recording-relative time, plus current view mode for re-render.
+  state.exitEditCtx = { allTimes, exitTimeRel: exitTime, hasOverride: exitOverrideSec !== null };
+  state.chartShowFull = !!showFull;
 
   if (!showFull) {
     const beforeSec = 5;
@@ -93,7 +185,7 @@ async function renderCurrentJump(showFull) {
   // Full-data arrays — fed to chart datasets and to map (window-filtered).
   // Independent of the slice arrays above, which still drive state.currentFlightData
   // (the contract video overlay widgets depend on).
-  const chartTimes = [], chartAlts = [], chartVertSpeeds = [], chartHorzSpeeds = [], chartDiveAngles = [], chartLats = [], chartLons = [];
+  const chartTimes = [], chartAlts = [], chartVertSpeeds = [], chartHorzSpeeds = [], chartDiveAngles = [], chartLats = [], chartLons = [], chartVelNs = [], chartVelEs = [];
   for (let i = 0; i < data.length; i++) {
     const tRel = allTimes[i] - exitTime;
     chartTimes.push(tRel);
@@ -110,7 +202,31 @@ async function renderCurrentJump(showFull) {
     }
     chartLats.push(parseFloat(data[i].lat));
     chartLons.push(parseFloat(data[i].lon));
+    chartVelNs.push(vN);
+    chartVelEs.push(vE);
   }
+
+  // Optional extra series (off by default, toggled via the chart legend):
+  //  - Downward acceleration (m/s²): central-difference derivative of velD.
+  //    Positive = speeding up downward; negative = decelerating (e.g. canopy opening).
+  //  - Satellite count (numSV): GPS fix quality indicator.
+  const chartAccelDown = [], chartNumSV = [];
+  for (let i = 0; i < data.length; i++) {
+    let a;
+    if (i === 0) {
+      a = (allVelD[1] - allVelD[0]) / (allTimes[1] - allTimes[0]);
+    } else if (i === data.length - 1) {
+      a = (allVelD[i] - allVelD[i - 1]) / (allTimes[i] - allTimes[i - 1]);
+    } else {
+      a = (allVelD[i + 1] - allVelD[i - 1]) / (allTimes[i + 1] - allTimes[i - 1]);
+    }
+    chartAccelDown.push(isFinite(a) ? a : null);
+    const nsv = parseInt(data[i].numSV, 10);
+    chartNumSV.push(isNaN(nsv) ? null : nsv);
+  }
+  // Headroom above the satellite max so the line doesn't sit flush on the top edge.
+  const satValues = chartNumSV.filter(v => v != null && isFinite(v));
+  const maxSat = satValues.length ? Math.max.apply(null, satValues) : 0;
 
   // Full-recording y-axis bounds — locks altitude and speed scales to the
   // entire jump (airplane climb + freefall + canopy + landing) so they don't
@@ -241,6 +357,9 @@ async function renderCurrentJump(showFull) {
       </div>`
     : '';
 
+  const utcStart = formatUtcTimestamp(data[0].time);
+  const amsStart = formatAmsterdamTimestamp(data[0].time);
+
   document.getElementById('stats').innerHTML = `
     ${speedScoreHtml}
     <div class="stat-card">
@@ -259,6 +378,11 @@ async function renderCurrentJump(showFull) {
       <div class="stat-label">Speed Window</div>
       <div class="stat-detail alt"><span class="stat-detail-label">Start</span> ${perfWindowStartAlt !== null ? perfWindowStartAlt.toFixed(0) + ' m / ' + (perfWindowStartAlt * 3.28084).toFixed(0) + ' ft' : '—'}</div>
       <div class="stat-detail alt"><span class="stat-detail-label">End</span> ${perfWindowEndAlt.toFixed(0)} m / ${(perfWindowEndAlt * 3.28084).toFixed(0)} ft</div>
+    </div>
+    <div class="stat-card"${amsStart ? ` data-tip="Amsterdam time: ${amsStart}"` : ''}>
+      <div class="stat-label">UTC Start</div>
+      <div class="stat-detail alt">${utcStart.date}</div>
+      <div class="stat-detail alt">${utcStart.time}</div>
     </div>
   `;
 
@@ -327,6 +451,33 @@ async function renderCurrentJump(showFull) {
           pointRadius: 0,
           borderWidth: 1.5,
           tension: 0.2,
+          order: 0
+        },
+        {
+          label: 'Accel Down (m/s²)',
+          data: chartAccelDown,
+          borderColor: '#fb923c',
+          backgroundColor: 'rgba(251,146,60,0.08)',
+          fill: false,
+          yAxisID: 'yAccel',
+          pointRadius: 0,
+          borderWidth: 1.5,
+          tension: 0.2,
+          hidden: true,
+          order: 0
+        },
+        {
+          label: 'Satellites',
+          data: chartNumSV,
+          borderColor: '#a78bfa',
+          backgroundColor: 'rgba(167,139,250,0.08)',
+          fill: false,
+          yAxisID: 'ySat',
+          pointRadius: 0,
+          borderWidth: 1.5,
+          stepped: true,
+          tension: 0,
+          hidden: true,
           order: 0
         }
       ]
@@ -424,7 +575,11 @@ async function renderCurrentJump(showFull) {
           }
         },
         legend: {
-          labels: { color: themeText, font: { size: 13 }, usePointStyle: true, pointStyle: 'line' }
+          labels: { color: themeText, font: { size: 13 }, usePointStyle: true, pointStyle: 'line' },
+          onClick: function(e, legendItem, legend) {
+            Chart.defaults.plugins.legend.onClick(e, legendItem, legend);
+            saveChartSeriesVisibility(legend.chart);
+          }
         },
         tooltip: {
           animation: false,
@@ -443,16 +598,23 @@ async function renderCurrentJump(showFull) {
               return 'T' + sign + m + ':' + s.toString().padStart(2,'0');
             },
             label: function(ctx) {
-              if (ctx.datasetIndex === 0) {
+              const di = ctx.datasetIndex;
+              if (di === 0) {
                 const m = ctx.parsed.y;
                 return ' Altitude: ' + m.toFixed(0) + ' m (' + (m * 3.28084).toFixed(0) + ' ft)';
-              } else if (ctx.datasetIndex === 1) {
+              } else if (di === 1) {
                 return ' Vert Speed: ' + ctx.parsed.y.toFixed(0) + ' km/h';
-              } else if (ctx.datasetIndex === 2) {
+              } else if (di === 2) {
                 return ' Ground Speed: ' + ctx.parsed.y.toFixed(0) + ' km/h';
-              } else {
+              } else if (di === 3) {
                 if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
                 return ' Dive Angle: ' + ctx.parsed.y.toFixed(1) + '°';
+              } else if (di === 4) {
+                if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
+                return ' Accel Down: ' + ctx.parsed.y.toFixed(1) + ' m/s²';
+              } else {
+                if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
+                return ' Satellites: ' + ctx.parsed.y;
               }
             }
           }
@@ -502,10 +664,37 @@ async function renderCurrentJump(showFull) {
           title: { display: true, text: 'Dive Angle (°)', color: '#f472b6' },
           ticks: { color: '#f472b6' },
           grid: { drawOnChartArea: false }
+        },
+        yAccel: {
+          type: 'linear',
+          position: 'right',
+          display: 'auto',
+          title: { display: true, text: 'Accel Down (m/s²)', color: '#fb923c' },
+          ticks: { color: '#fb923c' },
+          grid: { drawOnChartArea: false }
+        },
+        ySat: {
+          type: 'linear',
+          position: 'right',
+          display: 'auto',
+          min: 0,
+          max: maxSat + 2,
+          title: { display: true, text: 'Satellites', color: '#a78bfa' },
+          ticks: { color: '#a78bfa', precision: 0, stepSize: 1 },
+          grid: { drawOnChartArea: false }
         }
       }
     }
   });
+
+  // Restore the user's last on/off choices for each series (global preference).
+  const savedVis = getChartSeriesVisibility();
+  state.chartInstance.data.datasets.forEach((d, i) => {
+    if (Object.prototype.hasOwnProperty.call(savedVis, d.label)) {
+      state.chartInstance.setDatasetVisibility(i, savedVis[d.label]);
+    }
+  });
+  state.chartInstance.update('none');
 
   // ── Map: re-rendered any time the chart's visible time window changes ──
   function renderMap(tMin, tMax) {
@@ -720,6 +909,98 @@ async function renderCurrentJump(showFull) {
   const initialMax = showFull ? chartTimes[chartTimes.length - 1] : (canopyTimeRel + 5);
   renderMap(initialMin, initialMax);
 
-  // Expose flight data for video overlay sync
-  state.currentFlightData = { times, altitudes, vertSpeeds, horzSpeeds, diveAngles, lats: sliceLats, lons: sliceLons, velNs, velEs, exitIdx: exitIdx - startIdx, canopyIdx: canopyIdx - startIdx, speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd };
+  // Expose flight data for video overlay sync. `landingTimeRel`/`canopyTimeRel`
+  // (seconds relative to exit) let the export decide how far to run.
+  const landingTimeRel = chartTimes[landingIdx];
+  state.currentFlightData = { times, altitudes, vertSpeeds, horzSpeeds, diveAngles, lats: sliceLats, lons: sliceLons, velNs, velEs, exitIdx: exitIdx - startIdx, canopyIdx: canopyIdx - startIdx, speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd, canopyTimeRel, landingTimeRel };
+
+  // Full-recording dataset (relative to exit), used by the video export's
+  // "full descent" option to build an overlay-data slice that reaches landing.
+  // Indices here are absolute (into the full arrays), unlike currentFlightData.
+  state.currentFlightDataFull = {
+    times: chartTimes, altitudes: chartAlts, vertSpeeds: chartVertSpeeds, horzSpeeds: chartHorzSpeeds,
+    diveAngles: chartDiveAngles, lats: chartLats, lons: chartLons, velNs: chartVelNs, velEs: chartVelEs,
+    exitIdx, canopyIdx, landingIdx, canopyTimeRel, landingTimeRel,
+    speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd,
+  };
 }
+
+// ── Chart right-click menu: "Set exit point here" ──
+// Attached once to the persistent #chart canvas. Reads the live chart instance
+// and state.exitEditCtx at event time, so it survives chart re-creation.
+(function setupExitContextMenu() {
+  function init() {
+    const canvas = document.getElementById('chart');
+    if (!canvas) return;
+
+    let menu = null;
+    function hideMenu() {
+      if (menu) { menu.remove(); menu = null; }
+      document.removeEventListener('click', hideMenu, true);
+      document.removeEventListener('scroll', hideMenu, true);
+    }
+
+    canvas.addEventListener('contextmenu', function(e) {
+      if (!state.chartInstance || !state.exitEditCtx) return;
+      const ctx = state.exitEditCtx;
+      const xValue = state.chartInstance.scales.x.getValueForPixel(e.offsetX);
+      if (xValue == null || isNaN(xValue)) return;
+
+      // Absolute recording-relative time of the clicked sample, clamped to data.
+      const allTimes = ctx.allTimes;
+      let targetRecTime = ctx.exitTimeRel + xValue;
+      const lo = allTimes[0], hi = allTimes[allTimes.length - 1];
+      if (targetRecTime < lo) targetRecTime = lo;
+      if (targetRecTime > hi) targetRecTime = hi;
+
+      e.preventDefault();
+      hideMenu();
+
+      menu = document.createElement('div');
+      menu.className = 'chart-context-menu';
+
+      const setItem = document.createElement('button');
+      setItem.className = 'chart-context-item';
+      setItem.textContent = 'Set exit point here';
+      setItem.addEventListener('click', function() {
+        hideMenu();
+        setExitOverride(state.currentJumpName, targetRecTime);
+        renderCurrentJump(state.chartShowFull);
+      });
+      menu.appendChild(setItem);
+
+      if (ctx.hasOverride) {
+        const resetItem = document.createElement('button');
+        resetItem.className = 'chart-context-item';
+        resetItem.textContent = 'Reset to auto-detected exit';
+        resetItem.addEventListener('click', function() {
+          hideMenu();
+          clearExitOverride(state.currentJumpName);
+          renderCurrentJump(state.chartShowFull);
+        });
+        menu.appendChild(resetItem);
+      }
+
+      menu.style.left = e.clientX + 'px';
+      menu.style.top = e.clientY + 'px';
+      document.body.appendChild(menu);
+
+      // Keep the menu on-screen if it would overflow the right/bottom edge.
+      const rect = menu.getBoundingClientRect();
+      if (rect.right > window.innerWidth) menu.style.left = (e.clientX - rect.width) + 'px';
+      if (rect.bottom > window.innerHeight) menu.style.top = (e.clientY - rect.height) + 'px';
+
+      // Dismiss on any click / scroll (capture so it fires before other handlers).
+      setTimeout(() => {
+        document.addEventListener('click', hideMenu, true);
+        document.addEventListener('scroll', hideMenu, true);
+      }, 0);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();

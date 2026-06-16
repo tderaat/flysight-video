@@ -191,41 +191,41 @@ body.has-jumps .dropzone p { display: none; }
 .jump-chip .score { color: var(--text-dim); }
 .jump-chip.active .score { color: var(--text-dim); }
 .compare-jump-row .score { color: var(--text-dim); }
-.jump-chip .delete-btn {
+.jump-chip .delete-btn,
+.jump-chip .download-btn,
+.jump-chip .edit-btn {
   width: 18px; height: 18px; border-radius: 50%; background: transparent;
   border: none; color: var(--text-dim); cursor: pointer; font-size: 14px;
   display: flex; align-items: center; justify-content: center; line-height: 1;
-  margin-left: auto;
 }
+.jump-chip .edit-btn { margin-left: auto; }
 .jump-chip .delete-btn:hover { background: #ef4444; color: #fff; }
+.jump-chip .download-btn:hover,
+.jump-chip .edit-btn:hover { background: var(--accent); color: var(--accent-on); }
 .jump-chip.loading {
   cursor: default;
   color: var(--text-muted);
 }
 .jump-chip.loading:hover { border-color: var(--border); color: var(--text-muted); }
-.jump-chip .loading-name {
+.jump-chip.loading .jump-loading-name {
   flex: 1;
   font-style: italic;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
-.jump-chip .loading-label {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.jump-spinner {
+.jump-chip .spinner {
+  display: inline-block;
   width: 12px;
   height: 12px;
   border: 2px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
+  animation: jump-chip-spin 0.8s linear infinite;
   flex-shrink: 0;
-  animation: jump-spinner-rotate 0.8s linear infinite;
 }
-@keyframes jump-spinner-rotate {
+@keyframes jump-chip-spin {
   to { transform: rotate(360deg); }
 }
 
@@ -247,6 +247,7 @@ canvas { width: 100% !important; }
   background: var(--bg-card);
   border-radius: 12px;
   padding: 20px;
+  cursor: default;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -306,6 +307,26 @@ canvas { width: 100% !important; }
   line-height: 1.5;
 }
 .exit-badge:hover .exit-tooltip { display: block; }
+/* Red-tinted tooltip only for the invalid (too high / too low) exit warning. */
+.exit-badge.badge-invalid .exit-tooltip {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* ── Generic hover tooltip (same look as the exit badge tooltip) ── */
+/* Attach to any element via a data-tip="..." attribute. */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  display: none;
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font-size: 0.78rem; font-weight: 400;
+  color: var(--text-mid); white-space: nowrap; z-index: 20;
+  box-shadow: 0 4px 12px var(--shadow-soft);
+  line-height: 1.5; pointer-events: none;
+}
+[data-tip]:hover::after { display: block; }
 
 /* ── Map ── */
 .map-container { background: var(--bg-card); border-radius: 12px; padding: 20px; }
@@ -324,6 +345,21 @@ canvas { width: 100% !important; }
 .trim-btn.secondary:hover { background: var(--bg-stronger-hover); }
 .trim-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .trim-btn.icon-btn { padding: 6px 10px; min-width: 32px; font-size: 1rem; line-height: 1; }
+
+/* ── Chart right-click context menu ── */
+.chart-context-menu {
+  position: fixed; z-index: 1200;
+  background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+  padding: 4px; min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  display: flex; flex-direction: column;
+}
+.chart-context-item {
+  background: none; border: none; color: #cbd5e1; text-align: left;
+  padding: 7px 12px; border-radius: 4px; font-size: 0.85rem; cursor: pointer;
+  font-family: inherit; white-space: nowrap;
+}
+.chart-context-item:hover { background: #334155; color: #f8fafc; }
 
 /* ── Modal ── */
 .modal-backdrop {
@@ -349,6 +385,25 @@ canvas { width: 100% !important; }
 }
 .modal-close:hover { color: var(--text-strong); }
 .modal-body { padding: 24px; }
+
+/* ── Rename jump modal ── */
+.modal.rename-modal { width: 90%; max-width: 420px; }
+.rename-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg-inset); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-strong); font-family: inherit; font-size: 0.95rem;
+  padding: 10px 12px;
+}
+.rename-input:focus { outline: none; border-color: var(--accent); }
+.rename-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.rename-cancel, .rename-save {
+  border-radius: 8px; padding: 8px 18px; font-family: inherit; font-size: 0.85rem;
+  cursor: pointer; border: 1px solid var(--border);
+}
+.rename-cancel { background: var(--bg-inset); color: var(--text-mid); }
+.rename-cancel:hover { border-color: var(--border-strong); color: var(--text-strong); }
+.rename-save { background: var(--accent); border-color: var(--accent); color: var(--accent-on); font-weight: 600; }
+.rename-save:hover { filter: brightness(1.08); }
 
 /* ── Compare jumps modal ── */
 .modal.compare-modal { width: 95%; max-width: 1480px; }
@@ -522,6 +577,69 @@ canvas { width: 100% !important; }
   font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 .compare-3d-scrub-time.start { text-align: left; }
+.compare-3d-clip-btn {
+  background: #38bdf8;
+  color: #0f172a;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s;
+}
+.compare-3d-clip-btn:hover { background: #7dd3fc; }
+.compare-3d-clip-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.compare-3d-clip-btn.recording {
+  background: #ef4444;
+  color: #ffffff;
+}
+.compare-3d-clip-btn.recording::before {
+  content: '●';
+  display: inline-block;
+  margin-right: 6px;
+  color: #ffffff;
+  animation: compare-3d-clip-pulse 1s ease-in-out infinite;
+}
+@keyframes compare-3d-clip-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.compare-3d-clip-menu {
+  position: absolute;
+  bottom: 48px;
+  right: 0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+  min-width: 180px;
+}
+.compare-3d-clip-menu[hidden] { display: none; }
+.compare-3d-clip-menu button {
+  background: transparent;
+  color: #cbd5e1;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+.compare-3d-clip-menu button:hover {
+  background: #334155;
+  color: #f8fafc;
+}
 .compare-3d-tooltip {
   position: absolute;
   z-index: 10;
@@ -730,6 +848,23 @@ canvas { width: 100% !important; }
   transition: width 0.3s;
 }
 #progressText { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; display: block; }
+
+.export-cancel-btn {
+  margin-top: 8px; padding: 4px 12px; font-size: 0.75rem;
+  color: #cbd5e1; background: #475569; border: 1px solid #64748b;
+  border-radius: 4px; cursor: pointer;
+  /* startExport() sets pointer-events:none on .modal-body to block the UI during
+     export; re-enable it here so Cancel stays clickable. */
+  pointer-events: auto;
+}
+.export-cancel-btn:hover { background: #526180; }
+.export-cancel-btn:disabled { opacity: 0.5; cursor: default; }
+
+.export-mode-toggle {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.8rem; color: #94a3b8; margin-bottom: 10px; cursor: pointer;
+}
+.export-mode-toggle input { cursor: pointer; }
 
 /* ── Map hover tooltip (path-hover sync) ── */
 .leaflet-tooltip.map-hover-tooltip {
