@@ -16,13 +16,13 @@ function closeVideoModal() {
     v.load();
   }
   const playBtn = document.getElementById('videoPlayBtn');
-  if (playBtn) playBtn.textContent = 'Play';
+  if (playBtn) playBtn.textContent = t('video.play');
 
   if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
   state.videoObjectURL = null;
 
   state.videoExitTime = null;
-  document.getElementById('videoExitTimecode').textContent = 'Not set';
+  document.getElementById('videoExitTimecode').textContent = t('video.notSet');
   document.getElementById('videoTimecode').textContent = '0:00.000';
   document.getElementById('videoDuration').textContent = '/ 0:00.000';
   document.getElementById('videoScrubber').value = 0;
@@ -67,7 +67,7 @@ function handleVideoFile(file) {
   const isVideoMime = (file.type || '').toLowerCase().startsWith('video/');
   const isVideoExt = /\.(mp4|webm|mov|m4v)$/i.test(file.name);
   if (!isVideoMime && !isVideoExt) {
-    alert('Please drop a video file (MP4, WebM, or MOV).');
+    alert(t('video.errDropVideo'));
     return;
   }
   if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
@@ -110,13 +110,13 @@ function handleVideoFile(file) {
     document.getElementById('videoStep2').style.display = 'block';
     // Reset exit
     state.videoExitTime = null;
-    document.getElementById('videoExitTimecode').textContent = 'Not set';
+    document.getElementById('videoExitTimecode').textContent = t('video.notSet');
     // Redraw — by now any in-flight restore has likely landed, and even if not,
     // drawOverlayPreview will re-fire from the loadeddata listener.
     drawOverlayPreview();
   });
   video.addEventListener('error', function() {
-    alert('Could not load this video file. Try a different format (MP4, WebM).');
+    alert(t('video.errLoad'));
   }, { once: true });
 
   video.src = state.videoObjectURL;
@@ -129,10 +129,10 @@ function toggleVideoPlay() {
   const v = document.getElementById('videoPreview');
   if (v.paused) {
     v.play();
-    document.getElementById('videoPlayBtn').textContent = 'Pause';
+    document.getElementById('videoPlayBtn').textContent = t('video.pause');
   } else {
     v.pause();
-    document.getElementById('videoPlayBtn').textContent = 'Play';
+    document.getElementById('videoPlayBtn').textContent = t('video.play');
   }
 }
 
@@ -145,7 +145,7 @@ function toggleVideoPlay() {
     drawOverlayPreview();
   });
   video.addEventListener('ended', () => {
-    document.getElementById('videoPlayBtn').textContent = 'Play';
+    document.getElementById('videoPlayBtn').textContent = t('video.play');
   });
   scrubber.addEventListener('input', () => {
     video.currentTime = scrubber.value / 1000;
@@ -276,9 +276,9 @@ function cancelExport() {
 }
 
 function startExport() {
-  if (state.videoExitTime === null) { alert('Please mark the exit moment first.'); return; }
-  if (!state.currentFlightData) { alert('No flight data loaded.'); return; }
-  if (state.widgets.length === 0) { alert('No widgets placed on the overlay.'); return; }
+  if (state.videoExitTime === null) { alert(t('video.errMarkExit')); return; }
+  if (!state.currentFlightData) { alert(t('video.errNoFlightData')); return; }
+  if (state.widgets.length === 0) { alert(t('video.errNoWidgets')); return; }
 
   // Deselect widget and block UI during export
   state.selectedWidgetId = null;
@@ -330,7 +330,7 @@ function startExport() {
   // The active export registers a cancel handler here; the Cancel button calls
   // cancelExport(), which invokes it. Reset on every start and cleared by restoreUI.
   state.activeExportCancel = null;
-  if (cancelBtnEl) { cancelBtnEl.disabled = false; cancelBtnEl.textContent = 'Cancel'; }
+  if (cancelBtnEl) { cancelBtnEl.disabled = false; cancelBtnEl.textContent = t('video.cancel'); }
 
   function restoreUI() {
     progressEl.style.display = 'none';
@@ -351,7 +351,7 @@ function startExport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = state.currentJumpName.replace(/\.[^.]+$/, '') + '_overlay' + fileExt;
+    a.download = state.currentJumpName.replace(/\.[^.]+$/, '') + '_overlay' + fileExt;  // suffix kept untranslated for stable filenames
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     restoreSwappedData();
@@ -372,7 +372,7 @@ function startExport() {
 
   progressEl.style.display = 'block';
   btnEl.disabled = true;
-  setProgress(0, 'Preparing...');
+  setProgress(0, t('video.preparing'));
 
   const opts = { video, canvas, ctx, contentRect, trimStart, trimEnd, setProgress, finishExport, failExport, abortExport };
 
@@ -387,7 +387,7 @@ function startExport() {
     exportWithWebCodecs(opts);
   } else {
     if (wantReliable && !webCodecsAvailable) {
-      setProgress(0, 'Reliable mode not available in this browser — using standard export...');
+      setProgress(0, t('video.reliableUnavailable'));
     }
     exportRealtime(opts);
   }
@@ -413,7 +413,7 @@ function exportRealtime(opts) {
     stream = canvas.captureStream(30);
     recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
   } catch (e) {
-    failExport('Could not start the export recorder: ' + (e && e.message ? e.message : e));
+    failExport(t('video.errRecorder', { msg: (e && e.message ? e.message : e) }));
     return;
   }
 
@@ -451,7 +451,7 @@ function exportRealtime(opts) {
     aborted = true;
     cleanupListeners();
     try { recorder.stop(); } catch {}
-    failExport('Video playback failed during export. Try enabling Reliable mode for slow machines.');
+    failExport(t('video.errPlayback'));
   }
 
   recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
@@ -459,19 +459,18 @@ function exportRealtime(opts) {
     if (finished || aborted) return;
     aborted = true;
     cleanupListeners();
-    failExport('Recording failed: ' + (e && e.error && e.error.message ? e.error.message : 'unknown error') +
-      '\n\nTry enabling Reliable mode for slow machines.');
+    failExport(t('video.errRecording', { msg: (e && e.error && e.error.message ? e.error.message : 'unknown error') }));
   };
   recorder.onstop = () => {
     cleanupListeners();
     if (aborted) return;                 // failExport already restored the UI
     if (cancelled) { abortExport(); return; }   // user cancelled: discard, no download
-    if (chunks.length === 0) { failExport('Export produced no data.'); return; }
+    if (chunks.length === 0) { failExport(t('video.errNoData')); return; }
     finished = true;
     const blob = new Blob(chunks, { type: mimeType });
     finishExport(blob, fileExt);
     if (stalledChecks > 0) {
-      alert('The export stalled on this machine and was finished early — the saved video may be incomplete. Enable Reliable mode for a full, frame-accurate export.');
+      alert(t('video.errStalled'));
     }
   };
 
@@ -481,7 +480,7 @@ function exportRealtime(opts) {
   state.activeExportCancel = () => {
     if (finished || aborted || cancelled) return;
     cancelled = true;
-    document.getElementById('progressText').textContent = 'Cancelling...';
+    document.getElementById('progressText').textContent = t('video.cancelling');
     document.getElementById('exportCancelBtn').disabled = true;
     stopRecording();   // recorder.onstop sees `cancelled` and discards the result
   };
@@ -498,7 +497,7 @@ function exportRealtime(opts) {
     drawExportWidgets(ctx, contentRect, dataIdx);
 
     const pct = ((video.currentTime - trimStart) / (trimEnd - trimStart)) * 100;
-    setProgress(pct, 'Exporting... ' + Math.round(pct) + '%');
+    setProgress(pct, t('video.exportingPct', { pct: Math.round(pct) }));
 
     if ('requestVideoFrameCallback' in video) {
       video.requestVideoFrameCallback(renderFrame);
@@ -510,7 +509,7 @@ function exportRealtime(opts) {
   video.muted = true;
   seekVideoTo(video, trimStart).then(() => {
     if (aborted) return;
-    try { recorder.start(); } catch (e) { failExport('Could not start recording: ' + (e && e.message ? e.message : e)); return; }
+    try { recorder.start(); } catch (e) { failExport(t('video.errRecorderStart', { msg: (e && e.message ? e.message : e) })); return; }
     video.play();
     lastTime = video.currentTime;
 
@@ -540,7 +539,7 @@ function exportRealtime(opts) {
     } else {
       requestAnimationFrame(renderFrame);
     }
-  }).catch(e => failExport('Could not seek the video to the start of the clip: ' + (e && e.message ? e.message : e)));
+  }).catch(e => failExport(t('video.errSeek', { msg: (e && e.message ? e.message : e) })));
 }
 
 // Reliable path: WebCodecs VideoEncoder, frame-by-frame. Decoupled from
@@ -603,7 +602,7 @@ async function exportWithWebCodecs(opts) {
       });
     } else {
       // No usable WebCodecs config here — fall back to the real-time path.
-      setProgress(0, 'Reliable mode not available in this browser — using standard export...');
+      setProgress(0, t('video.reliableUnavailable'));
       exportRealtime(opts);
       return;
     }
@@ -626,7 +625,7 @@ async function exportWithWebCodecs(opts) {
     state.activeExportCancel = () => {
       if (cancelled) return;
       cancelled = true;
-      document.getElementById('progressText').textContent = 'Cancelling...';
+      document.getElementById('progressText').textContent = t('video.cancelling');
       document.getElementById('exportCancelBtn').disabled = true;
     };
 
@@ -651,7 +650,7 @@ async function exportWithWebCodecs(opts) {
       frame.close();
 
       const pct = ((i + 1) / totalFrames) * 100;
-      setProgress(pct, 'Exporting frame ' + (i + 1) + ' / ' + totalFrames + '...');
+      setProgress(pct, t('video.exportingFrame', { i: i + 1, total: totalFrames }));
 
       // Backpressure: let the encoder drain so memory stays bounded.
       while (encoder.encodeQueueSize > FPS * 2 && !cancelled) {
@@ -672,8 +671,7 @@ async function exportWithWebCodecs(opts) {
     const blob = new Blob([target.buffer], { type: mimeType });
     finishExport(blob, fileExt);
   } catch (e) {
-    failExport('Reliable export failed: ' + (e && e.message ? e.message : e) +
-      '\n\nYou can uncheck Reliable mode to use the standard export instead.');
+    failExport(t('video.errReliable', { msg: (e && e.message ? e.message : e) }));
   }
 }
 

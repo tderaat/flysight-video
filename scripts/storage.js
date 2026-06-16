@@ -83,11 +83,11 @@ async function storeJump(name, csvText) {
     };
     tx.oncomplete = () => resolve();
     tx.onerror = () => {
-      alert('Storage is full. Remove some jumps to free space before adding new ones.');
+      alert(t('alert.storageFull'));
       resolve();
     };
     tx.onabort = () => {
-      alert('Storage is full. Remove some jumps to free space before adding new ones.');
+      alert(t('alert.storageFull'));
       resolve();
     };
   });

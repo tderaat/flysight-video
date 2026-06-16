@@ -261,7 +261,8 @@ async function renderCompareJumpsList() {
   if (jumps.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'compare-jump-row disabled';
-    empty.innerHTML = '<span class="compare-jump-name">No jumps loaded.</span>';
+    empty.innerHTML = '<span class="compare-jump-name"></span>';
+    empty.querySelector('.compare-jump-name').textContent = t('compare.noJumps');
     listEl.appendChild(empty);
     return;
   }
@@ -300,7 +301,7 @@ async function renderCompareJumpsList() {
     const name = document.createElement('span');
     name.className = 'compare-jump-name';
     const score = scores[j.name];
-    const baseName = built === null ? j.name + ' (insufficient data)' : j.name;
+    const baseName = built === null ? j.name + ' ' + t('compare.insufficient') : j.name;
     if (score && built !== null) {
       name.textContent = baseName + ' ';
       const scoreEl = document.createElement('span');
@@ -428,7 +429,7 @@ function renderCompareTable(field, unit, decimals) {
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
   const jumpHead = document.createElement('th');
-  jumpHead.textContent = 'Jump';
+  jumpHead.textContent = t('compare.jumpHeader');
   headRow.appendChild(jumpHead);
   COMPARE_TABLE_TIMES.forEach(t => {
     const valueTh = document.createElement('th');
@@ -1261,7 +1262,7 @@ function syncCompareClipButton() {
   if (!btn) return;
   const recording = !!state.compareClipRecording;
   btn.classList.toggle('recording', recording);
-  btn.textContent = recording ? 'Recording' : 'Create clip';
+  btn.textContent = recording ? t('compare.recording') : t('compare.createClip');
   // Only enable when there's actual data to scrub through.
   const canRecord = !recording && state.compare3dScrubMax > state.compare3dScrubMin;
   btn.disabled = !canRecord;
@@ -1293,13 +1294,13 @@ async function createCompareClip(durationSec) {
   if (!canvas) return;
   const mimeType = pickCompareClipMimeType();
   if (!mimeType) {
-    alert('Sorry — your browser does not expose MediaRecorder for canvas video capture.');
+    alert(t('compare.errNoRecorder'));
     return;
   }
 
   let stream;
   try { stream = canvas.captureStream(30); } catch (e) {
-    alert('Could not capture the 3D canvas: ' + e.message);
+    alert(t('compare.errCapture', { msg: e.message }));
     return;
   }
   // Very high bitrate so the encoder isn't the bottleneck. Canvas resolution
@@ -1408,8 +1409,8 @@ function showCompareClipMenu(open) {
       const seconds = (state.compare3dScrubMax - state.compare3dScrubMin) / 1000;
       const label = formatRealtimeDurationLabel(seconds);
       realtimeBtn.textContent = label
-        ? 'Full real-time (' + label + ')'
-        : 'Full real-time';
+        ? t('compare.clipRealtimeDur', { dur: label })
+        : t('compare.clipRealtime');
     }
   }
   menu.hidden = !open;

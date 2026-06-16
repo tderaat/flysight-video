@@ -1,15 +1,15 @@
 // ── Shared config helper ──
 function buildUnitsConfig(widget, options) {
   const unitOptions = options || [
-    { value: 'metric', label: 'Metric' },
-    { value: 'imperial', label: 'Imperial' },
-    { value: 'both', label: 'Both' },
+    { value: 'metric', label: t('cfg.metric') },
+    { value: 'imperial', label: t('cfg.imperial') },
+    { value: 'both', label: t('cfg.both') },
   ];
   const group = document.createElement('div');
   group.className = 'widget-config-group';
   const label = document.createElement('div');
   label.className = 'widget-config-group-label';
-  label.textContent = 'Units';
+  label.textContent = t('cfg.units');
   group.appendChild(label);
   const radios = document.createElement('div');
   radios.className = 'widget-config-checks';

@@ -181,8 +181,8 @@ function buildAltimeterConfigPanel(widget, drawOverlayPreview) {
   const checks = document.createElement('div');
   checks.className = 'widget-config-checks';
   [
-    { key: 'showBackground', label: 'Show background' },
-    { key: 'fadeIn', label: 'Fade in before exit' },
+    { key: 'showBackground', label: t('cfg.showBackground') },
+    { key: 'fadeIn', label: t('cfg.fadeIn') },
   ].forEach(({ key, label }) => {
     const lbl = document.createElement('label');
     const cb = document.createElement('input');

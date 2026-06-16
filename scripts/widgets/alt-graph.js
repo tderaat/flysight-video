@@ -158,11 +158,11 @@ function buildAltGraphConfigPanel(widget, drawOverlayPreview) {
   const checks = document.createElement('div');
   checks.className = 'widget-config-checks';
   [
-    { key: 'showLabel', label: 'Show label' },
-    { key: 'showBackground', label: 'Show background' },
-    { key: 'showMeasuringZone', label: 'Show measuring zone' },
-    { key: 'showScoringZone', label: 'Show scoring zone' },
-    { key: 'fadeIn', label: 'Fade in before exit' },
+    { key: 'showLabel', label: t('cfg.showLabel') },
+    { key: 'showBackground', label: t('cfg.showBackground') },
+    { key: 'showMeasuringZone', label: t('cfg.showMeasuringZone') },
+    { key: 'showScoringZone', label: t('cfg.showScoringZone') },
+    { key: 'fadeIn', label: t('cfg.fadeIn') },
   ].forEach(({ key, label }) => {
     const lbl = document.createElement('label');
     const cb = document.createElement('input');

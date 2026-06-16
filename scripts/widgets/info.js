@@ -192,14 +192,14 @@ function buildInfoConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
   const checks = document.createElement('div');
   checks.className = 'widget-config-checks';
   [
-    { key: 'showTime', label: 'Time (T+/-)' },
-    { key: 'showAltitude', label: 'Altitude' },
-    { key: 'showSpeed', label: 'Vertical speed' },
-    { key: 'showHSpeed', label: 'Horizontal speed' },
-    { key: 'showDiveAngle', label: 'Dive angle' },
-    { key: 'showScore', label: 'Speed score (after window)' },
-    { key: 'showBackground', label: 'Show background' },
-    { key: 'fadeIn', label: 'Fade in before exit' },
+    { key: 'showTime', label: t('cfg.infoTime') },
+    { key: 'showAltitude', label: t('cfg.infoAltitude') },
+    { key: 'showSpeed', label: t('cfg.infoVertSpeed') },
+    { key: 'showHSpeed', label: t('cfg.infoHorzSpeed') },
+    { key: 'showDiveAngle', label: t('cfg.infoDiveAngle') },
+    { key: 'showScore', label: t('cfg.infoScore') },
+    { key: 'showBackground', label: t('cfg.showBackground') },
+    { key: 'fadeIn', label: t('cfg.fadeIn') },
   ].forEach(({ key, label }) => {
     const lbl = document.createElement('label');
     const cb = document.createElement('input');

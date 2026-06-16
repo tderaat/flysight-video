@@ -119,11 +119,7 @@ async function handleFiles(files) {
   const csvFiles = all.filter(isCsvFile);
   const rejected = all.filter(f => !isCsvFile(f));
   if (rejected.length) {
-    alert(
-      'Only CSV files can be uploaded here.\n\nRejected: ' +
-      rejected.map(f => f.name).join(', ') +
-      '\n\nTo add a video, click "Create video overlay".'
-    );
+    alert(t('alert.onlyCsv', { files: rejected.map(f => f.name).join(', ') }));
   }
   if (!csvFiles.length) return;
 
@@ -198,9 +194,9 @@ async function renderJumpList() {
     chip.setAttribute('onclick', `selectJump('${safeName}')`);
     chip.innerHTML = `
       <span>${j.name}${scoreLabel}</span>
-      <button class="edit-btn" onclick="event.stopPropagation(); openRenameModal('${safeName}')" data-tip="Rename">&#x270E;</button>
-      <button class="download-btn" onclick="event.stopPropagation(); downloadJump('${safeName}')" data-tip="Download CSV">&#x2913;</button>
-      <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${safeName}')" data-tip="Remove">&times;</button>
+      <button class="edit-btn" onclick="event.stopPropagation(); openRenameModal('${safeName}')" data-tip="${t('tip.rename')}">&#x270E;</button>
+      <button class="download-btn" onclick="event.stopPropagation(); downloadJump('${safeName}')" data-tip="${t('tip.downloadCsv')}">&#x2913;</button>
+      <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${safeName}')" data-tip="${t('tip.remove')}">&times;</button>
     `;
     list.appendChild(chip);
   });
@@ -270,7 +266,7 @@ async function confirmRename() {
 
   const jumps = await getStoredJumps();
   if (jumps.some(j => j.name === newName)) {
-    alert('A jump named "' + newName + '" already exists. Choose a different name.');
+    alert(t('alert.jumpExists', { name: newName }));
     return;
   }
 

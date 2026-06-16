@@ -33,17 +33,56 @@
     document.documentElement.setAttribute('data-theme', t);
   })();
 </script>
+<script>
+  // Apply the persisted language to <html lang> before paint. Full wiring +
+  // text application live in scripts/i18n.js (loaded later).
+  (function() {
+    var LANGS = ['en', 'de', 'nl', 'it'];
+    var l = null;
+    try {
+      var m = document.cookie.match(/(?:^|;\s*)lang=([^;]+)/);
+      if (m) l = decodeURIComponent(m[1]);
+    } catch (e) {}
+    if (!l || LANGS.indexOf(l) < 0) {
+      try { l = localStorage.getItem('lang'); } catch (e) {}
+    }
+    if (LANGS.indexOf(l) < 0) {
+      // First visit: auto-detect from the browser's preferred language.
+      l = 'en';
+      try {
+        var prefs = navigator.languages && navigator.languages.length
+          ? navigator.languages : [navigator.language || ''];
+        for (var i = 0; i < prefs.length; i++) {
+          var code = (prefs[i] || '').toLowerCase().split('-')[0];
+          if (LANGS.indexOf(code) >= 0) { l = code; break; }
+        }
+      } catch (e) {}
+    }
+    document.documentElement.lang = l;
+  })();
+</script>
 </head>
 <body>
 
-<div class="theme-picker">
-  <label class="theme-picker-label" for="themeSelect">Theme</label>
-  <select id="themeSelect" class="theme-select" aria-label="Select color theme">
-    <option value="dark-blue">Dark · Blue</option>
-    <option value="light">Light · Gray</option>
-    <option value="dark-red">Dark · Red</option>
-    <option value="dark-green">Dark · Green</option>
-  </select>
+<div class="top-pickers">
+  <div class="lang-picker">
+    <label class="lang-picker-label" for="langSelect" data-i18n="lang.label">Language</label>
+    <select id="langSelect" class="lang-select" aria-label="Select language" data-i18n-aria="lang.aria">
+      <option value="en">English</option>
+      <option value="de">Deutsch</option>
+      <option value="nl">Nederlands</option>
+      <option value="it">Italiano</option>
+    </select>
+  </div>
+  <div class="theme-picker">
+    <label class="theme-picker-label" for="themeSelect" data-i18n="theme.label">Theme</label>
+    <select id="themeSelect" class="theme-select" aria-label="Select color theme" data-i18n-aria="theme.aria">
+      <option value="dark-blue" data-i18n="theme.darkBlue">Dark · Blue</option>
+      <option value="light" data-i18n="theme.light">Light · Gray</option>
+      <option value="dark-red" data-i18n="theme.darkRed">Dark · Red</option>
+      <option value="dark-green" data-i18n="theme.darkGreen">Dark · Green</option>
+    </select>
+  </div>
 </div>
 
 <div class="page-layout">
@@ -99,8 +138,8 @@
 
 <div class="upload-area">
   <div class="dropzone" id="dropzone">
-    <h2>Drop a FlySight CSV here, or click to browse</h2>
-    <p>Files are stored locally in your browser</p>
+    <h2 data-i18n="sidebar.dropTitle">Drop a FlySight CSV here, or click to browse</h2>
+    <p data-i18n="sidebar.dropSubtitle">Files are stored locally in your browser</p>
     <input type="file" id="fileInput" accept=".csv,.CSV" multiple>
   </div>
 </div>
@@ -111,17 +150,17 @@
 <main class="main-content">
 <div class="chart-section" id="chartSection">
   <div class="trim-controls">
-    <button class="trim-btn" id="compareJumpsBtn" onclick="openCompareModal()" style="margin-left:auto;">Compare jumps</button>
-    <button class="trim-btn" id="videoOverlayBtn" onclick="openVideoModal()">Create video overlay</button>
+    <button class="trim-btn" id="compareJumpsBtn" onclick="openCompareModal()" style="margin-left:auto;" data-i18n="btn.compareJumps">Compare jumps</button>
+    <button class="trim-btn" id="videoOverlayBtn" onclick="openVideoModal()" data-i18n="btn.createVideoOverlay">Create video overlay</button>
   </div>
   <div class="chart-container">
     <div class="chart-header">
       <div class="chart-title" id="chartTitle"></div>
       <div class="chart-controls">
-        <button class="trim-btn secondary" onclick="renderCurrentJump()">Jump only</button>
-        <button class="trim-btn secondary" onclick="renderCurrentJump(true)">Full flight</button>
-        <button class="trim-btn secondary icon-btn" onclick="zoomChart(1)" data-tip="Zoom in">+</button>
-        <button class="trim-btn secondary icon-btn" onclick="zoomChart(-1)" data-tip="Zoom out">−</button>
+        <button class="trim-btn secondary" onclick="renderCurrentJump()" data-i18n="btn.jumpOnly">Jump only</button>
+        <button class="trim-btn secondary" onclick="renderCurrentJump(true)" data-i18n="btn.fullFlight">Full flight</button>
+        <button class="trim-btn secondary icon-btn" onclick="zoomChart(1)" data-tip="Zoom in" data-i18n-tip="tip.zoomIn">+</button>
+        <button class="trim-btn secondary icon-btn" onclick="zoomChart(-1)" data-tip="Zoom out" data-i18n-tip="tip.zoomOut">−</button>
       </div>
     </div>
     <canvas id="chart"></canvas>
@@ -140,15 +179,15 @@
 
 <div class="page-drop-overlay" id="pageDropOverlay">
   <div class="page-drop-panel">
-    <h2>Drop FlySight CSV anywhere</h2>
-    <p>Release to load the jump</p>
+    <h2 data-i18n="drop.csvTitle">Drop FlySight CSV anywhere</h2>
+    <p data-i18n="drop.csvSubtitle">Release to load the jump</p>
   </div>
 </div>
 
 <div class="video-page-drop-overlay" id="videoPageDropOverlay">
   <div class="page-drop-panel">
-    <h2>Drop video file anywhere</h2>
-    <p>Release to load the video</p>
+    <h2 data-i18n="drop.videoTitle">Drop video file anywhere</h2>
+    <p data-i18n="drop.videoSubtitle">Release to load the video</p>
   </div>
 </div>
 
@@ -156,7 +195,7 @@
 <div class="modal-backdrop" id="videoModal">
   <div class="modal">
     <div class="modal-header">
-      <h2>Video Overlay</h2>
+      <h2 data-i18n="video.title">Video Overlay</h2>
       <button class="modal-close" onclick="closeVideoModal()">&times;</button>
     </div>
     <div class="modal-body">
@@ -164,8 +203,8 @@
       <!-- Step 1: Drop zone for video -->
       <div id="videoStep1">
         <div class="video-dropzone" id="videoDropzone">
-          <h3>Drop a video file here, or click to browse</h3>
-          <p>MP4, WebM, or MOV supported</p>
+          <h3 data-i18n="video.dropTitle">Drop a video file here, or click to browse</h3>
+          <p data-i18n="video.dropSubtitle">MP4, WebM, or MOV supported</p>
           <input type="file" id="videoFileInput" accept="video/*">
         </div>
       </div>
@@ -181,7 +220,7 @@
               </div>
             </div>
             <div class="video-controls">
-              <button class="trim-btn" id="videoPlayBtn" onclick="toggleVideoPlay()">Play</button>
+              <button class="trim-btn" id="videoPlayBtn" onclick="toggleVideoPlay()" data-i18n="video.play">Play</button>
               <span class="video-timecode" id="videoTimecode">0:00.000</span>
               <input type="range" id="videoScrubber" min="0" max="1000" value="0" step="1">
               <span class="video-duration" id="videoDuration">/ 0:00</span>
@@ -189,10 +228,10 @@
 
             <!-- Exit sync -->
             <div class="video-sync-section">
-              <h3>Mark exit moment</h3>
+              <h3 data-i18n="video.markExit">Mark exit moment</h3>
               <div class="video-sync-row">
-                <button class="trim-btn" onclick="markVideoExit()">Use this moment</button>
-                <span id="videoExitTimecode" class="video-timecode">Not set</span>
+                <button class="trim-btn" onclick="markVideoExit()" data-i18n="video.useThisMoment">Use this moment</button>
+                <span id="videoExitTimecode" class="video-timecode" data-i18n="video.notSet">Not set</span>
               </div>
             </div>
 
@@ -200,17 +239,17 @@
             <div class="video-export-section" id="exportSection" style="display:none;">
               <label class="export-mode-toggle">
                 <input type="checkbox" id="reliableModeToggle">
-                Reliable mode (slow machines)
+                <span data-i18n="video.reliableMode">Reliable mode (slow machines)</span>
               </label>
               <label class="export-mode-toggle">
                 <input type="checkbox" id="fullDescentToggle">
-                Include full descent (to landing)
+                <span data-i18n="video.fullDescent">Include full descent (to landing)</span>
               </label>
-              <button class="trim-btn" id="exportBtn" onclick="startExport()">Export video with overlay</button>
+              <button class="trim-btn" id="exportBtn" onclick="startExport()" data-i18n="video.exportBtn">Export video with overlay</button>
               <div id="exportProgress" style="display:none;">
                 <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-                <span id="progressText">Preparing...</span>
-                <button class="export-cancel-btn" id="exportCancelBtn" onclick="cancelExport()">Cancel</button>
+                <span id="progressText" data-i18n="video.preparing">Preparing...</span>
+                <button class="export-cancel-btn" id="exportCancelBtn" onclick="cancelExport()" data-i18n="video.cancel">Cancel</button>
               </div>
             </div>
           </div>
@@ -218,44 +257,44 @@
           <div class="video-step2-right">
             <!-- Widgets (hidden until exit is set) -->
             <div class="video-options-section" id="widgetsSection" style="display:none;">
-              <h3>Widgets</h3>
+              <h3 data-i18n="video.widgets">Widgets</h3>
               <div class="widget-section">
                 <div class="widget-picker">
                   <div class="widget-card" draggable="true" data-widget-type="info">
                     <canvas class="widget-preview" id="widgetPreview_info" width="120" height="68"></canvas>
-                    <span>Info</span>
+                    <span data-i18n="widget.info">Info</span>
                   </div>
                   <div class="widget-card" draggable="true" data-widget-type="vertSpeed">
                     <canvas class="widget-preview" id="widgetPreview_vertSpeed" width="120" height="68"></canvas>
-                    <span>Vert. Speed</span>
+                    <span data-i18n="widget.vertSpeed">Vert. Speed</span>
                   </div>
                   <div class="widget-card" draggable="true" data-widget-type="horzSpeed">
                     <canvas class="widget-preview" id="widgetPreview_horzSpeed" width="120" height="68"></canvas>
-                    <span>Horiz. Speed</span>
+                    <span data-i18n="widget.horzSpeed">Horiz. Speed</span>
                   </div>
                   <div class="widget-card" draggable="true" data-widget-type="altGraph">
                     <canvas class="widget-preview" id="widgetPreview_altGraph" width="120" height="68"></canvas>
-                    <span>Alt. Graph</span>
+                    <span data-i18n="widget.altGraph">Alt. Graph</span>
                   </div>
                   <div class="widget-card" draggable="true" data-widget-type="altimeter">
                     <canvas class="widget-preview" id="widgetPreview_altimeter" width="120" height="68"></canvas>
-                    <span>Altimeter</span>
+                    <span data-i18n="widget.altimeter">Altimeter</span>
                   </div>
                   <div class="widget-card" draggable="true" data-widget-type="speedGraph">
                     <canvas class="widget-preview" id="widgetPreview_speedGraph" width="120" height="68"></canvas>
-                    <span>Speed Graph</span>
+                    <span data-i18n="widget.speedGraph">Speed Graph</span>
                   </div>
                   <div class="widget-card" draggable="true" data-widget-type="miniMap">
                     <canvas class="widget-preview" id="widgetPreview_miniMap" width="120" height="68"></canvas>
-                    <span>Mini Map</span>
+                    <span data-i18n="widget.miniMap">Mini Map</span>
                   </div>
                   <div class="widget-card" draggable="true" data-widget-type="gForce">
                     <canvas class="widget-preview" id="widgetPreview_gForce" width="120" height="68"></canvas>
-                    <span>G-Force</span>
+                    <span data-i18n="widget.gForce">G-Force</span>
                   </div>
                   <div class="widget-card" draggable="true" data-widget-type="image">
                     <canvas class="widget-preview" id="widgetPreview_image" width="120" height="68"></canvas>
-                    <span>Image</span>
+                    <span data-i18n="widget.image">Image</span>
                   </div>
                 </div>
               </div>
@@ -263,7 +302,7 @@
 
             <!-- Selected widget settings (separate panel, hidden until widget selected) -->
             <div class="video-options-section" id="widgetSettingsRow" style="display:none;">
-              <h3>Selected widget</h3>
+              <h3 data-i18n="video.selectedWidget">Selected widget</h3>
               <div id="widgetSettingsPanel"></div>
             </div>
           </div>
@@ -278,12 +317,12 @@
 <div class="modal-backdrop" id="compareModal">
   <div class="modal compare-modal">
     <div class="modal-header compare-header">
-      <h2>Compare jumps</h2>
+      <h2 data-i18n="compare.title">Compare jumps</h2>
       <div class="compare-view-tabs" id="compareViewTabs">
-        <button type="button" class="compare-view-tab active" data-view="topMap">Top view</button>
-        <button type="button" class="compare-view-tab" data-view="view3d">3D view</button>
-        <button type="button" class="compare-view-tab" data-view="vertSpeedTable">Vert. speed</button>
-        <button type="button" class="compare-view-tab" data-view="diveAngleTable">Dive angle</button>
+        <button type="button" class="compare-view-tab active" data-view="topMap" data-i18n="compare.tabTopView">Top view</button>
+        <button type="button" class="compare-view-tab" data-view="view3d" data-i18n="compare.tab3dView">3D view</button>
+        <button type="button" class="compare-view-tab" data-view="vertSpeedTable" data-i18n="compare.tabVertSpeed">Vert. speed</button>
+        <button type="button" class="compare-view-tab" data-view="diveAngleTable" data-i18n="compare.tabDiveAngle">Dive angle</button>
       </div>
       <button class="modal-close" onclick="closeCompareModal()">&times;</button>
     </div>
@@ -299,8 +338,8 @@
             </div>
             <div class="compare-view" data-view="view3d" hidden>
               <canvas id="compare3dCanvas"></canvas>
-              <div class="compare-3d-hint">Drag to rotate · right-drag (or shift-drag) to pan · scroll to zoom</div>
-              <button type="button" class="compare-3d-play" id="compare3dPlay" aria-label="Auto-rotate 3D view">
+              <div class="compare-3d-hint" data-i18n="compare.hint3d">Drag to rotate · right-drag (or shift-drag) to pan · scroll to zoom</div>
+              <button type="button" class="compare-3d-play" id="compare3dPlay" aria-label="Auto-rotate 3D view" data-i18n-aria="compare.autoRotateAria">
                 <svg viewBox="0 0 24 24" class="compare-3d-play-icon" data-icon="rotate" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 4 22 10 16 10"/><path d="M20 14a8 8 0 1 1-2.5-7L22 10"/></svg>
                 <svg viewBox="0 0 12 12" class="compare-3d-play-icon" data-icon="pause" hidden><rect x="3" y="2" width="2.5" height="8" fill="currentColor"/><rect x="6.5" y="2" width="2.5" height="8" fill="currentColor"/></svg>
               </button>
@@ -308,10 +347,10 @@
                 <span class="compare-3d-scrub-time start" id="compare3dScrubStart">--:--:--</span>
                 <input type="range" id="compare3dScrubSlider" min="0" max="10000" value="10000" step="1">
                 <span class="compare-3d-scrub-time" id="compare3dScrubTime">--:--:--</span>
-                <button class="compare-3d-clip-btn" id="compare3dClip" type="button">Create clip</button>
+                <button class="compare-3d-clip-btn" id="compare3dClip" type="button" data-i18n="compare.createClip">Create clip</button>
                 <div class="compare-3d-clip-menu" id="compare3dClipMenu" hidden>
-                  <button type="button" data-mode="30">30-second clip</button>
-                  <button type="button" data-mode="realtime" id="compare3dClipMenuRealtime">Full real-time</button>
+                  <button type="button" data-mode="30" data-i18n="compare.clip30">30-second clip</button>
+                  <button type="button" data-mode="realtime" id="compare3dClipMenuRealtime" data-i18n="compare.clipRealtime">Full real-time</button>
                 </div>
               </div>
               <div class="compare-3d-tooltip" id="compare3dTooltip" hidden></div>
@@ -322,7 +361,7 @@
             <div class="compare-view compare-table-view" data-view="diveAngleTable" hidden>
               <div class="compare-table-scroll"><table id="compareDiveAngleTable" class="compare-table"></table></div>
             </div>
-            <div class="compare-empty" id="compareEmpty">Select one or more jumps from the left.</div>
+            <div class="compare-empty" id="compareEmpty" data-i18n="compare.empty">Select one or more jumps from the left.</div>
           </div>
         </div>
       </div>
@@ -333,15 +372,15 @@
 <div class="modal-backdrop" id="renameModal">
   <div class="modal rename-modal">
     <div class="modal-header">
-      <h2>Rename jump</h2>
+      <h2 data-i18n="rename.title">Rename jump</h2>
       <button class="modal-close" onclick="closeRenameModal()">&times;</button>
     </div>
     <div class="modal-body">
       <form id="renameForm" onsubmit="event.preventDefault(); confirmRename();">
         <input type="text" id="renameInput" class="rename-input" autocomplete="off" spellcheck="false">
         <div class="rename-actions">
-          <button type="button" class="rename-cancel" onclick="closeRenameModal()">Cancel</button>
-          <button type="submit" class="rename-save">Save</button>
+          <button type="button" class="rename-cancel" onclick="closeRenameModal()" data-i18n="rename.cancel">Cancel</button>
+          <button type="submit" class="rename-save" data-i18n="rename.save">Save</button>
         </div>
       </form>
     </div>
@@ -351,6 +390,8 @@
 <!-- App scripts — loaded in dependency order (leaf modules first) -->
 <script src="scripts/state.js"></script>
 <script src="scripts/theme.js"></script>
+<script src="scripts/translations.js"></script>
+<script src="scripts/i18n.js"></script>
 <script src="scripts/storage.js"></script>
 <script src="scripts/csv.js"></script>
 <script src="scripts/widgets/info.js"></script>

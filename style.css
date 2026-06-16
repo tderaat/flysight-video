@@ -107,23 +107,31 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body
 .header .logo { width: 32px; height: 44px; display: flex; align-items: center; justify-content: center; }
 .header .logo svg { fill: var(--accent); }
 
-/* ── Theme picker (top-right) ── */
-.theme-picker {
+/* ── Language + theme pickers (top-right) ── */
+.top-pickers {
   position: fixed;
   top: 16px;
   right: 24px;
   z-index: 50;
   display: flex;
   align-items: center;
+  gap: 16px;
+}
+.theme-picker,
+.lang-picker {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
-.theme-picker-label {
+.theme-picker-label,
+.lang-picker-label {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
 }
-.theme-select {
+.theme-select,
+.lang-select {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -134,8 +142,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
-.theme-select:hover { border-color: var(--border-strong); color: var(--text-strong); }
-.theme-select:focus { outline: none; border-color: var(--accent); }
+.theme-select:hover,
+.lang-select:hover { border-color: var(--border-strong); color: var(--text-strong); }
+.theme-select:focus,
+.lang-select:focus { outline: none; border-color: var(--accent); }
 
 /* ── Upload area ── */
 .upload-area { }

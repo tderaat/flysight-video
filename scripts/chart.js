@@ -36,7 +36,10 @@ function getChartSeriesVisibility() {
 
 function saveChartSeriesVisibility(chart) {
   const map = {};
-  chart.data.datasets.forEach((d, i) => { map[d.label] = chart.isDatasetVisible(i); });
+  // Keyed by the language-independent seriesKey (not the translated label) so
+  // the stored choice survives a language switch. Falls back to label for any
+  // dataset without a seriesKey.
+  chart.data.datasets.forEach((d, i) => { map[d.seriesKey || d.label] = chart.isDatasetVisible(i); });
   try { localStorage.setItem('flysight_chart_series', JSON.stringify(map)); } catch (e) { /* ignore */ }
 }
 
@@ -118,7 +121,7 @@ async function renderCurrentJump(showFull) {
   section.style.display = 'block';
 
   const data = parseFlySightCSV(jump.csv);
-  if (data.length < 50) { section.innerHTML = '<p>Not enough data points.</p>'; return; }
+  if (data.length < 50) { section.innerHTML = '<p>' + t('chart.notEnoughData') + '</p>'; return; }
 
   const firstT = parseTimestamp(data[0].time);
   const allTimes = data.map(r => (parseTimestamp(r.time) - firstT) / 1000);
@@ -339,20 +342,20 @@ async function renderCurrentJump(showFull) {
   if (exitValid) {
     exitBadgeClass = 'badge-valid';
     exitBadgeIcon = '&#10003;';
-    exitTooltip = `Valid — max ${EXIT_MAX_AGL}m / 14,000 ft AGL`;
+    exitTooltip = t('exit.valid', { max: EXIT_MAX_AGL });
   } else if (exitTooHigh) {
     exitBadgeClass = 'badge-invalid';
     exitBadgeIcon = '&#9888;';
-    exitTooltip = `Too high — max ${EXIT_MAX_AGL}m / 14,000 ft AGL`;
+    exitTooltip = t('exit.tooHigh', { max: EXIT_MAX_AGL });
   } else {
     exitBadgeClass = 'badge-invalid';
     exitBadgeIcon = '&#9888;';
-    exitTooltip = `Too low — min ${EXIT_MIN_AGL}m / 13,000 ft AGL`;
+    exitTooltip = t('exit.tooLow', { min: EXIT_MIN_AGL });
   }
 
   const speedScoreHtml = speedScore !== null
     ? `<div class="stat-card">
-        <div class="stat-label">Speed Score (3s)</div>
+        <div class="stat-label">${t('stat.speedScore3s')}</div>
         <div class="stat-value alt">${speedScore.toFixed(2)} km/h</div>
       </div>`
     : '';
@@ -363,7 +366,7 @@ async function renderCurrentJump(showFull) {
   document.getElementById('stats').innerHTML = `
     ${speedScoreHtml}
     <div class="stat-card">
-      <div class="stat-label">Max Vertical Speed</div>
+      <div class="stat-label">${t('stat.maxVertSpeed')}</div>
       <div class="stat-value alt">${maxSpeedKmh} km/h / ${(maxFallSpeed * 2.23694).toFixed(0)} mph</div>
     </div>
     <div class="stat-card">
@@ -371,16 +374,16 @@ async function renderCurrentJump(showFull) {
         ${exitBadgeIcon}
         <span class="exit-tooltip">${exitTooltip.replace('\n', '<br>')}</span>
       </span>
-      <div class="stat-label">Exit Altitude</div>
+      <div class="stat-label">${t('stat.exitAltitude')}</div>
       <div class="stat-value alt">${exitAlt.toFixed(0)} m / ${(exitAlt * 3.28084).toFixed(0)} ft</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Speed Window</div>
-      <div class="stat-detail alt"><span class="stat-detail-label">Start</span> ${perfWindowStartAlt !== null ? perfWindowStartAlt.toFixed(0) + ' m / ' + (perfWindowStartAlt * 3.28084).toFixed(0) + ' ft' : '—'}</div>
-      <div class="stat-detail alt"><span class="stat-detail-label">End</span> ${perfWindowEndAlt.toFixed(0)} m / ${(perfWindowEndAlt * 3.28084).toFixed(0)} ft</div>
+      <div class="stat-label">${t('stat.speedWindow')}</div>
+      <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.start')}</span> ${perfWindowStartAlt !== null ? perfWindowStartAlt.toFixed(0) + ' m / ' + (perfWindowStartAlt * 3.28084).toFixed(0) + ' ft' : '—'}</div>
+      <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.end')}</span> ${perfWindowEndAlt.toFixed(0)} m / ${(perfWindowEndAlt * 3.28084).toFixed(0)} ft</div>
     </div>
-    <div class="stat-card"${amsStart ? ` data-tip="Amsterdam time: ${amsStart}"` : ''}>
-      <div class="stat-label">UTC Start</div>
+    <div class="stat-card"${amsStart ? ` data-tip="${t('stat.amsterdamTip', { time: amsStart })}"` : ''}>
+      <div class="stat-label">${t('stat.utcStart')}</div>
       <div class="stat-detail alt">${utcStart.date}</div>
       <div class="stat-detail alt">${utcStart.time}</div>
     </div>
@@ -406,7 +409,8 @@ async function renderCurrentJump(showFull) {
       labels: chartTimes,
       datasets: [
         {
-          label: 'Altitude (m)',
+          label: t('chart.altitude'),
+          seriesKey: 'altitude',
           data: chartAlts,
           borderColor: themeAccent,
           backgroundColor: themeAccentFill,
@@ -418,7 +422,8 @@ async function renderCurrentJump(showFull) {
           order: 2
         },
         {
-          label: 'Vertical Speed (km/h)',
+          label: t('chart.vertSpeed'),
+          seriesKey: 'vertSpeed',
           data: chartVertSpeeds.map(v => v * 3.6),
           borderColor: '#4ade80',
           backgroundColor: 'rgba(74,222,128,0.08)',
@@ -430,7 +435,8 @@ async function renderCurrentJump(showFull) {
           order: 1
         },
         {
-          label: 'Ground Speed (km/h)',
+          label: t('chart.groundSpeed'),
+          seriesKey: 'groundSpeed',
           data: chartHorzSpeeds.map(v => v * 3.6),
           borderColor: '#ef4444',
           backgroundColor: 'rgba(239,68,68,0.08)',
@@ -442,7 +448,8 @@ async function renderCurrentJump(showFull) {
           order: 0
         },
         {
-          label: 'Dive Angle (°)',
+          label: t('chart.diveAngle'),
+          seriesKey: 'diveAngle',
           data: chartDiveAngles,
           borderColor: '#f472b6',
           backgroundColor: 'rgba(244,114,182,0.08)',
@@ -454,7 +461,8 @@ async function renderCurrentJump(showFull) {
           order: 0
         },
         {
-          label: 'Accel Down (m/s²)',
+          label: t('chart.accelDown'),
+          seriesKey: 'accelDown',
           data: chartAccelDown,
           borderColor: '#fb923c',
           backgroundColor: 'rgba(251,146,60,0.08)',
@@ -467,7 +475,8 @@ async function renderCurrentJump(showFull) {
           order: 0
         },
         {
-          label: 'Satellites',
+          label: t('chart.satellites'),
+          seriesKey: 'satellites',
           data: chartNumSV,
           borderColor: '#a78bfa',
           backgroundColor: 'rgba(167,139,250,0.08)',
@@ -527,7 +536,7 @@ async function renderCurrentJump(showFull) {
               borderDash: [6, 4],
               label: {
                 display: true,
-                content: 'EXIT',
+                content: t('annot.exit'),
                 position: 'start',
                 backgroundColor: 'rgba(148,163,184,0.15)',
                 color: '#94a3b8',
@@ -545,7 +554,7 @@ async function renderCurrentJump(showFull) {
                 borderDash: [4, 3],
                 label: {
                   display: true,
-                  content: 'WINDOW END',
+                  content: t('annot.windowEnd'),
                   position: 'start',
                   backgroundColor: 'rgba(148,163,184,0.15)',
                   color: '#94a3b8',
@@ -564,7 +573,7 @@ async function renderCurrentJump(showFull) {
                 borderWidth: 1,
                 label: {
                   display: true,
-                  content: 'BEST 3s',
+                  content: t('annot.best3s'),
                   position: { x: 'center', y: 'start' },
                   color: 'rgba(255,255,255,0.5)',
                   font: { size: 9, weight: 'bold' },
@@ -601,20 +610,20 @@ async function renderCurrentJump(showFull) {
               const di = ctx.datasetIndex;
               if (di === 0) {
                 const m = ctx.parsed.y;
-                return ' Altitude: ' + m.toFixed(0) + ' m (' + (m * 3.28084).toFixed(0) + ' ft)';
+                return ' ' + t('tt.altitude') + ': ' + m.toFixed(0) + ' m (' + (m * 3.28084).toFixed(0) + ' ft)';
               } else if (di === 1) {
-                return ' Vert Speed: ' + ctx.parsed.y.toFixed(0) + ' km/h';
+                return ' ' + t('tt.vertSpeed') + ': ' + ctx.parsed.y.toFixed(0) + ' km/h';
               } else if (di === 2) {
-                return ' Ground Speed: ' + ctx.parsed.y.toFixed(0) + ' km/h';
+                return ' ' + t('tt.groundSpeed') + ': ' + ctx.parsed.y.toFixed(0) + ' km/h';
               } else if (di === 3) {
                 if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
-                return ' Dive Angle: ' + ctx.parsed.y.toFixed(1) + '°';
+                return ' ' + t('tt.diveAngle') + ': ' + ctx.parsed.y.toFixed(1) + '°';
               } else if (di === 4) {
                 if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
-                return ' Accel Down: ' + ctx.parsed.y.toFixed(1) + ' m/s²';
+                return ' ' + t('tt.accelDown') + ': ' + ctx.parsed.y.toFixed(1) + ' m/s²';
               } else {
                 if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
-                return ' Satellites: ' + ctx.parsed.y;
+                return ' ' + t('tt.satellites') + ': ' + ctx.parsed.y;
               }
             }
           }
@@ -625,7 +634,7 @@ async function renderCurrentJump(showFull) {
           type: 'linear',
           min: showFull ? undefined : -5,
           max: showFull ? undefined : (canopyTimeRel + 5),
-          title: { display: true, text: 'Time (seconds)', color: themeTextMuted },
+          title: { display: true, text: t('axis.time'), color: themeTextMuted },
           ticks: {
             color: themeTextDim,
             callback: v => {
@@ -643,7 +652,7 @@ async function renderCurrentJump(showFull) {
           position: 'left',
           min: yAltMin,
           max: yAltMax,
-          title: { display: true, text: 'Altitude (m)', color: themeAccent },
+          title: { display: true, text: t('axis.altitude'), color: themeAccent },
           ticks: { color: themeAccent },
           grid: { color: themeAccentFill }
         },
@@ -652,7 +661,7 @@ async function renderCurrentJump(showFull) {
           position: 'right',
           min: ySpeedMin,
           max: ySpeedMax,
-          title: { display: true, text: 'Speed (km/h)', color: '#4ade80' },
+          title: { display: true, text: t('axis.speed'), color: '#4ade80' },
           ticks: { color: '#4ade80' },
           grid: { drawOnChartArea: false }
         },
@@ -661,7 +670,7 @@ async function renderCurrentJump(showFull) {
           position: 'right',
           min: 0,
           max: 90,
-          title: { display: true, text: 'Dive Angle (°)', color: '#f472b6' },
+          title: { display: true, text: t('axis.diveAngle'), color: '#f472b6' },
           ticks: { color: '#f472b6' },
           grid: { drawOnChartArea: false }
         },
@@ -669,7 +678,7 @@ async function renderCurrentJump(showFull) {
           type: 'linear',
           position: 'right',
           display: 'auto',
-          title: { display: true, text: 'Accel Down (m/s²)', color: '#fb923c' },
+          title: { display: true, text: t('axis.accelDown'), color: '#fb923c' },
           ticks: { color: '#fb923c' },
           grid: { drawOnChartArea: false }
         },
@@ -679,7 +688,7 @@ async function renderCurrentJump(showFull) {
           display: 'auto',
           min: 0,
           max: maxSat + 2,
-          title: { display: true, text: 'Satellites', color: '#a78bfa' },
+          title: { display: true, text: t('axis.satellites'), color: '#a78bfa' },
           ticks: { color: '#a78bfa', precision: 0, stepSize: 1 },
           grid: { drawOnChartArea: false }
         }
@@ -690,8 +699,9 @@ async function renderCurrentJump(showFull) {
   // Restore the user's last on/off choices for each series (global preference).
   const savedVis = getChartSeriesVisibility();
   state.chartInstance.data.datasets.forEach((d, i) => {
-    if (Object.prototype.hasOwnProperty.call(savedVis, d.label)) {
-      state.chartInstance.setDatasetVisibility(i, savedVis[d.label]);
+    const key = d.seriesKey || d.label;
+    if (Object.prototype.hasOwnProperty.call(savedVis, key)) {
+      state.chartInstance.setDatasetVisibility(i, savedVis[key]);
     }
   });
   state.chartInstance.update('none');
@@ -775,7 +785,7 @@ async function renderCurrentJump(showFull) {
       if (!isNaN(startLat) && !isNaN(startLon)) {
         L.circleMarker([startLat, startLon], {
           radius: 8, fillColor: themeAccent, color: '#000', weight: 2, fillOpacity: 1
-        }).addTo(state.mapInstance).bindTooltip('Start', { permanent: true, direction: 'top', className: 'map-label' });
+        }).addTo(state.mapInstance).bindTooltip(t('map.start'), { permanent: true, direction: 'top', className: 'map-label' });
       }
     }
 
@@ -785,7 +795,7 @@ async function renderCurrentJump(showFull) {
       if (!isNaN(exitLat) && !isNaN(exitLon)) {
         L.circleMarker([exitLat, exitLon], {
           radius: 8, fillColor: '#facc15', color: '#000', weight: 2, fillOpacity: 1
-        }).addTo(state.mapInstance).bindTooltip('Exit', { permanent: true, direction: 'top', className: 'map-label' });
+        }).addTo(state.mapInstance).bindTooltip(t('map.exit'), { permanent: true, direction: 'top', className: 'map-label' });
       }
     }
 
@@ -795,7 +805,7 @@ async function renderCurrentJump(showFull) {
       if (!isNaN(canopyLat) && !isNaN(canopyLon)) {
         L.circleMarker([canopyLat, canopyLon], {
           radius: 8, fillColor: '#f472b6', color: '#000', weight: 2, fillOpacity: 1
-        }).addTo(state.mapInstance).bindTooltip('Canopy', { permanent: true, direction: 'top', className: 'map-label' });
+        }).addTo(state.mapInstance).bindTooltip(t('map.canopy'), { permanent: true, direction: 'top', className: 'map-label' });
       }
     }
 
@@ -806,7 +816,7 @@ async function renderCurrentJump(showFull) {
       if (!isNaN(landLat) && !isNaN(landLon)) {
         L.circleMarker([landLat, landLon], {
           radius: 8, fillColor: '#4ade80', color: '#000', weight: 2, fillOpacity: 1
-        }).addTo(state.mapInstance).bindTooltip('Landing', { permanent: true, direction: 'top', className: 'map-label' });
+        }).addTo(state.mapInstance).bindTooltip(t('map.landing'), { permanent: true, direction: 'top', className: 'map-label' });
       }
     }
 
@@ -862,9 +872,9 @@ async function renderCurrentJump(showFull) {
 
       const html =
         '<div class="map-hover-tooltip-time">' + tStr + '</div>' +
-        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">Alt</span><span>' + altM + '</span><span class="map-hover-tooltip-imperial">' + altFt + '</span></div>' +
-        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">Vert</span><span>' + vKmh + ' km/h</span><span class="map-hover-tooltip-imperial">' + vMph + ' mph</span></div>' +
-        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">Horz</span><span>' + hKmh + ' km/h</span><span class="map-hover-tooltip-imperial">' + hMph + ' mph</span></div>';
+        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">' + t('map.alt') + '</span><span>' + altM + '</span><span class="map-hover-tooltip-imperial">' + altFt + '</span></div>' +
+        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">' + t('map.vert') + '</span><span>' + vKmh + ' km/h</span><span class="map-hover-tooltip-imperial">' + vMph + ' mph</span></div>' +
+        '<div class="map-hover-tooltip-row"><span class="map-hover-tooltip-label">' + t('map.horz') + '</span><span>' + hKmh + ' km/h</span><span class="map-hover-tooltip-imperial">' + hMph + ' mph</span></div>';
 
       if (!state.mapHoverTooltip) {
         state.mapHoverTooltip = L.tooltip({
@@ -961,7 +971,7 @@ async function renderCurrentJump(showFull) {
 
       const setItem = document.createElement('button');
       setItem.className = 'chart-context-item';
-      setItem.textContent = 'Set exit point here';
+      setItem.textContent = t('ctx.setExit');
       setItem.addEventListener('click', function() {
         hideMenu();
         setExitOverride(state.currentJumpName, targetRecTime);
@@ -972,7 +982,7 @@ async function renderCurrentJump(showFull) {
       if (ctx.hasOverride) {
         const resetItem = document.createElement('button');
         resetItem.className = 'chart-context-item';
-        resetItem.textContent = 'Reset to auto-detected exit';
+        resetItem.textContent = t('ctx.resetExit');
         resetItem.addEventListener('click', function() {
           hideMenu();
           clearExitOverride(state.currentJumpName);

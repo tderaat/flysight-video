@@ -181,7 +181,7 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
   group.className = 'widget-config-group';
   const groupLabel = document.createElement('div');
   groupLabel.className = 'widget-config-group-label';
-  groupLabel.textContent = 'Image file';
+  groupLabel.textContent = t('cfg.imageFile');
   group.appendChild(groupLabel);
 
   const status = document.createElement('div');
@@ -192,7 +192,7 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
       const name = widget.config.imageName || 'image';
       status.textContent = name + ' · ' + _formatFileSize(blob.size);
     } else {
-      status.textContent = 'No image selected';
+      status.textContent = t('cfg.noImage');
     }
   }
   refreshStatus();
@@ -204,7 +204,7 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
   const labelBtn = document.createElement('label');
   labelBtn.className = 'trim-btn secondary';
   labelBtn.style.cssText = 'cursor: pointer; display: inline-block;';
-  labelBtn.textContent = (widget.config && widget.config.imageBlob) ? 'Replace image' : 'Choose image';
+  labelBtn.textContent = (widget.config && widget.config.imageBlob) ? t('cfg.replaceImage') : t('cfg.chooseImage');
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
@@ -215,11 +215,11 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
     fileInput.value = '';
     if (!file) return;
     if (!_isAcceptedImageFile(file)) {
-      alert('Please choose a PNG, JPG, WebP, GIF, or SVG image.');
+      alert(t('cfg.imageType'));
       return;
     }
     if (file.size > IMAGE_WIDGET_MAX_BYTES) {
-      alert('Image is too large (max 10 MB). Please choose a smaller file.');
+      alert(t('cfg.imageTooLarge'));
       return;
     }
     if (widget._imageObjectURL) {
@@ -231,7 +231,7 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
     widget.config.imageBlob = file;
     widget.config.imageName = file.name;
     widget.config.imageType = file.type || '';
-    labelBtn.textContent = 'Replace image';
+    labelBtn.textContent = t('cfg.replaceImage');
     refreshStatus();
     drawOverlayPreview();
     state.scheduleSaveWidgetLayout();
@@ -242,7 +242,7 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
   const clearBtn = document.createElement('button');
   clearBtn.className = 'trim-btn secondary';
   clearBtn.type = 'button';
-  clearBtn.textContent = 'Clear';
+  clearBtn.textContent = t('cfg.clear');
   clearBtn.addEventListener('click', () => {
     if (!widget.config.imageBlob) return;
     if (widget._imageObjectURL) {
@@ -254,7 +254,7 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
     delete widget.config.imageBlob;
     delete widget.config.imageName;
     delete widget.config.imageType;
-    labelBtn.textContent = 'Choose image';
+    labelBtn.textContent = t('cfg.chooseImage');
     refreshStatus();
     drawOverlayPreview();
     state.scheduleSaveWidgetLayout();
@@ -278,7 +278,7 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
     state.scheduleSaveWidgetLayout();
   });
   lbl.appendChild(cb);
-  lbl.appendChild(document.createTextNode(' Fade in before exit'));
+  lbl.appendChild(document.createTextNode(' ' + t('cfg.fadeIn')));
   checks.appendChild(lbl);
   wrap.appendChild(checks);
 
