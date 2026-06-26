@@ -169,6 +169,51 @@ function makeLoadingChip(name) {
   return chip;
 }
 
+// Extract a jump's flight date from its CSV — the first data row's UTC
+// timestamp (row 1 = header, row 2 = units, row 3 = first sample). Cheap string
+// slicing, no full parse. Returns null if it can't be read.
+function jumpFlightDate(csv) {
+  if (!csv) return null;
+  const i1 = csv.indexOf('\n');
+  if (i1 < 0) return null;
+  const i2 = csv.indexOf('\n', i1 + 1);
+  if (i2 < 0) return null;
+  let i3 = csv.indexOf('\n', i2 + 1);
+  if (i3 < 0) i3 = csv.length;
+  const ts = csv.slice(i2 + 1, i3).split(',')[0].trim();
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Day bucket key (UTC) used to group consecutive jumps from the same day.
+function jumpDayKey(d) {
+  return d.getUTCFullYear() + '-' + (d.getUTCMonth() + 1) + '-' + d.getUTCDate();
+}
+
+// "Sun, 14 09 2025" — weekday localized to the active UI language, UTC date parts.
+function formatJumpDayHeader(d) {
+  let wd;
+  const lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
+  try {
+    wd = new Intl.DateTimeFormat(lang, { weekday: 'short', timeZone: 'UTC' }).format(d);
+  } catch (e) {
+    wd = new Intl.DateTimeFormat('en', { weekday: 'short', timeZone: 'UTC' }).format(d);
+  }
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return wd + ', ' + dd + '-' + mm + '-' + d.getUTCFullYear();
+}
+
+// Per-day collapse state for the jump list, persisted in localStorage so a
+// collapsed day stays collapsed across reloads. Keyed by jumpDayKey().
+function getCollapsedDays() {
+  try { return new Set(JSON.parse(localStorage.getItem('flysight_collapsed_days') || '[]')); }
+  catch (e) { return new Set(); }
+}
+function saveCollapsedDays(set) {
+  try { localStorage.setItem('flysight_collapsed_days', JSON.stringify([...set])); } catch (e) {}
+}
+
 async function renderJumpList() {
   const list = document.getElementById('jumpList');
   const jumps = await getStoredJumps();
@@ -178,12 +223,72 @@ async function renderJumpList() {
   document.body.classList.toggle('has-jumps', jumps.length > 0 || hasLoading);
   list.innerHTML = '';
   const storedNames = new Set(jumps.map(j => j.name));
-  jumps.forEach(j => {
+
+  // Resolve each jump's grouping date (flight date from the CSV, falling back to
+  // its upload time) and sort oldest-first so same-day jumps are contiguous.
+  const items = jumps.map(j => {
+    const flight = jumpFlightDate(j.csv);
+    const date = flight || (j.addedAt ? new Date(j.addedAt) : null);
+    return { jump: j, date: date };
+  });
+  items.sort((a, b) => {
+    const ta = a.date ? a.date.getTime() : Infinity; // undated sinks to the bottom
+    const tb = b.date ? b.date.getTime() : Infinity;
+    return ta - tb;
+  });
+
+  const collapsed = getCollapsedDays();
+  // Jump count per day, shown after the date when a day is collapsed.
+  const dayCounts = {};
+  items.forEach(it => {
+    if (!it.date) return;
+    const k = jumpDayKey(it.date);
+    dayCounts[k] = (dayCounts[k] || 0) + 1;
+  });
+  let lastDayKey = null;
+  let dayJumpsWrap = null; // the .jump-day-jumps container for the current day
+  items.forEach(({ jump: j, date }) => {
+    const dayKey = date ? jumpDayKey(date) : null;
+    if (date && dayKey !== lastDayKey) {
+      lastDayKey = dayKey;
+      // New collapsible day group: header (chevron + label) + jumps wrapper.
+      const group = document.createElement('div');
+      group.className = 'jump-day' + (collapsed.has(dayKey) ? ' collapsed' : '');
+      const header = document.createElement('div');
+      header.className = 'jump-day-header';
+      const chevron = document.createElement('span');
+      chevron.className = 'jump-day-chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      chevron.textContent = '▾'; // ▾, rotated to ▸ when collapsed (CSS)
+      const label = document.createElement('span');
+      label.className = 'jump-day-label';
+      label.textContent = formatJumpDayHeader(date);
+      const count = document.createElement('span');
+      count.className = 'jump-day-count';
+      count.textContent = '(' + (dayCounts[dayKey] || 0) + ')';
+      header.appendChild(label);
+      header.appendChild(chevron);
+      header.appendChild(count);
+      const dk = dayKey;
+      header.addEventListener('click', function() {
+        const set = getCollapsedDays();
+        if (group.classList.toggle('collapsed')) set.add(dk); else set.delete(dk);
+        saveCollapsedDays(set);
+      });
+      dayJumpsWrap = document.createElement('div');
+      dayJumpsWrap.className = 'jump-day-jumps';
+      group.appendChild(header);
+      group.appendChild(dayJumpsWrap);
+      list.appendChild(group);
+    }
+    // Dated jumps go inside their day's wrapper; undated ones (none in practice)
+    // fall back to the flat list.
+    const target = (date && dayJumpsWrap) ? dayJumpsWrap : list;
     // If a stored jump is being reprocessed (same filename re-dropped), show
     // it as a spinner row instead of the regular chip until the new parse
     // finishes.
     if (state.loadingJumps.has(j.name)) {
-      list.appendChild(makeLoadingChip(j.name));
+      target.appendChild(makeLoadingChip(j.name));
       return;
     }
     const chip = document.createElement('div');
@@ -198,10 +303,11 @@ async function renderJumpList() {
       <button class="download-btn" onclick="event.stopPropagation(); downloadJump('${safeName}')" data-tip="${t('tip.downloadCsv')}">&#x2913;</button>
       <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${safeName}')" data-tip="${t('tip.remove')}">&times;</button>
     `;
-    list.appendChild(chip);
+    target.appendChild(chip);
   });
   // Append loading chips for filenames that haven't landed in IndexedDB yet
-  // (i.e. brand-new uploads, not re-uploads of an existing jump).
+  // (i.e. brand-new uploads, not re-uploads of an existing jump). They have no
+  // CSV yet, so they sit at the bottom until parsed and re-rendered into a day.
   state.loadingJumps.forEach(name => {
     if (storedNames.has(name)) return;
     list.appendChild(makeLoadingChip(name));
