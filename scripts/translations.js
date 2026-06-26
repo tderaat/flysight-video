@@ -93,6 +93,7 @@ var I18N = {
     'tt.diveAngle': 'Dive Angle',
     'tt.accelDown': 'Accel Down',
     'tt.satellites': 'Satellites',
+    'tt.gForce': 'G-Force',
 
     // On-chart annotation labels
     'annot.exit': 'EXIT',
@@ -291,6 +292,7 @@ var I18N = {
     'tt.diveAngle': 'Sturzwinkel',
     'tt.accelDown': 'Beschl. abwärts',
     'tt.satellites': 'Satelliten',
+    'tt.gForce': 'G-Kraft',
 
     // On-chart annotation labels
     'annot.exit': 'ABSPRUNG',
@@ -489,6 +491,7 @@ var I18N = {
     'tt.diveAngle': 'Duikhoek',
     'tt.accelDown': 'Versn. omlaag',
     'tt.satellites': 'Satellieten',
+    'tt.gForce': 'G-kracht',
 
     // On-chart annotation labels
     'annot.exit': 'EXIT',
@@ -687,6 +690,7 @@ var I18N = {
     'tt.diveAngle': 'Angolo di caduta',
     'tt.accelDown': 'Accel. in basso',
     'tt.satellites': 'Satelliti',
+    'tt.gForce': 'Forza G',
 
     // On-chart annotation labels
     'annot.exit': 'USCITA',

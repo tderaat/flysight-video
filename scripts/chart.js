@@ -231,6 +231,30 @@ async function renderCurrentJump(showFull) {
   const satValues = chartNumSV.filter(v => v != null && isFinite(v));
   const maxSat = satValues.length ? Math.max.apply(null, satValues) : 0;
 
+  // G-force per sample (shown in the tooltip). Magnitude of the GPS-velocity
+  // change vector over time, in g — same formula and 3-point smoothing as the
+  // G-Force overlay widget, so the tooltip and gauge agree. null at the first
+  // sample (no preceding point to difference against).
+  const chartGForce = [];
+  for (let i = 0; i < data.length; i++) {
+    let gv = null;
+    if (i >= 1) {
+      let total = 0, count = 0;
+      for (let k = Math.max(1, i - 1); k <= Math.min(data.length - 1, i + 1); k++) {
+        const dt = allTimes[k] - allTimes[k - 1];
+        if (dt <= 0) continue;
+        const dvN = chartVelNs[k] - chartVelNs[k - 1];
+        const dvE = chartVelEs[k] - chartVelEs[k - 1];
+        const dvD = chartVertSpeeds[k] - chartVertSpeeds[k - 1];
+        const accel = Math.sqrt(dvN * dvN + dvE * dvE + dvD * dvD) / dt;
+        total += accel / 9.81;
+        count++;
+      }
+      gv = count > 0 ? total / count : null;
+    }
+    chartGForce.push(gv);
+  }
+
   // Full-recording y-axis bounds — locks altitude and speed scales to the
   // entire jump (airplane climb + freefall + canopy + landing) so they don't
   // rescale when the user pans/zooms across the chart.
@@ -625,6 +649,12 @@ async function renderCurrentJump(showFull) {
                 if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
                 return ' ' + t('tt.satellites') + ': ' + ctx.parsed.y;
               }
+            },
+            afterBody: function(items) {
+              if (!items.length) return [];
+              const gv = chartGForce[items[0].dataIndex];
+              if (gv == null || !isFinite(gv)) return [];
+              return [' ' + t('tt.gForce') + ': ' + gv.toFixed(2) + ' G'];
             }
           }
         }
