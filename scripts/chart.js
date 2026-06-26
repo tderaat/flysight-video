@@ -238,7 +238,8 @@ async function renderCurrentJump(showFull) {
   const chartHorzSpeedsKmh = chartHorzSpeeds.map(v => v * 3.6);
   const yAltMin = Math.min.apply(null, chartAlts);
   const yAltMax = Math.max.apply(null, chartAlts);
-  const ySpeedMax = Math.max(Math.max.apply(null, chartVertSpeedsKmh), Math.max.apply(null, chartHorzSpeedsKmh));
+  // Add 20 km/h of headroom so the fastest speed doesn't touch the top of the chart.
+  const ySpeedMax = Math.max(Math.max.apply(null, chartVertSpeedsKmh), Math.max.apply(null, chartHorzSpeedsKmh)) + 20;
   const ySpeedMin = Math.min(0, Math.min.apply(null, chartVertSpeedsKmh), Math.min.apply(null, chartHorzSpeedsKmh));
 
   const exitAlt = allAlts[exitIdx];
@@ -371,7 +372,7 @@ async function renderCurrentJump(showFull) {
     </div>
     <div class="stat-card">
       <span class="exit-badge ${exitBadgeClass}">
-        ${exitBadgeIcon}
+        <span class="exit-badge-icon">${exitBadgeIcon}</span>
         <span class="exit-tooltip">${exitTooltip.replace('\n', '<br>')}</span>
       </span>
       <div class="stat-label">${t('stat.exitAltitude')}</div>
@@ -493,8 +494,7 @@ async function renderCurrentJump(showFull) {
     },
     options: {
       responsive: true,
-      maintainAspectRatio: true,
-      aspectRatio: 2.5,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       onHover: function(event, elements) {
         if (elements.length > 0 && state.mapInstance) {

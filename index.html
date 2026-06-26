@@ -65,23 +65,23 @@
 <body>
 
 <div class="top-pickers">
-  <div class="lang-picker">
-    <label class="lang-picker-label" for="langSelect" data-i18n="lang.label">Language</label>
-    <select id="langSelect" class="lang-select" aria-label="Select language" data-i18n-aria="lang.aria">
-      <option value="en">English</option>
-      <option value="de">Deutsch</option>
-      <option value="nl">Nederlands</option>
-      <option value="it">Italiano</option>
-    </select>
+  <div class="picker" id="langPicker">
+    <button type="button" class="picker-btn" id="langBtn" aria-label="Select language" data-i18n-aria="lang.aria" aria-haspopup="listbox" aria-expanded="false">
+      <span id="langBtnLabel">EN</span>
+    </button>
+    <div class="picker-menu" id="langMenu" role="listbox"></div>
   </div>
-  <div class="theme-picker">
-    <label class="theme-picker-label" for="themeSelect" data-i18n="theme.label">Theme</label>
-    <select id="themeSelect" class="theme-select" aria-label="Select color theme" data-i18n-aria="theme.aria">
-      <option value="dark-blue" data-i18n="theme.darkBlue">Dark · Blue</option>
-      <option value="light" data-i18n="theme.light">Light · Gray</option>
-      <option value="dark-red" data-i18n="theme.darkRed">Dark · Red</option>
-      <option value="dark-green" data-i18n="theme.darkGreen">Dark · Green</option>
-    </select>
+  <div class="picker" id="themePicker">
+    <button type="button" class="picker-btn" id="themeBtn" aria-label="Select color theme" data-i18n-aria="theme.aria" aria-haspopup="listbox" aria-expanded="false">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+        <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+        <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+        <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"/>
+      </svg>
+    </button>
+    <div class="picker-menu" id="themeMenu" role="listbox"></div>
   </div>
 </div>
 
@@ -163,11 +163,16 @@
         <button class="trim-btn secondary icon-btn" onclick="zoomChart(-1)" data-tip="Zoom out" data-i18n-tip="tip.zoomOut">−</button>
       </div>
     </div>
-    <canvas id="chart"></canvas>
+    <div class="chart-canvas-wrap" id="chartCanvasWrap">
+      <canvas id="chart"></canvas>
+    </div>
+    <div class="chart-resize-handle" id="chartResizeHandle" title="Drag to resize chart height" data-i18n-tip="tip.resizeChart" data-tip="Drag to resize chart height"></div>
   </div>
   <div class="map-stats-row">
     <div class="map-container" id="mapContainer">
       <div id="map"></div>
+      <div class="map-resize-handle" id="mapResizeHandle" title="Drag to resize map height" data-i18n-tip="tip.resizeMap" data-tip="Drag to resize map height"></div>
+      <div class="map-split-handle" id="mapSplitHandle" title="Drag to resize map/stats width" data-i18n-tip="tip.resizeMapWidth" data-tip="Drag to resize map/stats width"></div>
     </div>
     <div class="stats-panel">
       <div class="stats" id="stats"></div>

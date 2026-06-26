@@ -3,7 +3,7 @@
 //
 // To add a language later:
 //   1. add its code to LANGUAGES in scripts/i18n.js
-//   2. add one <option> to the #langSelect in index.html
+//   2. add one entry to LANG_META in scripts/i18n.js ({ value, name, code })
 //   3. add one block below with the SAME keys as `en`
 // English (`en`) is the source of truth and the fallback for any missing key.
 //
@@ -39,6 +39,9 @@ var I18N = {
     'btn.fullFlight': 'Full flight',
     'tip.zoomIn': 'Zoom in',
     'tip.zoomOut': 'Zoom out',
+    'tip.resizeChart': 'Drag to resize chart height',
+    'tip.resizeMap': 'Drag to resize map height',
+    'tip.resizeMapWidth': 'Drag to resize map/stats width',
 
     // Page-wide drop overlays
     'drop.csvTitle': 'Drop FlySight CSV anywhere',
@@ -234,6 +237,9 @@ var I18N = {
     'btn.fullFlight': 'Gesamter Flug',
     'tip.zoomIn': 'Vergrößern',
     'tip.zoomOut': 'Verkleinern',
+    'tip.resizeChart': 'Ziehen, um die Diagrammhöhe anzupassen',
+    'tip.resizeMap': 'Ziehen, um die Kartenhöhe anzupassen',
+    'tip.resizeMapWidth': 'Ziehen, um die Breite von Karte/Statistik anzupassen',
 
     // Page-wide drop overlays
     'drop.csvTitle': 'FlySight-CSV irgendwo ablegen',
@@ -429,6 +435,9 @@ var I18N = {
     'btn.fullFlight': 'Volledige vlucht',
     'tip.zoomIn': 'Inzoomen',
     'tip.zoomOut': 'Uitzoomen',
+    'tip.resizeChart': 'Sleep om de grafiekhoogte aan te passen',
+    'tip.resizeMap': 'Sleep om de kaarthoogte aan te passen',
+    'tip.resizeMapWidth': 'Sleep om de breedte van kaart/statistieken aan te passen',
 
     // Page-wide drop overlays
     'drop.csvTitle': 'Sleep een FlySight-CSV ergens naartoe',
@@ -624,6 +633,9 @@ var I18N = {
     'btn.fullFlight': 'Volo completo',
     'tip.zoomIn': 'Ingrandisci',
     'tip.zoomOut': 'Riduci',
+    'tip.resizeChart': 'Trascina per ridimensionare l altezza del grafico',
+    'tip.resizeMap': 'Trascina per ridimensionare l altezza della mappa',
+    'tip.resizeMapWidth': 'Trascina per ridimensionare la larghezza di mappa/statistiche',
 
     // Page-wide drop overlays
     'drop.csvTitle': 'Trascina un CSV FlySight ovunque',

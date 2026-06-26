@@ -482,6 +482,175 @@ async function deleteJump(name) {
 // Render widget card previews on load
 renderWidgetPreviews();
 
+// ── Resizable panels (chart + map) ──
+// A drag handle pinned to a panel's bottom edge lets the user set its height.
+// The chosen height persists in a cookie (1-year), mirrored to localStorage as a
+// fallback for file:// origins that drop cookies — same pattern as theme/lang.
+(function() {
+  function makeResizable(opts) {
+    var handle = document.getElementById(opts.handleId);
+    var target = document.getElementById(opts.targetId);
+    if (!handle || !target) return;
+    var STORE_KEY = opts.storeKey;
+    var MIN = opts.minHeight;
+    var re = new RegExp('(?:^|;\\s*)' + STORE_KEY + '=([^;]+)');
+
+    function save(px) {
+      try {
+        var d = new Date();
+        d.setTime(d.getTime() + 365 * 24 * 60 * 60 * 1000);
+        document.cookie = STORE_KEY + '=' + px +
+          ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+      } catch (e) {}
+      try { localStorage.setItem(STORE_KEY, String(px)); } catch (e) {}
+    }
+    function read() {
+      var v = null;
+      try { var m = document.cookie.match(re); if (m) v = m[1]; } catch (e) {}
+      if (v == null) { try { v = localStorage.getItem(STORE_KEY); } catch (e) {} }
+      return parseInt(v, 10);
+    }
+    function apply(px) { opts.onApply(target, px); }
+
+    // Restore saved height (if any); otherwise the CSS default applies.
+    var saved = read();
+    if (Number.isFinite(saved) && saved >= MIN) apply(saved);
+
+    var dragging = false, startY = 0, startH = 0;
+
+    function onMove(e) {
+      if (!dragging) return;
+      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      apply(Math.max(MIN, Math.round(startH + (clientY - startY))));
+      e.preventDefault();
+    }
+    function onUp() {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      save(Math.round(target.getBoundingClientRect().height));
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    }
+    function onDown(e) {
+      dragging = true;
+      startY = e.touches ? e.touches[0].clientY : e.clientY;
+      startH = target.getBoundingClientRect().height;
+      handle.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onUp);
+      e.preventDefault();
+    }
+
+    handle.addEventListener('mousedown', onDown);
+    handle.addEventListener('touchstart', onDown, { passive: false });
+  }
+
+  makeResizable({
+    handleId: 'chartResizeHandle', targetId: 'chartCanvasWrap',
+    storeKey: 'flysight_chart_height', minHeight: 300,
+    onApply: function(t, px) {
+      t.style.aspectRatio = 'auto';
+      t.style.height = px + 'px';
+      if (state.chartInstance) state.chartInstance.resize();
+    },
+  });
+  makeResizable({
+    handleId: 'mapResizeHandle', targetId: 'map',
+    storeKey: 'flysight_map_height', minHeight: 350,
+    onApply: function(t, px) {
+      t.style.height = px + 'px';
+      if (state.mapInstance) state.mapInstance.invalidateSize();
+    },
+  });
+
+  // Horizontal splitter on the map's right edge: drags the map/stats column ratio.
+  // Stored as the map's fraction of the row (0.45–0.85) in a cookie (default 0.8 = "4fr 1fr").
+  (function() {
+    var handle = document.getElementById('mapSplitHandle');
+    var row = document.querySelector('.map-stats-row');
+    if (!handle || !row) return;
+    var KEY = 'flysight_map_split';
+    var re = new RegExp('(?:^|;\\s*)' + KEY + '=([^;]+)');
+    var MINF = 0.45, MAXF = 0.85, GAP = 16;
+    var mq = window.matchMedia('(max-width: 900px)');
+    var lastF = 0.8;
+
+    function save(f) {
+      try {
+        var d = new Date();
+        d.setTime(d.getTime() + 365 * 24 * 60 * 60 * 1000);
+        document.cookie = KEY + '=' + f.toFixed(4) +
+          ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+      } catch (e) {}
+      try { localStorage.setItem(KEY, f.toFixed(4)); } catch (e) {}
+    }
+    function read() {
+      var v = null;
+      try { var m = document.cookie.match(re); if (m) v = m[1]; } catch (e) {}
+      if (v == null) { try { v = localStorage.getItem(KEY); } catch (e) {} }
+      return parseFloat(v);
+    }
+    function apply(f) {
+      lastF = f;
+      // Below 900px the layout stacks into one column (media query) — leave it alone.
+      if (mq.matches) { row.style.gridTemplateColumns = ''; return; }
+      row.style.gridTemplateColumns = f.toFixed(4) + 'fr ' + (1 - f).toFixed(4) + 'fr';
+      if (state.mapInstance) state.mapInstance.invalidateSize();
+    }
+
+    var saved = read();
+    if (Number.isFinite(saved)) lastF = Math.max(MINF, Math.min(MAXF, saved));
+    if (!mq.matches && Number.isFinite(saved)) apply(lastF);
+    // Re-apply / clear the inline columns when crossing the stacked-layout breakpoint.
+    mq.addEventListener('change', function() { apply(lastF); });
+
+    function fracAt(clientX) {
+      var rect = row.getBoundingClientRect();
+      var f = (clientX - rect.left) / (rect.width - GAP);
+      return Math.max(MINF, Math.min(MAXF, f));
+    }
+
+    var dragging = false;
+    function onMove(e) {
+      if (!dragging) return;
+      var x = e.touches ? e.touches[0].clientX : e.clientX;
+      apply(fracAt(x));
+      e.preventDefault();
+    }
+    function onUp() {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      save(lastF);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    }
+    function onDown(e) {
+      if (mq.matches) return; // no horizontal split in stacked layout
+      dragging = true;
+      handle.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onUp);
+      e.preventDefault();
+    }
+    handle.addEventListener('mousedown', onDown);
+    handle.addEventListener('touchstart', onDown, { passive: false });
+  })();
+})();
+
 // ── Init ──
 (async () => {
   await renderJumpList();

@@ -136,6 +136,10 @@ function applyLanguage(lang) {
   if (typeof updateWidgetSettingsPanel === 'function') {
     try { updateWidgetSettingsPanel(); } catch (e) {}
   }
+  // Refresh the pickers: lang badge + active row, and re-translate theme labels.
+  if (typeof updateLangButton === 'function') { try { updateLangButton(); } catch (e) {} }
+  if (typeof renderLangMenu === 'function') { try { renderLangMenu(); } catch (e) {} }
+  if (typeof renderThemeMenu === 'function') { try { renderThemeMenu(); } catch (e) {} }
 }
 
 // Re-apply the JS-set bits of the video modal (play/pause button + "Not set"
@@ -152,15 +156,53 @@ function refreshVideoModalLang() {
   }
 }
 
+// Languages shown in the circle picker. `code` is the 2-letter badge on the
+// button; `name` is the menu label, kept in each language's own tongue.
+var LANG_META = [
+  { value: 'en', name: 'English',     code: 'EN' },
+  { value: 'de', name: 'Deutsch',     code: 'DE' },
+  { value: 'nl', name: 'Nederlands',  code: 'NL' },
+  { value: 'it', name: 'Italiano',    code: 'IT' },
+];
+
+function updateLangButton() {
+  var lbl = document.getElementById('langBtnLabel');
+  if (!lbl) return;
+  var m = LANG_META.find(function(x) { return x.value === currentLang; });
+  lbl.textContent = m ? m.code : currentLang.toUpperCase();
+}
+
+function renderLangMenu() {
+  var menu = document.getElementById('langMenu');
+  if (!menu) return;
+  menu.innerHTML = '';
+  LANG_META.forEach(function(m) {
+    var opt = document.createElement('div');
+    opt.className = 'picker-option' + (m.value === currentLang ? ' active' : '');
+    opt.setAttribute('role', 'option');
+    opt.setAttribute('aria-selected', String(m.value === currentLang));
+    var code = document.createElement('span');
+    code.className = 'picker-code';
+    code.textContent = m.code;
+    var label = document.createElement('span');
+    label.textContent = m.name;
+    opt.appendChild(code);
+    opt.appendChild(label);
+    opt.addEventListener('click', function() {
+      writeStoredLang(m.value);
+      applyLanguage(m.value);
+      if (typeof closeAllPickers === 'function') closeAllPickers();
+    });
+    menu.appendChild(opt);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   // Localize the static markup for the resolved language.
   applyTranslations(document);
-  var sel = document.getElementById('langSelect');
-  if (!sel) return;
-  sel.value = currentLang;
-  sel.addEventListener('change', function() {
-    var l = sel.value;
-    writeStoredLang(l);
-    applyLanguage(l);
-  });
+  if (typeof wirePickerButton === 'function') {
+    wirePickerButton(document.getElementById('langBtn'));
+  }
+  updateLangButton();
+  renderLangMenu();
 });

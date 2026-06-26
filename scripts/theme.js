@@ -71,13 +71,74 @@ function hexToRgba(hex, alpha) {
   return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  var sel = document.getElementById('themeSelect');
-  if (!sel) return;
-  sel.value = readStoredTheme();
-  sel.addEventListener('change', function() {
-    var t = sel.value;
-    writeStoredTheme(t);
-    applyTheme(t);
+// ── Circle picker UI (shared by the theme + language dropdowns) ──
+// Each picker is a round button (`.picker-btn`) that toggles a `.picker-menu`.
+// These helpers are global so scripts/i18n.js can reuse them for the language
+// picker (theme.js loads first).
+function closeAllPickers(except) {
+  document.querySelectorAll('.picker.open').forEach(function(p) {
+    if (p === except) return;
+    p.classList.remove('open');
+    var b = p.querySelector('.picker-btn');
+    if (b) b.setAttribute('aria-expanded', 'false');
   });
+}
+function wirePickerButton(btn) {
+  if (!btn) return;
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    var picker = btn.closest('.picker');
+    var willOpen = !picker.classList.contains('open');
+    closeAllPickers(picker);
+    picker.classList.toggle('open', willOpen);
+    btn.setAttribute('aria-expanded', String(willOpen));
+  });
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.picker')) closeAllPickers();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeAllPickers();
+});
+
+// Each theme's representative accent swatch (matches the CSS --accent per theme).
+var THEME_META = [
+  { value: 'dark-blue',  swatch: '#38bdf8', key: 'theme.darkBlue' },
+  { value: 'light',      swatch: '#0284c7', key: 'theme.light' },
+  { value: 'dark-red',   swatch: '#b91c1c', key: 'theme.darkRed' },
+  { value: 'dark-green', swatch: '#22ee5e', key: 'theme.darkGreen' },
+];
+
+// (Re)build the theme dropdown — called on load and on language switch so the
+// labels re-translate and the active row tracks the current theme.
+function renderThemeMenu() {
+  var menu = document.getElementById('themeMenu');
+  if (!menu) return;
+  var current = readStoredTheme();
+  menu.innerHTML = '';
+  THEME_META.forEach(function(m) {
+    var opt = document.createElement('div');
+    opt.className = 'picker-option' + (m.value === current ? ' active' : '');
+    opt.setAttribute('role', 'option');
+    opt.setAttribute('aria-selected', String(m.value === current));
+    var sw = document.createElement('span');
+    sw.className = 'picker-swatch';
+    sw.style.background = m.swatch;
+    var label = document.createElement('span');
+    label.textContent = (typeof t === 'function') ? t(m.key) : m.value;
+    opt.appendChild(sw);
+    opt.appendChild(label);
+    opt.addEventListener('click', function() {
+      writeStoredTheme(m.value);
+      applyTheme(m.value);
+      renderThemeMenu();
+      closeAllPickers();
+    });
+    menu.appendChild(opt);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  wirePickerButton(document.getElementById('themeBtn'));
+  renderThemeMenu();
 });
