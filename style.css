@@ -140,6 +140,23 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body
 .picker.open .picker-btn { border-color: var(--accent); color: var(--text-strong); }
 #themeBtn { color: var(--accent); }
 .picker-btn svg { display: block; }
+/* Jump actions (compare / video overlay) sitting next to the pickers. Same
+   button family, but pills with a visible label instead of circles. Shown only
+   once a jump is loaded. */
+.top-action { display: none; }
+body.has-jump-loaded .top-action { display: inline-flex; }
+.top-action {
+  width: auto;
+  border-radius: 17px;
+  gap: 7px;
+  padding: 0 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+/* The label makes the tooltip redundant on wide screens; it comes back below
+   when the button collapses to icon-only (see the 900px media query). */
+.top-action[data-tip]:hover::after { display: none; }
 .picker-menu {
   display: none;
   position: absolute;
@@ -260,6 +277,15 @@ body.has-jumps .dropzone p { display: none; }
 .jump-day.collapsed .jump-day-chevron { opacity: 1; transform: rotate(-90deg); }
 .jump-day-count { color: var(--text-dim); display: none; }
 .jump-day.collapsed .jump-day-count { display: inline; }
+/* Date sort direction toggle — only rendered in the first day header, pinned to
+   its right edge. Always visible (unlike the hover-only chevron) so it's findable. */
+.jump-day-header .jump-sort-toggle {
+  margin-left: auto;
+  background: none; border: none; padding: 0 2px;
+  color: var(--text-dim); cursor: pointer;
+  font-family: inherit; font-size: 0.85rem; line-height: 1;
+}
+.jump-day-header .jump-sort-toggle:hover { color: var(--accent); }
 .jump-chip {
   background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 16px; cursor: pointer; transition: all 0.15s;
@@ -401,6 +427,14 @@ canvas { width: 100% !important; }
   .map-stats-row { grid-template-columns: 1fr; }
   .stats-panel { order: -1; }
   .map-container .map-split-handle { display: none; }
+  /* The fixed top-right buttons sit over the sidebar header once the layout
+     stacks — collapse them to icon-only (tooltip takes over from the label)
+     and keep the title clear of them. */
+  .top-action { width: 34px; padding: 0; border-radius: 50%; gap: 0; }
+  .top-action .top-action-label { display: none; }
+  .top-action[data-tip]:hover::after { display: block; bottom: auto; top: calc(100% + 8px); }
+  .header { padding-right: 180px; }
+  .header h1 { font-size: 1.15rem; }
 }
 .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .stat-value { font-size: 1.2rem; font-weight: 700; margin-top: 4px; }
@@ -465,10 +499,7 @@ canvas { width: 100% !important; }
 .map-container { background: var(--bg-card); border-radius: 12px; padding: 20px; position: relative; }
 #map { height: 500px; border-radius: 8px; }
 
-/* ── Trim controls ── */
-.trim-controls {
-  display: flex; gap: 16px; align-items: center; margin-bottom: 16px; flex-wrap: wrap;
-}
+/* ── Buttons (chart controls, modals) ── */
 .trim-btn {
   background: var(--accent); color: var(--accent-on); border: none; border-radius: 6px;
   padding: 6px 16px; font-size: 0.85rem; font-weight: 600; cursor: pointer;

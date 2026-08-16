@@ -65,6 +65,29 @@
 <body>
 
 <div class="top-pickers">
+  <!-- Jump actions: pill buttons (icon + label) in the same style family as the
+       round pickers. Hidden until a jump is loaded (body.has-jump-loaded); the
+       label collapses to icon-only below the 900px breakpoint, where the
+       data-tip tooltip takes over. -->
+  <button type="button" class="picker-btn top-action" id="compareJumpsBtn" onclick="openCompareModal()"
+          data-tip="Compare jumps" data-i18n-tip="btn.compareJumps"
+          aria-label="Compare jumps" data-i18n-aria="btn.compareJumps">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+      <polyline points="2 17 12 22 22 17"/>
+      <polyline points="2 12 12 17 22 12"/>
+    </svg>
+    <span class="top-action-label" data-i18n="btn.compareJumps">Compare jumps</span>
+  </button>
+  <button type="button" class="picker-btn top-action" id="videoOverlayBtn" onclick="openVideoModal()"
+          data-tip="Create video overlay" data-i18n-tip="btn.createVideoOverlay"
+          aria-label="Create video overlay" data-i18n-aria="btn.createVideoOverlay">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polygon points="23 7 16 12 23 17 23 7"/>
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+    </svg>
+    <span class="top-action-label" data-i18n="btn.createVideoOverlay">Create video overlay</span>
+  </button>
   <div class="picker" id="langPicker">
     <button type="button" class="picker-btn" id="langBtn" aria-label="Select language" data-i18n-aria="lang.aria" aria-haspopup="listbox" aria-expanded="false">
       <span id="langBtnLabel">EN</span>
@@ -149,10 +172,6 @@
 
 <main class="main-content">
 <div class="chart-section" id="chartSection">
-  <div class="trim-controls">
-    <button class="trim-btn" id="compareJumpsBtn" onclick="openCompareModal()" style="margin-left:auto;" data-i18n="btn.compareJumps">Compare jumps</button>
-    <button class="trim-btn" id="videoOverlayBtn" onclick="openVideoModal()" data-i18n="btn.createVideoOverlay">Create video overlay</button>
-  </div>
   <div class="chart-container">
     <div class="chart-header">
       <div class="chart-title" id="chartTitle"></div>

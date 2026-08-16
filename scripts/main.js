@@ -214,6 +214,75 @@ function saveCollapsedDays(set) {
   try { localStorage.setItem('flysight_collapsed_days', JSON.stringify([...set])); } catch (e) {}
 }
 
+// ── Jump list sorting ──
+// The list is always sorted by date; only the direction is user-controlled, via
+// the small sort icon in the first day header. The choice persists in a cookie
+// (1-year), mirrored to localStorage as a fallback for file:// origins that drop
+// cookies — same pattern as theme/lang.
+const JUMP_SORTS = ['date-asc', 'date-desc'];
+const DEFAULT_JUMP_SORT = 'date-asc';
+
+function readJumpSort() {
+  let v = null;
+  try {
+    const m = document.cookie.match(/(?:^|;\s*)flysight_jump_sort=([^;]+)/);
+    if (m) v = decodeURIComponent(m[1]);
+  } catch (e) {}
+  if (v == null) { try { v = localStorage.getItem('flysight_jump_sort'); } catch (e) {} }
+  return JUMP_SORTS.indexOf(v) >= 0 ? v : DEFAULT_JUMP_SORT;
+}
+
+function writeJumpSort(v) {
+  try {
+    const d = new Date();
+    d.setTime(d.getTime() + 365 * 24 * 60 * 60 * 1000);
+    document.cookie = 'flysight_jump_sort=' + encodeURIComponent(v) +
+      ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+  } catch (e) {}
+  try { localStorage.setItem('flysight_jump_sort', v); } catch (e) {}
+}
+
+// Flip between oldest-first and newest-first, then re-render.
+function toggleJumpSort() {
+  writeJumpSort(readJumpSort() === 'date-asc' ? 'date-desc' : 'date-asc');
+  renderJumpList();
+}
+
+// Date comparator for the active direction. Undated jumps (unreadable CSV and
+// no addedAt) always sink last, tie-broken by name.
+function jumpSortComparator(mode) {
+  const time = it => (it.date ? it.date.getTime() : null);
+  const byName = (a, b) => {
+    try { return a.jump.name.localeCompare(b.jump.name, currentLang, { numeric: true, sensitivity: 'base' }); }
+    catch (e) { return a.jump.name < b.jump.name ? -1 : (a.jump.name > b.jump.name ? 1 : 0); }
+  };
+  const dir = (mode === 'date-desc') ? -1 : 1;
+  return (a, b) => {
+    const ta = time(a), tb = time(b);
+    if (ta == null && tb == null) return byName(a, b);
+    if (ta == null) return 1;
+    if (tb == null) return -1;
+    return (ta - tb) * dir;
+  };
+}
+
+// The sort toggle shown in the first day header: an arrow pointing the way the
+// dates run (↑ oldest first / ↓ newest first). Click doesn't collapse the day.
+function makeJumpSortToggle(mode) {
+  const btn = document.createElement('button');
+  btn.className = 'jump-sort-toggle';
+  btn.type = 'button';
+  btn.textContent = mode === 'date-desc' ? '↓' : '↑';
+  const tip = t(mode === 'date-desc' ? 'sort.dateDesc' : 'sort.dateAsc');
+  btn.setAttribute('data-tip', tip);
+  btn.setAttribute('aria-label', tip);
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    toggleJumpSort();
+  });
+  return btn;
+}
+
 async function renderJumpList() {
   const list = document.getElementById('jumpList');
   const jumps = await getStoredJumps();
@@ -225,17 +294,15 @@ async function renderJumpList() {
   const storedNames = new Set(jumps.map(j => j.name));
 
   // Resolve each jump's grouping date (flight date from the CSV, falling back to
-  // its upload time) and sort oldest-first so same-day jumps are contiguous.
+  // its upload time), then sort by date in the user's chosen direction so
+  // same-day jumps stay contiguous and can be grouped into collapsible days.
+  const sortMode = readJumpSort();
   const items = jumps.map(j => {
     const flight = jumpFlightDate(j.csv);
     const date = flight || (j.addedAt ? new Date(j.addedAt) : null);
     return { jump: j, date: date };
   });
-  items.sort((a, b) => {
-    const ta = a.date ? a.date.getTime() : Infinity; // undated sinks to the bottom
-    const tb = b.date ? b.date.getTime() : Infinity;
-    return ta - tb;
-  });
+  items.sort(jumpSortComparator(sortMode));
 
   const collapsed = getCollapsedDays();
   // Jump count per day, shown after the date when a day is collapsed.
@@ -247,6 +314,7 @@ async function renderJumpList() {
   });
   let lastDayKey = null;
   let dayJumpsWrap = null; // the .jump-day-jumps container for the current day
+  let isFirstDay = true;   // the sort toggle only goes in the first day header
   items.forEach(({ jump: j, date }) => {
     const dayKey = date ? jumpDayKey(date) : null;
     if (date && dayKey !== lastDayKey) {
@@ -269,6 +337,10 @@ async function renderJumpList() {
       header.appendChild(label);
       header.appendChild(chevron);
       header.appendChild(count);
+      if (isFirstDay) {
+        header.appendChild(makeJumpSortToggle(sortMode));
+        isFirstDay = false;
+      }
       const dk = dayKey;
       header.addEventListener('click', function() {
         const set = getCollapsedDays();
@@ -417,6 +489,7 @@ async function deleteJump(name) {
   if (state.currentJumpName === name) {
     state.currentJumpName = null;
     document.getElementById('chartSection').style.display = 'none';
+    document.body.classList.remove('has-jump-loaded');
   }
   await renderJumpList();
 }

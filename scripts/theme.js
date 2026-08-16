@@ -44,6 +44,7 @@ function writeStoredTheme(t) {
 function applyTheme(t) {
   if (THEMES.indexOf(t) < 0) t = DEFAULT_THEME;
   document.documentElement.setAttribute('data-theme', t);
+  updateFavicon(t);
   // Re-render the chart + map so JS-side theme colors update too.
   if (typeof renderCurrentJump === 'function' &&
       typeof state !== 'undefined' && state.currentJumpName) {
@@ -101,6 +102,36 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeAllPickers();
 });
 
+// ── Favicon ──
+// The favicon is the same speed-skydiver silhouette as the header logo,
+// built at runtime as an SVG data URI so it can be tinted with the active
+// theme's accent color. Keep this path in sync with the inline <svg> in
+// index.html's .logo (and with the fallback <link rel="icon"> in <head>).
+var FAVICON_PATH = 'M15 0C17 0 19 2 19 5C19 8 17 10 16 12C18 12 21 14 22 18C23 22 22 26 20 30C19 33 18 36 18 40C18 44 19 48 20 52C21 56 22 60 21 64C20 68 18 72 17 74C16 76 15 78 15 80C15 78 14 76 13 74C12 72 10 68 9 64C8 60 9 56 10 52C11 48 12 44 12 40C12 36 11 33 10 30C8 26 7 22 8 18C9 14 12 12 14 12C13 10 11 8 11 5C11 2 13 0 15 0Z';
+
+function faviconDataUri(color) {
+  var svg = "<svg viewBox='0 0 30 80' xmlns='http://www.w3.org/2000/svg'>" +
+    "<path d='" + FAVICON_PATH + "' fill='" + color + "'/></svg>";
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
+// Repaint the favicon in the given theme's accent. Reads the live CSS
+// variable (so it always matches what the page renders) and falls back to
+// the theme's swatch when the stylesheet hasn't applied yet.
+function updateFavicon(theme) {
+  var link = document.querySelector('link[rel="icon"]');
+  if (!link) return;
+  var meta = THEME_META.filter(function(m) { return m.value === theme; })[0];
+  var color = getThemeColor('accent') || (meta ? meta.swatch : '#38bdf8');
+  // Replace the node rather than mutating href — some browsers ignore an
+  // in-place href change and keep showing the cached icon.
+  var next = document.createElement('link');
+  next.rel = 'icon';
+  next.type = 'image/svg+xml';
+  next.href = faviconDataUri(color);
+  link.parentNode.replaceChild(next, link);
+}
+
 // Each theme's representative accent swatch (matches the CSS --accent per theme).
 var THEME_META = [
   { value: 'dark-blue',  swatch: '#38bdf8', key: 'theme.darkBlue' },
@@ -141,4 +172,7 @@ function renderThemeMenu() {
 document.addEventListener('DOMContentLoaded', function() {
   wirePickerButton(document.getElementById('themeBtn'));
   renderThemeMenu();
+  // The <head> early-apply script sets data-theme but leaves the static
+  // fallback icon in place; tint it now that the stylesheet has loaded.
+  updateFavicon(readStoredTheme());
 });

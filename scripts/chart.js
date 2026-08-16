@@ -119,6 +119,8 @@ async function renderCurrentJump(showFull) {
 
   const section = document.getElementById('chartSection');
   section.style.display = 'block';
+  // Reveals the compare / video-overlay buttons in the top bar.
+  document.body.classList.add('has-jump-loaded');
 
   const data = parseFlySightCSV(jump.csv);
   if (data.length < 50) { section.innerHTML = '<p>' + t('chart.notEnoughData') + '</p>'; return; }
@@ -624,11 +626,14 @@ async function renderCurrentJump(showFull) {
           callbacks: {
             title: function(items) {
               const sec = items[0].parsed.x;
-              const abs = Math.abs(sec);
+              // Tenths of a second — matches the FlySight's 10 Hz logging rate
+              // and the map's hover tooltip. Rounded before the m:ss split so
+              // e.g. 59.97 s reads "1:00.0", not "0:60.0".
+              const abs = Math.round(Math.abs(sec) * 10) / 10;
               const m = Math.floor(abs / 60);
-              const s = Math.floor(abs % 60);
+              const s = abs - m * 60;
               const sign = sec < 0 ? '- ' : '+ ';
-              return 'T' + sign + m + ':' + s.toString().padStart(2,'0');
+              return 'T' + sign + m + ':' + s.toFixed(1).padStart(4, '0');
             },
             label: function(ctx) {
               const di = ctx.datasetIndex;

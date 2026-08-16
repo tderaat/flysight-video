@@ -32,6 +32,10 @@ var I18N = {
     'sidebar.dropTitle': 'Drop a FlySight CSV here, or click to browse',
     'sidebar.dropSubtitle': 'Files are stored locally in your browser',
 
+    // Jump list sort direction (tooltip on the sort toggle)
+    'sort.dateAsc': 'Oldest first',
+    'sort.dateDesc': 'Newest first',
+
     // Trim / chart controls
     'btn.compareJumps': 'Compare jumps',
     'btn.createVideoOverlay': 'Create video overlay',
@@ -230,6 +234,10 @@ var I18N = {
     // Sidebar / upload
     'sidebar.dropTitle': 'FlySight-CSV hier ablegen oder zum Durchsuchen klicken',
     'sidebar.dropSubtitle': 'Dateien werden lokal in Ihrem Browser gespeichert',
+
+    // Jump list sort direction (tooltip on the sort toggle)
+    'sort.dateAsc': 'Älteste zuerst',
+    'sort.dateDesc': 'Neueste zuerst',
 
     // Trim / chart controls
     'btn.compareJumps': 'Sprünge vergleichen',
@@ -430,6 +438,10 @@ var I18N = {
     'sidebar.dropTitle': 'Sleep hier een FlySight-CSV, of klik om te bladeren',
     'sidebar.dropSubtitle': 'Bestanden worden lokaal in je browser opgeslagen',
 
+    // Jump list sort direction (tooltip on the sort toggle)
+    'sort.dateAsc': 'Oudste eerst',
+    'sort.dateDesc': 'Nieuwste eerst',
+
     // Trim / chart controls
     'btn.compareJumps': 'Sprongen vergelijken',
     'btn.createVideoOverlay': 'Video-overlay maken',
@@ -628,6 +640,10 @@ var I18N = {
     // Sidebar / upload
     'sidebar.dropTitle': 'Trascina qui un CSV FlySight, o clicca per sfogliare',
     'sidebar.dropSubtitle': 'I file vengono salvati localmente nel tuo browser',
+
+    // Jump list sort direction (tooltip on the sort toggle)
+    'sort.dateAsc': 'Prima le più vecchie',
+    'sort.dateDesc': 'Prima le più recenti',
 
     // Trim / chart controls
     'btn.compareJumps': 'Confronta lanci',
