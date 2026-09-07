@@ -43,6 +43,8 @@ var I18N = {
     'btn.fullFlight': 'Full flight',
     'tip.zoomIn': 'Zoom in',
     'tip.zoomOut': 'Zoom out',
+    'tip.diveAngleAir': 'Dive Angle uses GPS ground speed, so it includes the wind. Dive Angle, air removes the wind estimated from the aircraft climb, so it is the angle you actually flew. Toggle either one in the legend. In strong upper wind the two can differ by several degrees.',
+    'tip.diveAngleAirAria': 'About the dive angle series',
     'tip.resizeChart': 'Drag to resize chart height',
     'tip.resizeMap': 'Drag to resize map height',
     'tip.resizeMapWidth': 'Drag to resize map/stats width',
@@ -62,6 +64,12 @@ var I18N = {
     'stat.speedScore3s': 'Speed Score (3s)',
     'stat.maxVertSpeed': 'Max Vertical Speed',
     'stat.exitAltitude': 'Exit Altitude',
+    'stat.exitWindAir': 'Exit Wind / Airspeed',
+    'stat.exitWindAirInfo': 'Calculated from the aircraft’s flight during the climb, not measured directly.',
+    'stat.exitWindAirInfoAria': 'How the wind and airspeed are calculated',
+    'stat.wind': 'Wind',
+    'stat.air': 'Air',
+    'stat.windFrom': 'from {deg}°',
     'stat.speedWindow': 'Speed Window',
     'stat.start': 'Start',
     'stat.end': 'End',
@@ -79,6 +87,7 @@ var I18N = {
     'chart.vertSpeed': 'Vertical Speed (km/h)',
     'chart.groundSpeed': 'Ground Speed (km/h)',
     'chart.diveAngle': 'Dive Angle (°)',
+    'chart.diveAngleAir': 'Dive Angle, air (°)',
     'chart.accelDown': 'Accel Down (m/s²)',
     'chart.satellites': 'Satellites',
     'chart.vertAccuracy': 'Vert acc (m)',
@@ -98,6 +107,7 @@ var I18N = {
     'tt.vertSpeed': 'Vert Speed',
     'tt.groundSpeed': 'Ground Speed',
     'tt.diveAngle': 'Dive Angle',
+    'tt.diveAngleAir': 'Dive Angle (air)',
     'tt.accelDown': 'Accel Down',
     'tt.satellites': 'Satellites',
     'tt.vertAccuracy': 'GPS vert. accuracy',
@@ -106,6 +116,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'EXIT',
     'annot.windowEnd': 'WINDOW END',
+    'annot.pastVert': 'VERTICAL',
     'annot.best3s': 'BEST 3s',
 
     // Map markers + hover labels
@@ -117,6 +128,9 @@ var I18N = {
     'map.vert': 'Vert',
     'map.horz': 'Horz',
     'map.offlineTiles': 'Offline: showing cached map tiles only',
+
+    'notes.title': 'Notes',
+    'notes.saved': 'Saved',
 
     // Chart right-click context menu
     'ctx.setExit': 'Set exit point here',
@@ -279,6 +293,8 @@ var I18N = {
     'btn.fullFlight': 'Gesamter Flug',
     'tip.zoomIn': 'Vergrößern',
     'tip.zoomOut': 'Verkleinern',
+    'tip.diveAngleAir': 'Sturzwinkel basiert auf der GPS-Grundgeschwindigkeit und enthält damit den Wind. Sturzwinkel, Luft rechnet den aus dem Steigflug geschätzten Wind heraus und zeigt den tatsächlich geflogenen Winkel. Beide lassen sich in der Legende ein- und ausschalten. Bei starkem Höhenwind können sie mehrere Grad auseinanderliegen.',
+    'tip.diveAngleAirAria': 'Über die Sturzwinkel-Serien',
     'tip.resizeChart': 'Ziehen, um die Diagrammhöhe anzupassen',
     'tip.resizeMap': 'Ziehen, um die Kartenhöhe anzupassen',
     'tip.resizeMapWidth': 'Ziehen, um die Breite von Karte/Statistik anzupassen',
@@ -298,6 +314,12 @@ var I18N = {
     'stat.speedScore3s': 'Speed-Wertung (3s)',
     'stat.maxVertSpeed': 'Max. Vertikalgeschwindigkeit',
     'stat.exitAltitude': 'Absprunghöhe',
+    'stat.exitWindAir': 'Wind / Eigengeschw. beim Absprung',
+    'stat.exitWindAirInfo': 'Aus dem Flug des Flugzeugs im Steigflug berechnet, nicht direkt gemessen.',
+    'stat.exitWindAirInfoAria': 'Wie Wind und Eigengeschwindigkeit berechnet werden',
+    'stat.wind': 'Wind',
+    'stat.air': 'Luft',
+    'stat.windFrom': 'aus {deg}°',
     'stat.speedWindow': 'Speed-Fenster',
     'stat.start': 'Anfang',
     'stat.end': 'Ende',
@@ -315,6 +337,7 @@ var I18N = {
     'chart.vertSpeed': 'Vertikalgeschwindigkeit (km/h)',
     'chart.groundSpeed': 'Bodengeschwindigkeit (km/h)',
     'chart.diveAngle': 'Sturzwinkel (°)',
+    'chart.diveAngleAir': 'Sturzwinkel, Luft (°)',
     'chart.accelDown': 'Beschl. abwärts (m/s²)',
     'chart.satellites': 'Satelliten',
     'chart.vertAccuracy': 'Höhengen. (m)',
@@ -334,6 +357,7 @@ var I18N = {
     'tt.vertSpeed': 'Vertikalgeschw.',
     'tt.groundSpeed': 'Bodengeschw.',
     'tt.diveAngle': 'Sturzwinkel',
+    'tt.diveAngleAir': 'Sturzwinkel (Luft)',
     'tt.accelDown': 'Beschl. abwärts',
     'tt.satellites': 'Satelliten',
     'tt.vertAccuracy': 'GPS-Höhengenauigkeit',
@@ -342,6 +366,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'ABSPRUNG',
     'annot.windowEnd': 'FENSTERENDE',
+    'annot.pastVert': 'SENKRECHT',
     'annot.best3s': 'BESTE 3s',
 
     // Map markers + hover labels
@@ -353,6 +378,9 @@ var I18N = {
     'map.vert': 'Vert.',
     'map.horz': 'Horiz.',
     'map.offlineTiles': 'Offline: nur zwischengespeicherte Kartenkacheln',
+
+    'notes.title': 'Notizen',
+    'notes.saved': 'Gespeichert',
 
     // Chart right-click context menu
     'ctx.setExit': 'Absprungpunkt hier setzen',
@@ -515,6 +543,8 @@ var I18N = {
     'btn.fullFlight': 'Volledige vlucht',
     'tip.zoomIn': 'Inzoomen',
     'tip.zoomOut': 'Uitzoomen',
+    'tip.diveAngleAir': 'Duikhoek gebruikt de GPS-grondsnelheid en bevat dus de wind. Duikhoek, lucht haalt de uit de klim geschatte wind eruit en toont de hoek die je werkelijk vloog. Beide zijn aan en uit te zetten in de legenda. Bij sterke wind op hoogte kunnen ze enkele graden verschillen.',
+    'tip.diveAngleAirAria': 'Over de duikhoekreeksen',
     'tip.resizeChart': 'Sleep om de grafiekhoogte aan te passen',
     'tip.resizeMap': 'Sleep om de kaarthoogte aan te passen',
     'tip.resizeMapWidth': 'Sleep om de breedte van kaart/statistieken aan te passen',
@@ -534,6 +564,12 @@ var I18N = {
     'stat.speedScore3s': 'Speedscore (3s)',
     'stat.maxVertSpeed': 'Max. verticale snelheid',
     'stat.exitAltitude': 'Exithoogte',
+    'stat.exitWindAir': 'Wind / eigen snelheid bij exit',
+    'stat.exitWindAirInfo': 'Berekend uit de vlucht van het vliegtuig tijdens de klim, niet direct gemeten.',
+    'stat.exitWindAirInfoAria': 'Hoe de wind en eigen snelheid worden berekend',
+    'stat.wind': 'Wind',
+    'stat.air': 'Lucht',
+    'stat.windFrom': 'uit {deg}°',
     'stat.speedWindow': 'Speedvenster',
     'stat.start': 'Begin',
     'stat.end': 'Einde',
@@ -551,6 +587,7 @@ var I18N = {
     'chart.vertSpeed': 'Verticale snelheid (km/u)',
     'chart.groundSpeed': 'Grondsnelheid (km/u)',
     'chart.diveAngle': 'Duikhoek (°)',
+    'chart.diveAngleAir': 'Duikhoek, lucht (°)',
     'chart.accelDown': 'Versn. omlaag (m/s²)',
     'chart.satellites': 'Satellieten',
     'chart.vertAccuracy': 'Vert. nauwk. (m)',
@@ -570,6 +607,7 @@ var I18N = {
     'tt.vertSpeed': 'Vert. snelheid',
     'tt.groundSpeed': 'Grondsnelheid',
     'tt.diveAngle': 'Duikhoek',
+    'tt.diveAngleAir': 'Duikhoek (lucht)',
     'tt.accelDown': 'Versn. omlaag',
     'tt.satellites': 'Satellieten',
     'tt.vertAccuracy': 'GPS-hoogtenauwkeurigheid',
@@ -578,6 +616,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'EXIT',
     'annot.windowEnd': 'EINDE VENSTER',
+    'annot.pastVert': 'VERTICAAL',
     'annot.best3s': 'BESTE 3s',
 
     // Map markers + hover labels
@@ -589,6 +628,9 @@ var I18N = {
     'map.vert': 'Vert.',
     'map.horz': 'Horiz.',
     'map.offlineTiles': 'Offline: alleen gecachte kaarttegels',
+
+    'notes.title': 'Notities',
+    'notes.saved': 'Opgeslagen',
 
     // Chart right-click context menu
     'ctx.setExit': 'Exitpunt hier instellen',
@@ -751,6 +793,8 @@ var I18N = {
     'btn.fullFlight': 'Volo completo',
     'tip.zoomIn': 'Ingrandisci',
     'tip.zoomOut': 'Riduci',
+    'tip.diveAngleAir': 'Angolo di caduta usa la velocità al suolo GPS e include quindi il vento. Angolo di caduta, aria rimuove il vento stimato dalla salita e mostra l angolo effettivamente volato. Entrambi si attivano dalla legenda. Con vento forte in quota possono differire di diversi gradi.',
+    'tip.diveAngleAirAria': 'Informazioni sulle serie dell angolo di caduta',
     'tip.resizeChart': 'Trascina per ridimensionare l altezza del grafico',
     'tip.resizeMap': 'Trascina per ridimensionare l altezza della mappa',
     'tip.resizeMapWidth': 'Trascina per ridimensionare la larghezza di mappa/statistiche',
@@ -770,6 +814,12 @@ var I18N = {
     'stat.speedScore3s': 'Punteggio velocità (3s)',
     'stat.maxVertSpeed': 'Velocità verticale max',
     'stat.exitAltitude': 'Quota di uscita',
+    'stat.exitWindAir': 'Vento / velocità propria all uscita',
+    'stat.exitWindAirInfo': 'Calcolato dal volo del velivolo durante la salita, non misurato direttamente.',
+    'stat.exitWindAirInfoAria': 'Come sono calcolati vento e velocità propria',
+    'stat.wind': 'Vento',
+    'stat.air': 'Aria',
+    'stat.windFrom': 'da {deg}°',
     'stat.speedWindow': 'Finestra velocità',
     'stat.start': 'Inizio',
     'stat.end': 'Fine',
@@ -787,6 +837,7 @@ var I18N = {
     'chart.vertSpeed': 'Velocità verticale (km/h)',
     'chart.groundSpeed': 'Velocità al suolo (km/h)',
     'chart.diveAngle': 'Angolo di caduta (°)',
+    'chart.diveAngleAir': 'Angolo di caduta, aria (°)',
     'chart.accelDown': 'Accel. in basso (m/s²)',
     'chart.satellites': 'Satelliti',
     'chart.vertAccuracy': 'Prec. vert. (m)',
@@ -806,6 +857,7 @@ var I18N = {
     'tt.vertSpeed': 'Vel. verticale',
     'tt.groundSpeed': 'Vel. al suolo',
     'tt.diveAngle': 'Angolo di caduta',
+    'tt.diveAngleAir': 'Angolo di caduta (aria)',
     'tt.accelDown': 'Accel. in basso',
     'tt.satellites': 'Satelliti',
     'tt.vertAccuracy': 'Precisione vert. GPS',
@@ -814,6 +866,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'USCITA',
     'annot.windowEnd': 'FINE FINESTRA',
+    'annot.pastVert': 'VERTICALE',
     'annot.best3s': 'MIGLIORI 3s',
 
     // Map markers + hover labels
@@ -825,6 +878,9 @@ var I18N = {
     'map.vert': 'Vert.',
     'map.horz': 'Oriz.',
     'map.offlineTiles': 'Offline: solo tasselli mappa in cache',
+
+    'notes.title': 'Note',
+    'notes.saved': 'Salvato',
 
     // Chart right-click context menu
     'ctx.setExit': 'Imposta qui il punto di uscita',
@@ -987,6 +1043,8 @@ var I18N = {
     'btn.fullFlight': 'Hela flygningen',
     'tip.zoomIn': 'Zooma in',
     'tip.zoomOut': 'Zooma ut',
+    'tip.diveAngleAir': 'Dykvinkel bygger på GPS-markfart och innehåller därmed vinden. Dykvinkel, luft räknar bort den vind som uppskattats från stigningen och visar den vinkel du faktiskt flög. Båda kan slås av och på i förklaringen. Vid stark höjdvind kan de skilja sig flera grader.',
+    'tip.diveAngleAirAria': 'Om dykvinkelserierna',
     'tip.resizeChart': 'Dra för att ändra diagrammets höjd',
     'tip.resizeMap': 'Dra för att ändra kartans höjd',
     'tip.resizeMapWidth': 'Dra för att ändra bredden på karta/statistik',
@@ -1006,6 +1064,12 @@ var I18N = {
     'stat.speedScore3s': 'Hastighetspoäng (3 s)',
     'stat.maxVertSpeed': 'Max vertikalhastighet',
     'stat.exitAltitude': 'Utsprångshöjd',
+    'stat.exitWindAir': 'Vind / egenfart vid utsprång',
+    'stat.exitWindAirInfo': 'Beräknat från flygplanets flykt under stigningen, inte direkt mätt.',
+    'stat.exitWindAirInfoAria': 'Hur vind och egenfart beräknas',
+    'stat.wind': 'Vind',
+    'stat.air': 'Luft',
+    'stat.windFrom': 'från {deg}°',
     'stat.speedWindow': 'Hastighetsfönster',
     'stat.start': 'Start',
     'stat.end': 'Slut',
@@ -1023,6 +1087,7 @@ var I18N = {
     'chart.vertSpeed': 'Vertikalhastighet (km/h)',
     'chart.groundSpeed': 'Markhastighet (km/h)',
     'chart.diveAngle': 'Dykvinkel (°)',
+    'chart.diveAngleAir': 'Dykvinkel, luft (°)',
     'chart.accelDown': 'Accel. nedåt (m/s²)',
     'chart.satellites': 'Satelliter',
     'chart.vertAccuracy': 'Vert. nogg. (m)',
@@ -1042,6 +1107,7 @@ var I18N = {
     'tt.vertSpeed': 'Vertikalhastighet',
     'tt.groundSpeed': 'Markhastighet',
     'tt.diveAngle': 'Dykvinkel',
+    'tt.diveAngleAir': 'Dykvinkel (luft)',
     'tt.accelDown': 'Accel. nedåt',
     'tt.satellites': 'Satelliter',
     'tt.vertAccuracy': 'GPS vertikal noggrannhet',
@@ -1050,6 +1116,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'UTSPRÅNG',
     'annot.windowEnd': 'FÖNSTRETS SLUT',
+    'annot.pastVert': 'LODRÄT',
     'annot.best3s': 'BÄSTA 3 s',
 
     // Map markers + hover labels
@@ -1061,6 +1128,9 @@ var I18N = {
     'map.vert': 'Vert',
     'map.horz': 'Horis',
     'map.offlineTiles': 'Offline: visar endast cachade kartrutor',
+
+    'notes.title': 'Anteckningar',
+    'notes.saved': 'Sparat',
 
     // Chart right-click context menu
     'ctx.setExit': 'Sätt utsprångspunkten här',
@@ -1223,6 +1293,8 @@ var I18N = {
     'btn.fullFlight': 'Vuelo completo',
     'tip.zoomIn': 'Acercar',
     'tip.zoomOut': 'Alejar',
+    'tip.diveAngleAir': 'Ángulo de picado usa la velocidad respecto al suelo del GPS, por lo que incluye el viento. Ángulo de picado, aire descuenta el viento estimado a partir del ascenso y muestra el ángulo que realmente volaste. Ambos se activan en la leyenda. Con viento fuerte en altura pueden diferir varios grados.',
+    'tip.diveAngleAirAria': 'Sobre las series de ángulo de picado',
     'tip.resizeChart': 'Arrastra para cambiar la altura del gráfico',
     'tip.resizeMap': 'Arrastra para cambiar la altura del mapa',
     'tip.resizeMapWidth': 'Arrastra para cambiar el ancho de mapa/estadísticas',
@@ -1242,6 +1314,12 @@ var I18N = {
     'stat.speedScore3s': 'Puntuación de velocidad (3 s)',
     'stat.maxVertSpeed': 'Velocidad vertical máxima',
     'stat.exitAltitude': 'Altitud de salida',
+    'stat.exitWindAir': 'Viento / velocidad propia en la salida',
+    'stat.exitWindAirInfo': 'Calculado a partir del vuelo de la aeronave durante el ascenso, no medido directamente.',
+    'stat.exitWindAirInfoAria': 'Cómo se calculan el viento y la velocidad propia',
+    'stat.wind': 'Viento',
+    'stat.air': 'Aire',
+    'stat.windFrom': 'de {deg}°',
     'stat.speedWindow': 'Ventana de velocidad',
     'stat.start': 'Inicio',
     'stat.end': 'Fin',
@@ -1259,6 +1337,7 @@ var I18N = {
     'chart.vertSpeed': 'Velocidad vertical (km/h)',
     'chart.groundSpeed': 'Velocidad respecto al suelo (km/h)',
     'chart.diveAngle': 'Ángulo de picado (°)',
+    'chart.diveAngleAir': 'Ángulo de picado, aire (°)',
     'chart.accelDown': 'Acel. descendente (m/s²)',
     'chart.satellites': 'Satélites',
     'chart.vertAccuracy': 'Prec. vert. (m)',
@@ -1278,6 +1357,7 @@ var I18N = {
     'tt.vertSpeed': 'Vel. vertical',
     'tt.groundSpeed': 'Vel. respecto al suelo',
     'tt.diveAngle': 'Ángulo de picado',
+    'tt.diveAngleAir': 'Ángulo de picado (aire)',
     'tt.accelDown': 'Acel. descendente',
     'tt.satellites': 'Satélites',
     'tt.vertAccuracy': 'Precisión vertical del GPS',
@@ -1286,6 +1366,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'SALIDA',
     'annot.windowEnd': 'FIN DE VENTANA',
+    'annot.pastVert': 'VERTICAL',
     'annot.best3s': 'MEJORES 3 s',
 
     // Map markers + hover labels
@@ -1297,6 +1378,9 @@ var I18N = {
     'map.vert': 'Vert.',
     'map.horz': 'Horiz.',
     'map.offlineTiles': 'Sin conexión: solo se muestran mosaicos de mapa en caché',
+
+    'notes.title': 'Notas',
+    'notes.saved': 'Guardado',
 
     // Chart right-click context menu
     'ctx.setExit': 'Fijar aquí el punto de salida',
@@ -1459,6 +1543,8 @@ var I18N = {
     'btn.fullFlight': 'Cały lot',
     'tip.zoomIn': 'Przybliż',
     'tip.zoomOut': 'Oddal',
+    'tip.diveAngleAir': 'Kąt nurkowania opiera się na prędkości GPS względem ziemi, więc zawiera wiatr. Kąt nurkowania, powietrze odejmuje wiatr oszacowany ze wznoszenia i pokazuje kąt, którym rzeczywiście leciałeś. Oba można włączać w legendzie. Przy silnym wiatrze na wysokości mogą różnić się o kilka stopni.',
+    'tip.diveAngleAirAria': 'O seriach kąta nurkowania',
     'tip.resizeChart': 'Przeciągnij, aby zmienić wysokość wykresu',
     'tip.resizeMap': 'Przeciągnij, aby zmienić wysokość mapy',
     'tip.resizeMapWidth': 'Przeciągnij, aby zmienić szerokość mapy/statystyk',
@@ -1478,6 +1564,12 @@ var I18N = {
     'stat.speedScore3s': 'Wynik prędkości (3 s)',
     'stat.maxVertSpeed': 'Maks. prędkość pionowa',
     'stat.exitAltitude': 'Wysokość wyjścia',
+    'stat.exitWindAir': 'Wiatr / prędkość własna przy wyjściu',
+    'stat.exitWindAirInfo': 'Obliczone z lotu samolotu podczas wznoszenia, nie zmierzone bezpośrednio.',
+    'stat.exitWindAirInfoAria': 'Jak obliczane są wiatr i prędkość własna',
+    'stat.wind': 'Wiatr',
+    'stat.air': 'Powietrze',
+    'stat.windFrom': 'z {deg}°',
     'stat.speedWindow': 'Okno prędkości',
     'stat.start': 'Początek',
     'stat.end': 'Koniec',
@@ -1495,6 +1587,7 @@ var I18N = {
     'chart.vertSpeed': 'Prędkość pionowa (km/h)',
     'chart.groundSpeed': 'Prędkość względem ziemi (km/h)',
     'chart.diveAngle': 'Kąt nurkowania (°)',
+    'chart.diveAngleAir': 'Kąt nurkowania, powietrze (°)',
     'chart.accelDown': 'Przysp. w dół (m/s²)',
     'chart.satellites': 'Satelity',
     'chart.vertAccuracy': 'Dokł. pion. (m)',
@@ -1514,6 +1607,7 @@ var I18N = {
     'tt.vertSpeed': 'Prędkość pionowa',
     'tt.groundSpeed': 'Prędkość wzgl. ziemi',
     'tt.diveAngle': 'Kąt nurkowania',
+    'tt.diveAngleAir': 'Kąt nurkowania (powietrze)',
     'tt.accelDown': 'Przysp. w dół',
     'tt.satellites': 'Satelity',
     'tt.vertAccuracy': 'Dokładność pionowa GPS',
@@ -1522,6 +1616,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'WYJŚCIE',
     'annot.windowEnd': 'KONIEC OKNA',
+    'annot.pastVert': 'PIONOWO',
     'annot.best3s': 'NAJLEPSZE 3 s',
 
     // Map markers + hover labels
@@ -1533,6 +1628,9 @@ var I18N = {
     'map.vert': 'Pion',
     'map.horz': 'Poziom',
     'map.offlineTiles': 'Offline: pokazywane tylko kafelki mapy z pamięci',
+
+    'notes.title': 'Notatki',
+    'notes.saved': 'Zapisano',
 
     // Chart right-click context menu
     'ctx.setExit': 'Ustaw tutaj punkt wyjścia',

@@ -339,6 +339,44 @@ body.has-jumps .dropzone p { display: none; }
 .chart-container { background: var(--bg-card); border-radius: 12px; padding: 20px; position: relative; }
 .chart-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
 .chart-title { font-size: 1rem; color: var(--text-muted); }
+/* Title plus its info button form one flex child, so .chart-header's
+   space-between still puts the controls hard right. */
+.chart-titlebar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* Shared circled-"i" affordance. .stat-info is the same control inside a
+   .stat-label, which is uppercased — hence text-transform: none. */
+.chart-info, .stat-info {
+  flex: none;
+  width: 18px; height: 18px; padding: 0;
+  border: 1px solid var(--border-strong); border-radius: 50%;
+  background: transparent; color: var(--text-muted);
+  font-family: inherit; font-size: 0.7rem; font-weight: 700; line-height: 1;
+  font-style: italic; text-transform: none;
+  cursor: help;
+}
+.chart-info:hover, .chart-info:focus-visible,
+.stat-info:hover, .stat-info:focus-visible { color: var(--accent); border-color: var(--accent); }
+.chart-info:focus-visible, .stat-info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stat-info { width: 15px; height: 15px; font-size: 0.62rem; vertical-align: middle; margin-left: 5px; }
+/* The shared [data-tip] bubble is nowrap and opens upward, which for a
+   paragraph on a control this close to the top of the page means it runs off
+   the screen and gets clipped. This one wraps, opens DOWNWARD into the chart
+   panel, and is left-anchored so it cannot overflow either side.
+   Class+attribute out-specifies the base rule. */
+.chart-info[data-tip]::after {
+  white-space: normal;
+  width: min(340px, 70vw);
+  top: calc(100% + 6px); bottom: auto;
+  left: 0; transform: none;
+  text-align: left;
+}
+/* The stats column sits hard against the right edge of the viewport, so a
+   centred bubble would overflow it. Right-anchored and wrapped instead. */
+.stat-info[data-tip]::after {
+  white-space: normal;
+  width: min(240px, 60vw);
+  right: 0; left: auto; transform: none;
+  text-align: left;
+}
 .chart-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 canvas { width: 100% !important; }
 .chart-canvas-wrap { position: relative; width: 100%; aspect-ratio: 2.5; min-height: 300px; }
@@ -421,6 +459,46 @@ canvas { width: 100% !important; }
 }
 .stat-card:last-child { border-bottom: none; padding-bottom: 0; }
 .stat-card:first-child { padding-top: 0; }
+
+/* ── Per-jump notes ── */
+.notes-panel {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 16px;
+}
+.notes-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.notes-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.notes-saved { font-size: 0.7rem; color: var(--text-dim); }
+.notes-input {
+  display: block;
+  width: 100%;
+  min-height: 100px;
+  /* Height is set from JS to fit the content, so the box must never scroll
+     internally and must not be user-resizable (that would fight the autogrow). */
+  overflow-y: hidden;
+  resize: none;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 12px 14px;
+}
+.notes-input::placeholder { color: var(--text-dim); }
+.notes-input:focus { outline: none; border-color: var(--accent); }
 @media (max-width: 900px) {
   .page-layout { grid-template-columns: 1fr; }
   .sidebar { position: static; }

@@ -564,6 +564,7 @@ async function confirmRename() {
   // Migrate side-channel state keyed by jump name.
   migrateLocalStorageKey('flysight_scores', oldName, newName);
   migrateLocalStorageKey('flysight_exit_overrides', oldName, newName);
+  migrateLocalStorageKey('flysight_notes', oldName, newName);
   if (state.compareDataCache && state.compareDataCache.has(oldName)) {
     state.compareDataCache.set(newName, state.compareDataCache.get(oldName));
     state.compareDataCache.delete(oldName);
@@ -596,6 +597,7 @@ async function deleteJump(name) {
   if (state.compareDataCache) state.compareDataCache.delete(name);
   if (state.compareSelected) state.compareSelected.delete(name);
   if (typeof clearExitOverride === 'function') clearExitOverride(name);
+  if (typeof clearJumpNote === 'function') clearJumpNote(name);
   if (state.currentJumpName === name) {
     state.currentJumpName = null;
     document.getElementById('chartSection').style.display = 'none';
@@ -942,6 +944,7 @@ renderWidgetPreviews();
 
 // ── Init ──
 (async () => {
+  initJumpNotes();
   await renderJumpList();
   const jumps = await getStoredJumps();
   if (jumps.length > 0) selectJump(jumps[jumps.length - 1].name);

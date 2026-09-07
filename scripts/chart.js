@@ -147,6 +147,10 @@ async function renderCurrentJump(showFull) {
   const data = parseFlySightCSV(jump.csv);
   if (data.length < 50) { section.innerHTML = '<p>' + t('chart.notEnoughData') + '</p>'; return; }
 
+  // Per-jump notes live below the map/stats row; refill the box for this jump.
+  // After the row-count guard above, which replaces the whole section.
+  renderJumpNotes();
+
   const firstT = parseTimestamp(data[0].time);
   const allTimes = data.map(r => (parseTimestamp(r.time) - firstT) / 1000);
   const allAlts = data.map(r => parseFloat(r.hMSL));
@@ -275,7 +279,7 @@ async function renderCurrentJump(showFull) {
     accelMax = hi + pad;
   }
 
-  // Two things about the GPS-accuracy range:
+  // Three things about the GPS-accuracy range:
   //
   //  - The top of the range is the 98th percentile, not the maximum. Accuracy
   //    is always worst at first fix, before the aircraft has even taxied
@@ -283,19 +287,29 @@ async function renderCurrentJump(showFull) {
   //    scaling to that spike would flatten the entire useful part of the trace
   //    onto the axis floor. The excursion still reads correctly as the line
   //    leaving the top of the plot area.
-  //  - The range is then padded by half its own size on each side, exactly as
-  //    the acceleration axis is, so the trace occupies the middle 50 % of the
-  //    plot height and leaves the top and bottom quarters to the other series.
-  //    The floor can land below zero as a result; that is only axis headroom,
-  //    the same way the acceleration axis extends past its own data.
+  //  - That percentile range is then hard-capped at VACC_MAX_SPAN above the
+  //    floor. One bad patch anywhere in the recording can still sit inside the
+  //    p98 (a 2 % tail is hundreds of samples at 10 Hz), and it only takes one
+  //    to squash everything else flat. Capping the span keeps the trace
+  //    readable; a spike simply leaves the top of the plot area, exactly as an
+  //    above-p98 excursion already does.
+  //  - The range is finally padded by half its own size on each side, exactly
+  //    as the acceleration axis is, so the trace occupies the middle 50 % of
+  //    the plot height and leaves the top and bottom quarters to the other
+  //    series. With the cap in force the axis spans 20 m, i.e. roughly ±10 m
+  //    around the typical value. The floor can land below zero as a result;
+  //    that is only axis headroom, the same way the acceleration axis extends
+  //    past its own data.
   //
-  // Both are computed over the full recording, so the axis stays put while the
+  // All are computed over the full recording, so the axis stays put while the
   // user pans and zooms — same contract as yAlt / ySpeed.
+  const VACC_MAX_SPAN = 10;
   const vAccValues = chartVAcc.filter(v => v != null && isFinite(v)).sort((a, b) => a - b);
   let vAccMin, vAccMax;
   if (vAccValues.length) {
     const lo = vAccValues[0];
-    const hi = vAccValues[Math.min(vAccValues.length - 1, Math.floor(vAccValues.length * 0.98))];
+    const p98 = vAccValues[Math.min(vAccValues.length - 1, Math.floor(vAccValues.length * 0.98))];
+    const hi = Math.min(p98, lo + VACC_MAX_SPAN);
     const pad = (hi - lo) / 2 || 1;
     vAccMin = lo - pad;
     vAccMax = hi + pad;
@@ -341,6 +355,57 @@ async function renderCurrentJump(showFull) {
   const maxFallSpeed = Math.max(...vertSpeeds);
   const maxSpeedKmh = (maxFallSpeed * 3.6).toFixed(0);
 
+  // ── Wind, used to put the steepness markers on an air-relative basis ──
+  // The Dive Angle series above is ground-relative, so it mixes in the wind.
+  // `estimateWind` (scripts/wind.js) recovers the wind vector from the aircraft
+  // climb so the markers below can threshold the angle the flier actually
+  // controls rather than the one the GPS ground track implies. Needs the chart*
+  // full arrays, since the jump-window slices exclude the climb. Returns null
+  // when the climb never turned enough to constrain the fit, in which case no
+  // marker is placed. Neither the wind nor the air-relative angle is drawn on
+  // the chart — both were tried and removed as visual clutter; they remain on
+  // state.currentFlightDataFull for anything that wants them.
+  const wind = estimateWind(chartAlts, chartVelNs, chartVelEs, exitIdx, groundAlt);
+  const airSeries = windRelativeSeries(chartVelNs, chartVelEs, chartVertSpeeds, wind);
+
+  // Dataset copy of the air-relative dive angle, carrying the SAME null mask as
+  // chartDiveAngles so the two lines start and stop together and read as a
+  // pair. All-null without a wind estimate, which hides the line rather than
+  // silently falling back to the ground-relative values windRelativeSeries
+  // returns in that case. The chart header's info button explains the pair.
+  const chartDiveAnglesAir = [];
+  for (let i = 0; i < data.length; i++) {
+    const tRel = chartTimes[i];
+    if (!wind || tRel < -5 || tRel > canopyTimeRel + 5) chartDiveAnglesAir.push(null);
+    else chartDiveAnglesAir.push(airSeries.diveAngles[i]);
+  }
+
+  // ── Jump-run wind and aircraft airspeed at exit ──
+  // Until the moment of exit the jumper is still travelling with the plane, so
+  // the GPS horizontal velocity just before exit *is* the aircraft's ground
+  // velocity. Averaged over EXIT_VEL_WINDOW ending at exit rather than read off
+  // the single exit sample, because GPS velocity is noisy at that resolution
+  // (up to 9 km/h apart across the 2026 corpus) and because the trace is flat
+  // before exit and decays immediately after it as drag takes hold — so the
+  // window must not straddle T=0.
+  //
+  // Splitting that ground velocity into aircraft-through-the-air plus wind
+  // needs one more piece of information, which is the climb circle fit. So the
+  // wind shown here is the fitted wind, and the airspeed is the ground vector
+  // with it removed. Both are null without a fit, and the card is then omitted.
+  const EXIT_VEL_WINDOW = 1.5;
+  let exitVelSumN = 0, exitVelSumE = 0, exitVelCount = 0;
+  for (let i = 0; i < data.length; i++) {
+    if (chartTimes[i] < -EXIT_VEL_WINDOW || chartTimes[i] > 0) continue;
+    exitVelSumN += chartVelNs[i]; exitVelSumE += chartVelEs[i]; exitVelCount++;
+  }
+  // Falls back to the exit sample itself for a recording that starts at exit.
+  const exitVelN = exitVelCount ? exitVelSumN / exitVelCount : chartVelNs[exitIdx];
+  const exitVelE = exitVelCount ? exitVelSumE / exitVelCount : chartVelEs[exitIdx];
+  const exitAirSpeed = wind
+    ? Math.sqrt((exitVelN - wind.wN) ** 2 + (exitVelE - wind.wE) ** 2) * 3.6
+    : null;
+
   // ── FAI Speed Skydiving Performance Window ──
   const PERF_WINDOW_HEIGHT = 7400 * 0.3048;
   const BREAKOFF_AGL = 5600 * 0.3048;
@@ -374,6 +439,15 @@ async function renderCurrentJump(showFull) {
       break;
     }
   }
+
+  // Over-steep / past-vertical markers. Both need a wind estimate, so neither
+  // is ever placed off the wind-contaminated ground-relative angle. The
+  // over-steep line is informational: across the 2026 season it did not
+  // predict a lower score (see scripts/wind.js).
+  const steepMarkers = detectSteepMarkers(
+    chartTimes, airSeries.diveAngles, airSeries.hSpeeds, airSeries.tracks,
+    perfWindowStartTime, perfWindowEndTime, wind
+  );
 
   // Speed score computation
   const TIME_DELTA = 0.005;
@@ -467,6 +541,16 @@ async function renderCurrentJump(showFull) {
       </div>`
     : '';
 
+  // Omitted entirely when the climb gave no wind fit, since both figures
+  // depend on it — same pattern as speedScoreHtml above.
+  const exitWindAirHtml = wind
+    ? `<div class="stat-card">
+        <div class="stat-label">${t('stat.exitWindAir')}<button type="button" class="stat-info" data-tip="${t('stat.exitWindAirInfo')}" aria-label="${t('stat.exitWindAirInfoAria')}">i</button></div>
+        <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.wind')}</span> ${wind.speedKmh.toFixed(0)} km/h ${t('stat.windFrom', { deg: wind.fromDeg.toFixed(0) })}</div>
+        <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.air')}</span> ${exitAirSpeed.toFixed(0)} km/h</div>
+      </div>`
+    : '';
+
   const utcStart = formatUtcTimestamp(data[0].time);
   const amsStart = formatAmsterdamTimestamp(data[0].time);
 
@@ -482,6 +566,7 @@ async function renderCurrentJump(showFull) {
       ${exitWarningHtml}
       <div class="stat-value alt">${exitAlt.toFixed(0)} m / ${(exitAlt * 3.28084).toFixed(0)} ft</div>
     </div>
+    ${exitWindAirHtml}
     <div class="stat-card">
       <div class="stat-label">${t('stat.speedWindow')}</div>
       <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.start')}</span> ${perfWindowStartAlt !== null ? perfWindowStartAlt.toFixed(0) + ' m / ' + (perfWindowStartAlt * 3.28084).toFixed(0) + ' ft' : '—'}</div>
@@ -563,6 +648,26 @@ async function renderCurrentJump(showFull) {
           pointRadius: 0,
           borderWidth: 1.5,
           tension: 0.2,
+          order: 0
+        },
+        {
+          // The same quantity as the series above with the wind removed, so it
+          // wears the same pink family, dashed, on the same yAngle axis. Hidden
+          // by default like the other opt-in series; the visibility-restore
+          // loop's hasOwnProperty guard keeps that default until the user
+          // toggles it. Only dataset in this file using borderDash.
+          label: t('chart.diveAngleAir'),
+          seriesKey: 'diveAngleAir',
+          data: chartDiveAnglesAir,
+          borderColor: '#f9a8d4',
+          backgroundColor: 'rgba(249,168,212,0.08)',
+          fill: false,
+          yAxisID: 'yAngle',
+          pointRadius: 0,
+          borderWidth: 1.5,
+          borderDash: [5, 3],
+          tension: 0.2,
+          hidden: true,
           order: 0
         },
         {
@@ -681,6 +786,35 @@ async function renderCurrentJump(showFull) {
                 }
               }
             } : {}),
+            // The past-vertical marker is the only YELLOW annotation —
+            // exitLine and windowEndLine above are slate — and it is drawn
+            // translucent so it reads as a note rather than a warning. There
+            // used to be a second yellow "STEEP" line at
+            // `steepMarkers.overSteepT`; it was removed because crossing 86°
+            // turned out not to predict a worse score (see CLAUDE.md), so it
+            // was noise on the chart. The detector still returns it, since
+            // the season-review skill reports on it.
+            ...(steepMarkers.pastVertT !== null ? {
+              pastVertLine: {
+                type: 'line',
+                xMin: steepMarkers.pastVertT,
+                xMax: steepMarkers.pastVertT,
+                borderColor: 'rgba(250,204,21,0.45)',
+                borderWidth: 1.5,
+                borderDash: [4, 3],
+                label: {
+                  display: true,
+                  content: t('annot.pastVert'),
+                  // Vertically centred on the plot. It can sit anywhere now
+                  // that the STEEP line is gone and there is nothing to clear.
+                  position: 'center',
+                  backgroundColor: 'rgba(250,204,21,0.12)',
+                  color: 'rgba(250,204,21,0.9)',
+                  font: { size: 10, weight: 'bold' },
+                  padding: 3
+                }
+              }
+            } : {}),
             ...(best3sStart !== null ? {
               best3sZone: {
                 type: 'box',
@@ -731,6 +865,9 @@ async function renderCurrentJump(showFull) {
                 case 'diveAngle':
                   if (y == null || isNaN(y)) return null;
                   return ' ' + t('tt.diveAngle') + ': ' + y.toFixed(1) + '°';
+                case 'diveAngleAir':
+                  if (y == null || isNaN(y)) return null;
+                  return ' ' + t('tt.diveAngleAir') + ': ' + y.toFixed(1) + '°';
                 case 'accelDown':
                   if (y == null || isNaN(y)) return null;
                   return ' ' + t('tt.accelDown') + ': ' + y.toFixed(1) + ' m/s²';
@@ -1051,7 +1188,7 @@ async function renderCurrentJump(showFull) {
   // Expose flight data for video overlay sync. `landingTimeRel`/`canopyTimeRel`
   // (seconds relative to exit) let the export decide how far to run.
   const landingTimeRel = chartTimes[landingIdx];
-  state.currentFlightData = { times, altitudes, vertSpeeds, horzSpeeds, diveAngles, lats: sliceLats, lons: sliceLons, velNs, velEs, exitIdx: exitIdx - startIdx, canopyIdx: canopyIdx - startIdx, speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd, canopyTimeRel, landingTimeRel };
+  state.currentFlightData = { times, altitudes, vertSpeeds, horzSpeeds, diveAngles, lats: sliceLats, lons: sliceLons, velNs, velEs, exitIdx: exitIdx - startIdx, canopyIdx: canopyIdx - startIdx, speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd, canopyTimeRel, landingTimeRel, wind, steepMarkers };
 
   // Full-recording dataset (relative to exit), used by the video export's
   // "full descent" option to build an overlay-data slice that reaches landing.
@@ -1061,6 +1198,10 @@ async function renderCurrentJump(showFull) {
     diveAngles: chartDiveAngles, lats: chartLats, lons: chartLons, velNs: chartVelNs, velEs: chartVelEs,
     exitIdx, canopyIdx, landingIdx, canopyTimeRel, landingTimeRel,
     speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd,
+    // Wind estimate (or null) plus the air-relative series it enables, so
+    // compare.js and the overlay widgets can use them without recomputing.
+    wind, steepMarkers,
+    diveAnglesAir: airSeries.diveAngles, horzSpeedsAir: airSeries.hSpeeds, tracksAir: airSeries.tracks,
   };
 }
 

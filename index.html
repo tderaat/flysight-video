@@ -177,7 +177,10 @@
 <div class="chart-section" id="chartSection">
   <div class="chart-container">
     <div class="chart-header">
-      <div class="chart-title" id="chartTitle"></div>
+      <div class="chart-titlebar">
+        <div class="chart-title" id="chartTitle"></div>
+        <button type="button" class="chart-info" data-tip="Dive Angle uses GPS ground speed, so it includes the wind. Dive Angle, air removes the wind estimated from the aircraft climb, so it is the angle you actually flew. Toggle either one in the legend. In strong upper wind the two can differ by several degrees." data-i18n-tip="tip.diveAngleAir" aria-label="About the dive angle series" data-i18n-aria="tip.diveAngleAirAria">i</button>
+      </div>
       <div class="chart-controls">
         <button class="trim-btn secondary" onclick="renderCurrentJump()" data-i18n="btn.jumpOnly">Jump only</button>
         <button class="trim-btn secondary" onclick="renderCurrentJump(true)" data-i18n="btn.fullFlight">Full flight</button>
@@ -200,6 +203,13 @@
     <div class="stats-panel">
       <div class="stats" id="stats"></div>
     </div>
+  </div>
+  <div class="notes-panel">
+    <div class="notes-header">
+      <label class="notes-label" for="jumpNotes" data-i18n="notes.title">Notes</label>
+      <span class="notes-saved" id="notesSaved" data-i18n="notes.saved" hidden>Saved</span>
+    </div>
+    <textarea class="notes-input" id="jumpNotes" spellcheck="false"></textarea>
   </div>
 </div>
 </main>
@@ -454,7 +464,9 @@
 <script src="scripts/i18n.js"></script>
 <script src="scripts/storage.js"></script>
 <script src="scripts/csv.js"></script>
+<script src="scripts/wind.js"></script>
 <script src="scripts/tiles.js"></script>
+<script src="scripts/notes.js"></script>
 <script src="scripts/widgets/info.js"></script>
 <script src="scripts/widgets/speed.js"></script>
 <script src="scripts/widgets/alt-graph.js"></script>
