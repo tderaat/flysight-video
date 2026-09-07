@@ -241,7 +241,9 @@
              toggled from scripts/convert.js. -->
         <div class="video-convert" id="videoConvertPanel" style="display:none;">
           <p class="video-convert-msg" id="videoConvertMsg"></p>
-          <p class="video-convert-note" data-i18n="convert.note">The conversion runs entirely on your computer, nothing is uploaded. A long clip can take several minutes.</p>
+          <p class="video-convert-eta" id="videoConvertEta" style="display:none;"></p>
+          <p class="video-convert-note" data-i18n="convert.note">The conversion runs entirely on your computer, nothing is uploaded.</p>
+          <p class="video-convert-note" data-i18n="convert.tipH264">Tip: most cameras can record H.264 instead of H.265, which avoids this step entirely.</p>
           <div class="video-convert-actions" id="videoConvertActions">
             <button class="trim-btn" id="videoConvertBtn" onclick="startVideoConvert()" data-i18n="convert.btn">Convert to H.264</button>
             <button class="export-cancel-btn" id="videoConvertDismissBtn" onclick="hideVideoConvertOffer()" data-i18n="convert.dismiss">Dismiss</button>

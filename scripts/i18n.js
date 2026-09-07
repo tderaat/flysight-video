@@ -132,6 +132,10 @@ function applyLanguage(lang) {
   }
   // Video modal: dynamic, JS-driven text not covered by data-i18n.
   refreshVideoModalLang();
+  // Codec-conversion offer: its codec line and time estimate are set from JS.
+  if (typeof refreshVideoConvertLang === 'function') {
+    try { refreshVideoConvertLang(); } catch (e) {}
+  }
   // Selected widget's config panel (rebuilt from scratch in the new language).
   if (typeof updateWidgetSettingsPanel === 'function') {
     try { updateWidgetSettingsPanel(); } catch (e) {}

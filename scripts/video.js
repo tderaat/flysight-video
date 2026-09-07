@@ -122,16 +122,17 @@ function fourccAt(bytes, idx) {
   return String.fromCharCode(bytes[idx], bytes[idx + 1], bytes[idx + 2], bytes[idx + 3]);
 }
 
-// Walks the top-level ISO-BMFF box list (MP4 and MOV share it) to find `moov`,
-// then reads the first video sample entry out of its `stsd` tables. Returns the
-// fourcc, or null for anything we cannot read (WebM, truncated file, ...).
+// Walks the top-level ISO-BMFF box list (MP4 and MOV share it) and returns the
+// bytes of `moov`, or null for anything we cannot read (WebM, truncated file,
+// a CSV someone renamed to .mp4).
 //
-// The fourcc is NOT searched for directly: `ftyp`'s compatible-brands list can
-// contain codec-looking brands (this repo's own sample file is tagged `avc1`
-// while its track is `hev1`). Reading it at a fixed offset inside `stsd`
-// (+16: version/flags, entry_count, entry size, then the fourcc) is exact.
-function sniffVideoTrackFourcc(file) {
-  var MAX_MOOV = 32 * 1024 * 1024;
+// Memoized on the File object, because both the codec sniff and the duration
+// read want the same bytes and `moov` can run to a few MB.
+var MAX_MOOV = 32 * 1024 * 1024;
+var moovMemo = { file: null, promise: null };
+
+function readMoovBytes(file) {
+  if (moovMemo.file === file) return moovMemo.promise;
   var offset = 0;
   var guard = 0;
 
@@ -156,20 +157,65 @@ function sniffVideoTrackFourcc(file) {
         offset += size;
         return step();
       }
-      var start = offset + headerLen;
-      var len = Math.min(size - headerLen, MAX_MOOV);
-      return readFileBytes(file, start, len).then(function(moov) {
-        for (var i = 0; i + 20 <= moov.length; i++) {
-          if (moov[i] !== 0x73 || fourccAt(moov, i) !== 'stsd') continue;
-          var cc = fourccAt(moov, i + 16);
-          if (VIDEO_CODEC_NAMES[cc]) return cc;
-        }
-        return null;
-      });
+      return readFileBytes(file, offset + headerLen, Math.min(size - headerLen, MAX_MOOV));
     });
   }
 
-  return step();
+  moovMemo.file = file;
+  moovMemo.promise = step().catch(function() { return null; });
+  return moovMemo.promise;
+}
+
+// Reads the first video sample entry's fourcc out of `moov`'s `stsd` tables.
+//
+// The fourcc is NOT searched for directly: `ftyp`'s compatible-brands list can
+// contain codec-looking brands (this repo's own sample file is tagged `avc1`
+// while its track is `hev1`). Reading it at a fixed offset inside `stsd`
+// (+16: version/flags, entry_count, entry size, then the fourcc) is exact.
+function sniffVideoTrackFourcc(file) {
+  return readMoovBytes(file).then(function(moov) {
+    if (!moov) return null;
+    for (var i = 0; i + 20 <= moov.length; i++) {
+      if (moov[i] !== 0x73 || fourccAt(moov, i) !== 'stsd') continue;
+      var cc = fourccAt(moov, i + 16);
+      if (VIDEO_CODEC_NAMES[cc]) return cc;
+    }
+    return null;
+  });
+}
+
+// Clip length in seconds, straight out of `mvhd`. The point is that this works
+// on a file the browser cannot decode a single frame of, which is exactly when
+// the conversion estimate needs a duration and `<video>` cannot supply one.
+function readMp4DurationSec(file) {
+  return readMoovBytes(file).then(function(moov) {
+    if (!moov) return null;
+    var dv = new DataView(moov.buffer, moov.byteOffset, moov.byteLength);
+    for (var i = 0; i + 32 <= moov.length; i++) {
+      if (moov[i] !== 0x6d || fourccAt(moov, i) !== 'mvhd') continue;
+      var version = moov[i + 4];
+      // Past the fourcc, then version (1) + flags (3).
+      var p = i + 8;
+      var timescale, duration;
+      if (version === 1) {
+        p += 16; // creation + modification, 8 bytes each
+        if (p + 12 > moov.length) return null;
+        timescale = dv.getUint32(p);
+        duration = Number(dv.getBigUint64(p + 4));
+      } else {
+        p += 8; // creation + modification, 4 bytes each
+        if (p + 8 > moov.length) return null;
+        timescale = dv.getUint32(p);
+        duration = dv.getUint32(p + 4);
+        if (duration === 0xFFFFFFFF) return null; // "unknown" sentinel
+      }
+      if (!timescale) return null;
+      var secs = duration / timescale;
+      // A day is a generous ceiling and rules out the 64-bit unknown sentinel.
+      return secs > 0 && secs < 86400 ? secs : null;
+    }
+    return null;
+  });
 }
 
 // A successful metadata load is NOT proof the browser can show the footage.

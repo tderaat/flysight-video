@@ -939,7 +939,11 @@ canvas { width: 100% !important; }
   background: var(--bg-inset); border: 1px solid var(--border);
 }
 .video-convert-msg { font-size: 0.9rem; color: var(--text); margin-bottom: 6px; }
-.video-convert-note { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 12px; }
+.video-convert-eta { font-size: 0.9rem; color: var(--text-mid); margin-bottom: 8px; }
+/* Two notes stack here (the privacy line and the H.264 tip), so only the last
+   one carries the gap down to the buttons. */
+.video-convert-note { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 2px; }
+.video-convert-note:last-of-type { margin-bottom: 12px; }
 .video-convert-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* .export-cancel-btn carries a top margin for its use inside #exportProgress. */
 .video-convert-actions .export-cancel-btn { margin-top: 0; }

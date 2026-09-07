@@ -44,9 +44,28 @@ var FFMPEG_CONVERT_ARGS = [
   '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
 ];
 
+// Observed throughput, in wall-clock seconds per second of video, persisted in
+// the `settings` object store. ffmpeg.wasm is single-threaded, so this tracks
+// single-core clock speed and varies several-fold between machines: measured
+// ~6x on the dev desktop, and a throttling laptop can be 2-3x worse. Hence a
+// stored per-machine figure rather than a constant.
+var CONVERT_RATE_KEY = 'hevcConvertRate';
+
+// Throughput range used only for the first-run estimate, before this machine
+// has measured itself. The low end is the dev desktop (~4.2x measured); the
+// high end allows for a laptop running 2-3x slower on battery. Stated as a
+// range because a single number would be wrong on unknown hardware, and a
+// wrong number is worse than an honest span.
+var CONVERT_RATE_LOW = 4;
+var CONVERT_RATE_HIGH = 15;
+
 var ffmpegInstance = null;
 var ffmpegLoading = null;
 var convertPendingFile = null;
+var convertPendingCodec = null;    // { fourcc, codecName }, kept for re-rendering
+var convertPendingDuration = null; // seconds from mvhd, null when unreadable
+var convertPendingRate = null;     // seconds of work per second of video
+var convertEtaSmoothed = null;
 var convertRunning = false;
 var convertCancelled = false;
 // Rolling tail of ffmpeg's stderr, so a non-zero exit can name its own reason
@@ -219,17 +238,71 @@ function showVideoConvertOffer(file, fourcc, codecName) {
   var panel = document.getElementById('videoConvertPanel');
   if (!panel) return;
   convertPendingFile = file;
-  document.getElementById('videoConvertMsg').textContent =
-    t('convert.offer', { codec: codecName || fourcc, fourcc: fourcc, mb: FFMPEG_CORE_MB });
+  convertPendingCodec = { fourcc: fourcc, codecName: codecName };
+  convertPendingDuration = null;
+  convertPendingRate = null;
+  renderConvertOfferText();
   document.getElementById('videoConvertCmd').textContent = ffmpegManualCommand(file.name);
   document.getElementById('videoConvertActions').style.display = '';
   document.getElementById('videoConvertProgress').style.display = 'none';
   document.getElementById('videoConvertBtn').disabled = false;
   panel.style.display = '';
+
+  // Deliberately not awaited: the codec message is the urgent part, and neither
+  // read must delay the panel. The estimate line fills in when they land.
+  Promise.all([
+    typeof readMp4DurationSec === 'function' ? readMp4DurationSec(file) : null,
+    typeof getSetting === 'function' ? getSetting(CONVERT_RATE_KEY) : null,
+  ]).then(function(r) {
+    // Dismissed, or a different file arrived while we were reading.
+    if (convertPendingFile !== file) return;
+    convertPendingDuration = r[0];
+    convertPendingRate = r[1];
+    renderConvertOfferText();
+  }).catch(function() {});
+}
+
+// Both the codec line and the estimate are set from JS, so they are rendered
+// through one function that refreshVideoConvertLang() can call again.
+function renderConvertOfferText() {
+  var msg = document.getElementById('videoConvertMsg');
+  var eta = document.getElementById('videoConvertEta');
+  if (!msg || !convertPendingCodec) return;
+  msg.textContent = t('convert.offer', {
+    codec: convertPendingCodec.codecName || convertPendingCodec.fourcc,
+    fourcc: convertPendingCodec.fourcc,
+    mb: FFMPEG_CORE_MB,
+  });
+  if (!eta) return;
+  if (!convertPendingDuration) {
+    // No duration means no honest estimate, so say nothing rather than guess.
+    eta.textContent = '';
+    eta.style.display = 'none';
+    return;
+  }
+  var secs = Math.round(convertPendingDuration);
+  eta.textContent = convertPendingRate
+    ? t('convert.etaKnown', {
+        time: formatConvertDuration(convertPendingDuration * convertPendingRate),
+        secs: secs,
+      })
+    : t('convert.etaUnknown', {
+        low: formatConvertDuration(convertPendingDuration * CONVERT_RATE_LOW),
+        high: formatConvertDuration(convertPendingDuration * CONVERT_RATE_HIGH),
+        secs: secs,
+      });
+  eta.style.display = '';
+}
+
+// Called from applyLanguage() so a live language switch re-renders this panel.
+function refreshVideoConvertLang() {
+  var panel = document.getElementById('videoConvertPanel');
+  if (panel && panel.style.display !== 'none') renderConvertOfferText();
 }
 
 function hideVideoConvertOffer() {
   convertPendingFile = null;
+  convertPendingCodec = null;
   var panel = document.getElementById('videoConvertPanel');
   if (panel) panel.style.display = 'none';
 }
@@ -244,7 +317,11 @@ function setConvertStatus(text, pct) {
 }
 
 function convertElapsed(startedAt) {
-  var s = Math.round((Date.now() - startedAt) / 1000);
+  return formatConvertDuration((Date.now() - startedAt) / 1000);
+}
+
+function formatConvertDuration(secs) {
+  var s = Math.max(0, Math.round(secs));
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
@@ -267,21 +344,59 @@ async function startVideoConvert() {
   setConvertStatus(t('convert.loading', { mb: FFMPEG_CORE_MB }), 0);
 
   var startedAt = Date.now();
+  var encodeStartedAt = null;
+  // Captured now: hideVideoConvertOffer() clears the pending state on success.
+  var durationSec = convertPendingDuration;
+  convertEtaSmoothed = null;
+
   try {
     var out = await convertVideoToH264(file, {
       onStage: function(name) {
         if (name === 'loading') setConvertStatus(t('convert.loading', { mb: FFMPEG_CORE_MB }), 0);
         else if (name === 'reading') setConvertStatus(t('convert.reading'), 0);
-        else setConvertStatus(t('convert.encoding', { pct: 0, elapsed: convertElapsed(startedAt) }), 0);
+        else {
+          encodeStartedAt = Date.now();
+          setConvertStatus(t('convert.encoding', { pct: 0, elapsed: convertElapsed(startedAt) }), 0);
+        }
       },
       onProgress: function(p) {
         var pct = Math.round((p || 0) * 100);
-        setConvertStatus(t('convert.encoding', { pct: pct, elapsed: convertElapsed(startedAt) }), pct);
+        var elapsed = (Date.now() - (encodeStartedAt || startedAt)) / 1000;
+        var left = null;
+        // Extrapolating from the first samples gives a wildly wrong number, so
+        // hold off until there is enough of both signals to be meaningful.
+        if (p > 0.03 && elapsed >= 3) {
+          var raw = elapsed * (1 - p) / p;
+          // Exponential moving average, so the countdown does not jitter.
+          convertEtaSmoothed = convertEtaSmoothed == null
+            ? raw
+            : convertEtaSmoothed * 0.8 + raw * 0.2;
+          left = convertEtaSmoothed;
+        }
+        setConvertStatus(left == null
+          ? t('convert.encoding', { pct: pct, elapsed: convertElapsed(startedAt) })
+          : t('convert.encodingEta', {
+              pct: pct,
+              elapsed: convertElapsed(startedAt),
+              left: formatConvertDuration(left),
+            }), pct);
       },
     });
     if (convertCancelled) return;
+
+    // Record throughput for the next offer's up-front estimate. Measured over
+    // the encode phase only: the core download and the file read are roughly
+    // constant rather than proportional to clip length, so leaving them out
+    // makes the per-second-of-video figure more accurate. Overwritten rather
+    // than averaged, so it tracks the machine's current state.
+    if (encodeStartedAt && durationSec > 0 && typeof setSetting === 'function') {
+      var rate = ((Date.now() - encodeStartedAt) / 1000) / durationSec;
+      if (rate > 0 && rate < 600) setSetting(CONVERT_RATE_KEY, rate);
+    }
+
     console.info('[FlySight] converted to H.264', {
       from: file.name, fromSize: file.size, toSize: out.size,
+      clipSeconds: durationSec && Math.round(durationSec),
       seconds: Math.round((Date.now() - startedAt) / 1000),
     });
     hideVideoConvertOffer();
