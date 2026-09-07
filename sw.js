@@ -17,8 +17,13 @@
 //     (stale-while-revalidate): instant offline, updates land next load
 //   - cross-origin (map tiles) -> not intercepted at all; scripts/tiles.js
 //     already caches those as Blobs in IndexedDB
+//
+// vendor/ffmpeg/ holds only the small scripts (~120 KB); the 30.7 MB H.265
+// converter core is fetched from jsDelivr by scripts/convert.js, pinned by an
+// SRI hash. Being cross-origin it is not intercepted here either, and the CDN
+// serves it immutable, so the browser cache keeps it between sessions.
 
-const CACHE_VERSION = 'flysight-v1';
+const CACHE_VERSION = 'flysight-v5';
 
 const PRECACHE = [
   './',
@@ -35,6 +40,9 @@ const PRECACHE = [
   'vendor/chartjs-plugin-zoom.min.js',
   'vendor/leaflet.min.css',
   'vendor/leaflet.min.js',
+  'vendor/ffmpeg/ffmpeg.js',
+  'vendor/ffmpeg/814.ffmpeg.js',
+  'vendor/ffmpeg/ffmpeg-core.js',
   'vendor/mp4-muxer.min.js',
   'vendor/webm-muxer.min.js',
   'vendor/images/layers.png',
@@ -61,6 +69,7 @@ const PRECACHE = [
   'scripts/widgets/image.js',
   'scripts/widgets/core.js',
   'scripts/chart.js',
+  'scripts/convert.js',
   'scripts/video.js',
   'scripts/compare.js',
   'scripts/main.js',

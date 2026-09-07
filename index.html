@@ -235,6 +235,27 @@
           <p data-i18n="video.dropSubtitle">MP4, WebM, or MOV supported</p>
           <input type="file" id="videoFileInput" accept="video/*">
         </div>
+
+        <!-- Shown only when the dropped file uses a codec this browser cannot
+             decode but ffmpeg.wasm can (H.265/HEVC in practice). Populated and
+             toggled from scripts/convert.js. -->
+        <div class="video-convert" id="videoConvertPanel" style="display:none;">
+          <p class="video-convert-msg" id="videoConvertMsg"></p>
+          <p class="video-convert-note" data-i18n="convert.note">The conversion runs entirely on your computer, nothing is uploaded. A long clip can take several minutes.</p>
+          <div class="video-convert-actions" id="videoConvertActions">
+            <button class="trim-btn" id="videoConvertBtn" onclick="startVideoConvert()" data-i18n="convert.btn">Convert to H.264</button>
+            <button class="export-cancel-btn" id="videoConvertDismissBtn" onclick="hideVideoConvertOffer()" data-i18n="convert.dismiss">Dismiss</button>
+          </div>
+          <div id="videoConvertProgress" style="display:none;">
+            <div class="progress-bar"><div class="progress-fill" id="videoConvertFill"></div></div>
+            <span class="video-convert-status" id="videoConvertStatus"></span>
+            <button class="export-cancel-btn" id="videoConvertCancelBtn" onclick="cancelVideoConvert()" data-i18n="convert.cancel">Cancel</button>
+          </div>
+          <details class="video-convert-manual">
+            <summary data-i18n="convert.manualTitle">Prefer to convert it yourself?</summary>
+            <code id="videoConvertCmd"></code>
+          </details>
+        </div>
       </div>
 
       <!-- Step 2: Sync & Configure (hidden until video loaded) -->
@@ -434,6 +455,7 @@
 <script src="scripts/widgets/image.js"></script>
 <script src="scripts/widgets/core.js"></script>
 <script src="scripts/chart.js"></script>
+<script src="scripts/convert.js"></script>
 <script src="scripts/video.js"></script>
 <script src="scripts/compare.js"></script>
 <script src="scripts/main.js"></script>

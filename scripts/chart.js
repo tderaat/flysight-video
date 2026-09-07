@@ -893,12 +893,13 @@ async function renderCurrentJump(showFull) {
 
       const lat = windowLats[bestIdx];
       const lon = windowLons[bestIdx];
-      const t = windowTimes[bestIdx];
+      // Not named `t` — that's the global translation function, used below.
+      const tRel = windowTimes[bestIdx];
       const alt = windowAlts[bestIdx];
       const vSpd = windowVertSpeeds[bestIdx];
       const hSpd = windowHorzSpeeds[bestIdx];
 
-      const tStr = (t >= 0 ? 'T+' : 'T') + t.toFixed(1) + 's';
+      const tStr = (tRel >= 0 ? 'T+' : 'T') + tRel.toFixed(1) + 's';
       const altM = isNaN(alt) ? '—' : Math.round(alt).toLocaleString() + ' m';
       const altFt = isNaN(alt) ? '' : Math.round(alt * 3.28084).toLocaleString() + ' ft';
       const vKmh = (vSpd * 3.6).toFixed(1);

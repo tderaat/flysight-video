@@ -41,6 +41,7 @@ function closeVideoModal() {
   document.getElementById('widgetsSection').style.display = 'none';
   document.getElementById('exportSection').style.display = 'none';
 
+  if (typeof hideVideoConvertOffer === 'function') hideVideoConvertOffer();
   if (typeof clearVideoPageDropOverlay === 'function') clearVideoPageDropOverlay();
 }
 
@@ -63,6 +64,147 @@ document.addEventListener('keydown', function(e) {
   fi.addEventListener('change', () => { if (fi.files.length) handleVideoFile(fi.files[0]); });
 })();
 
+// ── Video load diagnostics ──
+// A <video> element reports a failed load as a bare `error` event, so a codec
+// the browser cannot decode is indistinguishable from a corrupt file. The most
+// common cause by far is H.265/HEVC footage (action cameras and phones default
+// to it), which browsers do not reliably decode even though the file is a
+// perfectly valid .mp4. To say so instead of guessing, we read the video
+// track's sample-entry fourcc straight out of the file's ISO-BMFF boxes.
+
+// Video sample-entry fourccs mapped to the codec name shown to the user.
+// Codec names are proper nouns, so they are not translated.
+var VIDEO_CODEC_NAMES = {
+  avc1: 'H.264/AVC', avc3: 'H.264/AVC',
+  hev1: 'H.265/HEVC', hvc1: 'H.265/HEVC',
+  dvh1: 'Dolby Vision (H.265)', dvhe: 'Dolby Vision (H.265)', dav1: 'Dolby Vision (AV1)',
+  av01: 'AV1', vp09: 'VP9', vp08: 'VP8',
+  apch: 'Apple ProRes', apcn: 'Apple ProRes', apcs: 'Apple ProRes',
+  apco: 'Apple ProRes', ap4h: 'Apple ProRes', ap4x: 'Apple ProRes',
+  mp4v: 'MPEG-4 Part 2', mjpa: 'Motion JPEG', mjpb: 'Motion JPEG',
+  dvc: 'DV', dvcp: 'DV', 'rle ': 'QuickTime RLE',
+};
+
+// Fourccs no browser is expected to decode, so finding one is a definitive
+// explanation. HEVC is handled separately since some browsers do support it.
+var UNPLAYABLE_FOURCC = [
+  'dvh1', 'dvhe', 'dav1',
+  'apch', 'apcn', 'apcs', 'apco', 'ap4h', 'ap4x',
+  'mp4v', 'mjpa', 'mjpb', 'dvc', 'dvcp', 'rle ',
+];
+
+// MediaError.code -> a short translated reason for the generic message.
+var MEDIA_ERROR_KEYS = {
+  1: 'video.mediaErrAborted',
+  2: 'video.mediaErrNetwork',
+  3: 'video.mediaErrDecode',
+  4: 'video.mediaErrSrc',
+};
+
+// Deliberately NOT probed with canPlayType() or mediaCapabilities.decodingInfo():
+// both lie. Firefox 155 on Windows reports 'probably' and
+// supported/smooth/powerEfficient=true for HEVC, then fails the actual load with
+// MEDIA_ERR_DECODE ("Utility MF Media Engine CDM only support for media engine
+// playback"). Re-tagging hev1 to hvc1 does not help it either. So the fourcc
+// from the file is the only trustworthy signal, and the HEVC message points at
+// Chrome/Edge (which do decode it here, WebCodecs included) or a re-encode.
+
+function readFileBytes(file, start, length) {
+  var end = Math.min(start + length, file.size);
+  if (end <= start) return Promise.resolve(new Uint8Array(0));
+  return file.slice(start, end).arrayBuffer().then(function(buf) {
+    return new Uint8Array(buf);
+  });
+}
+
+function fourccAt(bytes, idx) {
+  if (idx + 4 > bytes.length) return '';
+  return String.fromCharCode(bytes[idx], bytes[idx + 1], bytes[idx + 2], bytes[idx + 3]);
+}
+
+// Walks the top-level ISO-BMFF box list (MP4 and MOV share it) to find `moov`,
+// then reads the first video sample entry out of its `stsd` tables. Returns the
+// fourcc, or null for anything we cannot read (WebM, truncated file, ...).
+//
+// The fourcc is NOT searched for directly: `ftyp`'s compatible-brands list can
+// contain codec-looking brands (this repo's own sample file is tagged `avc1`
+// while its track is `hev1`). Reading it at a fixed offset inside `stsd`
+// (+16: version/flags, entry_count, entry size, then the fourcc) is exact.
+function sniffVideoTrackFourcc(file) {
+  var MAX_MOOV = 32 * 1024 * 1024;
+  var offset = 0;
+  var guard = 0;
+
+  function step() {
+    if (offset + 8 > file.size || guard++ > 64) return Promise.resolve(null);
+    return readFileBytes(file, offset, 16).then(function(head) {
+      if (head.length < 8) return null;
+      var dv = new DataView(head.buffer, head.byteOffset, head.byteLength);
+      var size = dv.getUint32(0);
+      var type = fourccAt(head, 4);
+      var headerLen = 8;
+      if (size === 1) {
+        // 64-bit largesize. Exact as a JS number well past any real file size.
+        if (head.length < 16) return null;
+        size = dv.getUint32(8) * 4294967296 + dv.getUint32(12);
+        headerLen = 16;
+      } else if (size === 0) {
+        size = file.size - offset; // Box extends to end of file.
+      }
+      if (size < headerLen) return null;
+      if (type !== 'moov') {
+        offset += size;
+        return step();
+      }
+      var start = offset + headerLen;
+      var len = Math.min(size - headerLen, MAX_MOOV);
+      return readFileBytes(file, start, len).then(function(moov) {
+        for (var i = 0; i + 20 <= moov.length; i++) {
+          if (moov[i] !== 0x73 || fourccAt(moov, i) !== 'stsd') continue;
+          var cc = fourccAt(moov, i + 16);
+          if (VIDEO_CODEC_NAMES[cc]) return cc;
+        }
+        return null;
+      });
+    });
+  }
+
+  return step();
+}
+
+// Called from the <video> `error` handler. Everything here is best-effort: if
+// the sniff fails we still surface the MediaError reason.
+function reportVideoLoadError(file, mediaError) {
+  var reason = t(MEDIA_ERROR_KEYS[mediaError && mediaError.code] || 'video.mediaErrUnknown');
+  var detail = mediaError && mediaError.message ? String(mediaError.message).trim() : '';
+  if (detail) reason += ': ' + detail;
+
+  sniffVideoTrackFourcc(file).catch(function() { return null; }).then(function(fourcc) {
+    console.warn('[FlySight] video load failed', {
+      file: file.name, type: file.type, size: file.size, fourcc: fourcc,
+      mediaError: mediaError ? { code: mediaError.code, message: mediaError.message } : null,
+    });
+
+    // ffmpeg.wasm can decode what the browser cannot, so offer an in-place
+    // conversion rather than an alert the user has to act on elsewhere.
+    // See scripts/convert.js (not available on file:// origins).
+    if (typeof canOfferVideoConvert === 'function' && canOfferVideoConvert(fourcc)) {
+      showVideoConvertOffer(file, fourcc, VIDEO_CODEC_NAMES[fourcc]);
+      return;
+    }
+
+    if (fourcc === 'hev1' || fourcc === 'hvc1') {
+      alert(t('video.errLoadHevc', { fourcc: fourcc, name: file.name }));
+    } else if (UNPLAYABLE_FOURCC.indexOf(fourcc) >= 0) {
+      alert(t('video.errLoadCodec', {
+        codec: VIDEO_CODEC_NAMES[fourcc], fourcc: fourcc, name: file.name,
+      }));
+    } else {
+      alert(t('video.errLoadDetail', { reason: reason, name: file.name }));
+    }
+  });
+}
+
 function handleVideoFile(file) {
   const isVideoMime = (file.type || '').toLowerCase().startsWith('video/');
   const isVideoExt = /\.(mp4|webm|mov|m4v)$/i.test(file.name);
@@ -70,6 +212,8 @@ function handleVideoFile(file) {
     alert(t('video.errDropVideo'));
     return;
   }
+  // A previous drop may have left the codec-conversion offer up.
+  if (typeof hideVideoConvertOffer === 'function') hideVideoConvertOffer();
   if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
   state.videoObjectURL = URL.createObjectURL(file);
   const video = document.getElementById('videoPreview');
@@ -104,6 +248,7 @@ function handleVideoFile(file) {
   // Attach listeners BEFORE setting src so we never miss the metadata event.
   video.addEventListener('loadedmetadata', function onMeta() {
     video.removeEventListener('loadedmetadata', onMeta);
+    video.removeEventListener('error', onLoadError);
     document.getElementById('videoDuration').textContent = '/ ' + formatVideoTimecode(video.duration);
     document.getElementById('videoScrubber').max = Math.floor(video.duration * 1000);
     document.getElementById('videoStep1').style.display = 'none';
@@ -115,9 +260,14 @@ function handleVideoFile(file) {
     // drawOverlayPreview will re-fire from the loadeddata listener.
     drawOverlayPreview();
   });
-  video.addEventListener('error', function() {
-    alert(t('video.errLoad'));
-  }, { once: true });
+  // A failed load fires a bare `error` event; reportVideoLoadError() inspects
+  // the file to explain why. Detached once metadata is in, so the empty-src
+  // error that closeVideoModal()'s load() can raise never pops an alert.
+  function onLoadError() {
+    video.removeEventListener('error', onLoadError);
+    reportVideoLoadError(file, video.error);
+  }
+  video.addEventListener('error', onLoadError);
 
   video.src = state.videoObjectURL;
   video.muted = true;
@@ -635,8 +785,9 @@ async function exportWithWebCodecs(opts) {
       // Never seek to exactly video.duration — some browsers won't fire 'seeked'
       // there, which would otherwise time out (e.g. a short clip that ends before
       // landing + 5 s, so trimEnd was capped to video.duration).
-      const t = Math.min(trimStart + i / FPS, trimEnd, Math.max(0, video.duration - 0.01));
-      await seekVideoTo(video, t);
+      // Not named `t` — that's the global translation function, used below.
+      const seekTime = Math.min(trimStart + i / FPS, trimEnd, Math.max(0, video.duration - 0.01));
+      await seekVideoTo(video, seekTime);
 
       ctx.drawImage(video, 0, 0, width, height);
       const dataIdx = videoTimeToDataIndex(video.currentTime);

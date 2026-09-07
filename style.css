@@ -933,6 +933,30 @@ canvas { width: 100% !important; }
 .video-dropzone p { font-size: 0.85rem; color: var(--text-dim); }
 .video-dropzone input { display: none; }
 
+/* ── HEVC conversion offer (video modal step 1) ── */
+.video-convert {
+  margin-top: 16px; padding: 14px 16px; border-radius: 10px;
+  background: var(--bg-inset); border: 1px solid var(--border);
+}
+.video-convert-msg { font-size: 0.9rem; color: var(--text); margin-bottom: 6px; }
+.video-convert-note { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 12px; }
+.video-convert-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* .export-cancel-btn carries a top margin for its use inside #exportProgress. */
+.video-convert-actions .export-cancel-btn { margin-top: 0; }
+.video-convert-status {
+  display: block; margin-top: 4px; font-size: 0.8rem; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.video-convert-manual { margin-top: 14px; font-size: 0.78rem; color: var(--text-dim); }
+.video-convert-manual summary { cursor: pointer; }
+.video-convert-manual code {
+  display: block; margin-top: 8px; padding: 8px 10px; border-radius: 6px;
+  background: var(--bg-stronger); color: var(--text-mid);
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.72rem; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-all; user-select: all;
+}
+
 /* ── Video preview ── */
 .video-preview-row { margin-bottom: 16px; }
 .video-preview-wrapper { position: relative; display: inline-block; width: 100%; }

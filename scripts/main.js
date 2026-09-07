@@ -121,7 +121,7 @@ function nextPaint() {
 // inside a per-jump folder (/<date>/<time>/TRACK.CSV), so dropping a season's
 // worth of jumps would collapse them all into one "TRACK" chip, each file
 // silently overwriting the last. For those generic names the flight's own
-// start time is appended, which keeps genuinely different jumps apart while
+// start time is prefixed, which keeps genuinely different jumps apart while
 // still letting a re-upload of the same recording overwrite itself.
 var GENERIC_JUMP_NAMES = ['track', 'sensor', 'raw'];
 
@@ -146,7 +146,7 @@ function flightStamp(csv) {
 }
 
 // Storage name for an uploaded file. Generic FlySight 2 filenames get the
-// flight start time appended; every other name is kept verbatim so the
+// flight start time prefixed; every other name is kept verbatim so the
 // existing overwrite-on-re-upload behaviour is untouched. `taken` holds the
 // names already claimed by *this* batch (not the stored ones), so two dropped
 // files that resolve to the same name can't overwrite each other mid-batch.
@@ -154,7 +154,9 @@ function resolveJumpName(base, csv, taken) {
   let name = base;
   if (isGenericJumpName(base)) {
     const stamp = flightStamp(csv);
-    if (stamp) name = base + ' ' + stamp;
+    // Stamp first, mirroring FlySight 1's own date-then-time file naming, so
+    // the chip reads chronologically: "2026-07-11 09-47_TRACK".
+    if (stamp) name = stamp + '_' + base;
   }
   if (!taken.has(name)) return name;
   let n = 2;
