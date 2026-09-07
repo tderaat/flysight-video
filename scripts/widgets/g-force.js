@@ -34,6 +34,14 @@ function renderGForceWidget(ctx, contentRect, widget, dataIdx, units, scale, opa
   ctx.save();
   ctx.globalAlpha = opacity !== undefined ? opacity : 1;
 
+  // Keeps the gauge legible over bright footage. Cleared by ctx.restore().
+  if (config.showShadow !== false) {
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = barH * 0.035;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = barH * 0.012;
+  }
+
   if (config.showBackground) {
     ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
     const bgX = cx - totalW / 2 - barW * 0.3;
@@ -154,12 +162,15 @@ function buildGForceConfigPanel(widget, drawOverlayPreview) {
   [
     { key: 'showLabel', label: t('cfg.showLabel') },
     { key: 'showBackground', label: t('cfg.showBackground') },
+    { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
     { key: 'fadeIn', label: t('cfg.fadeIn') },
-  ].forEach(({ key, label }) => {
+  ].forEach(({ key, label, defaultOn }) => {
     const lbl = document.createElement('label');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = !!widget.config[key];
+    // defaultOn keys read `!== false` so widgets from a layout saved before the setting
+    // existed still get the shadow.
+    cb.checked = defaultOn ? widget.config[key] !== false : !!widget.config[key];
     cb.addEventListener('change', () => {
       widget.config[key] = cb.checked;
       drawOverlayPreview();

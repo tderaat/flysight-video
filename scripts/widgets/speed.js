@@ -30,32 +30,57 @@ function renderSpeedWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   const cx = widget.x * contentRect.width;
   const cy = widget.y * contentRect.height;
 
-  widget._bounds = { x: cx - size / 2, y: cy - size / 2, w: size, h: size };
+  const radius = size * 0.38;
+  const strokeW = size * 0.06;
+  const numFontSize = size * 0.22;
+  const unitFontSize = size * 0.09;
+  const margin = size * 0.04;
+
+  // Geometry is measured from the arc centre outwards so the box hugs the content. The
+  // old square box left ~18 % of its height empty below the unit label, against ~4 %
+  // above the arc.
+  const numOffset = size * 0.17;                     // number centre, below the arc centre
+  const unitOffset = numOffset + numFontSize * 0.7;  // unit label centre
+  const topExtent = radius + strokeW / 2;
+  const botExtent = Math.max(unitOffset + unitFontSize * 0.5, radius * Math.SQRT1_2 + strokeW / 2);
+  const boxW = size;
+  const boxH = topExtent + botExtent + margin * 2;
+  const boxX = cx - boxW / 2;
+  const boxY = cy - boxH / 2;
+  const arcCy = boxY + margin + topExtent;
+
+  widget._bounds = { x: boxX, y: boxY, w: boxW, h: boxH };
 
   ctx.save();
   ctx.globalAlpha = opacity !== undefined ? opacity : 1;
 
-  const radius = size * 0.38;
-  const strokeW = size * 0.06;
   const startAngle = (135 * Math.PI) / 180;
   const endAngle = (405 * Math.PI) / 180;
   const sweepAngle = (270 * Math.PI) / 180;
   const valueFraction = Math.min(Math.max(speedDisplay / maxValue, 0), 1);
   const needleAngle = startAngle + valueFraction * sweepAngle;
 
+  // Keeps the gauge legible over bright footage (snow, clouds, sunlit ground).
+  if (config.showShadow !== false) {
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = size * 0.035;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = size * 0.012;
+  }
+
   if (config.showBackground) {
     ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
     if (ctx.roundRect) {
       ctx.beginPath();
-      ctx.roundRect(cx - size / 2, cy - size / 2, size, size, size * 0.06);
+      ctx.roundRect(boxX, boxY, boxW, boxH, size * 0.06);
       ctx.fill();
     } else {
-      ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+      ctx.fillRect(boxX, boxY, boxW, boxH);
     }
   }
 
   ctx.beginPath();
-  ctx.arc(cx, cy - size * 0.05, radius, startAngle, endAngle);
+  ctx.arc(cx, arcCy, radius, startAngle, endAngle);
   ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
   ctx.lineWidth = strokeW;
   ctx.lineCap = 'round';
@@ -63,7 +88,7 @@ function renderSpeedWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
 
   if (valueFraction > 0) {
     ctx.beginPath();
-    ctx.arc(cx, cy - size * 0.05, radius, startAngle, needleAngle);
+    ctx.arc(cx, arcCy, radius, startAngle, needleAngle);
     ctx.strokeStyle = '#f8fafc';
     ctx.lineWidth = strokeW;
     ctx.lineCap = 'round';
@@ -72,24 +97,22 @@ function renderSpeedWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
 
   if (valueFraction > 0) {
     const dotX = cx + radius * Math.cos(needleAngle);
-    const dotY = (cy - size * 0.05) + radius * Math.sin(needleAngle);
+    const dotY = arcCy + radius * Math.sin(needleAngle);
     ctx.beginPath();
     ctx.arc(dotX, dotY, strokeW * 0.6, 0, Math.PI * 2);
     ctx.fillStyle = '#f8fafc';
     ctx.fill();
   }
 
-  const numFontSize = size * 0.22;
   ctx.font = 'bold ' + numFontSize + 'px "Segoe UI", system-ui, sans-serif';
   ctx.fillStyle = '#f8fafc';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(Math.round(speedDisplay).toString(), cx, cy + size * 0.12);
+  ctx.fillText(Math.round(speedDisplay).toString(), cx, arcCy + numOffset);
 
-  const unitFontSize = size * 0.09;
   ctx.font = '600 ' + unitFontSize + 'px "Segoe UI", system-ui, sans-serif';
   ctx.fillStyle = '#94a3b8';
-  ctx.fillText(unitLabel, cx, cy + size * 0.12 + numFontSize * 0.7);
+  ctx.fillText(unitLabel, cx, arcCy + unitOffset);
 
   if (config.showLabel) {
     const labelText = config.dataSource === 'horzSpeed' ? 'HORIZ' : 'VERT';
@@ -98,7 +121,7 @@ function renderSpeedWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
     ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(labelText, cx, cy + size * 0.12 - numFontSize * 0.65);
+    ctx.fillText(labelText, cx, arcCy + numOffset - numFontSize * 0.65);
   }
 
   ctx.restore();
@@ -161,12 +184,15 @@ function buildSpeedConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
   [
     { key: 'showLabel', label: t('cfg.showLabel') },
     { key: 'showBackground', label: t('cfg.showBackground') },
+    { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
     { key: 'fadeIn', label: t('cfg.fadeIn') },
-  ].forEach(({ key, label }) => {
+  ].forEach(({ key, label, defaultOn }) => {
     const lbl = document.createElement('label');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = !!widget.config[key];
+    // defaultOn keys read `!== false` so widgets from a layout saved before the setting
+    // existed still get the shadow.
+    cb.checked = defaultOn ? widget.config[key] !== false : !!widget.config[key];
     cb.addEventListener('change', () => {
       widget.config[key] = cb.checked;
       drawOverlayPreview();

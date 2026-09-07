@@ -86,10 +86,40 @@ function getSampleInfoLines(units, config) {
   return { lines, colors, labels };
 }
 
-function computeInfoBoxSize(ctx, contentRect, lines, scale, labels) {
+// Every digit is replaced by '8' so one candidate stands for any value of the same
+// shape — the box must not resize just because 411 became 288.
+function widenDigits(s) {
+  return String(s).replace(/[0-9]/g, '8');
+}
+
+// The widest text this box will ever have to hold for the current jump, so its width is
+// fixed for the whole playback instead of tracking the current sample. Walks the flight
+// once and collects the distinct line shapes (digit-widened), which is a handful of
+// strings. Cached on the flight-data object, keyed by the settings that affect the text.
+function getInfoWidthCandidates(units, config) {
+  const fd = state.currentFlightData;
+  if (!fd || !fd.times || !fd.times.length) return null;
+
+  const key = units + '|' + ['showTime', 'showAltitude', 'showSpeed', 'showHSpeed', 'showDiveAngle', 'showScore']
+    .map(k => (config[k] ? '1' : '0')).join('');
+  if (fd._infoWidthKey === key && fd._infoWidthCandidates) return fd._infoWidthCandidates;
+
+  const seen = new Set();
+  for (let i = 0; i < fd.times.length; i++) {
+    const lines = getInfoLines(i, units, config).lines;
+    for (let j = 0; j < lines.length; j++) seen.add(widenDigits(lines[j]));
+  }
+
+  fd._infoWidthKey = key;
+  fd._infoWidthCandidates = Array.from(seen);
+  return fd._infoWidthCandidates;
+}
+
+function computeInfoBoxSize(ctx, contentRect, lines, scale, labels, widthLines) {
   const fontSize = Math.round(contentRect.height * 0.035 * (scale || 1));
   const labelFontSize = Math.round(fontSize * 0.55);
-  ctx.font = 'bold ' + fontSize + 'px "Segoe UI", system-ui, sans-serif';
+  const valueFont = 'bold ' + fontSize + 'px "Segoe UI", system-ui, sans-serif';
+  ctx.font = valueFont;
   ctx.textBaseline = 'top';
 
   const hasLabels = labels && labels.length;
@@ -97,7 +127,22 @@ function computeInfoBoxSize(ctx, contentRect, lines, scale, labels) {
   const itemHeight = fontSize * 1.2 + labelHeight;
   const itemGap = hasLabels ? fontSize * 0.35 : 0;
   const padding = fontSize * 0.6;
-  const maxWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
+
+  const measured = (widthLines && widthLines.length) ? widthLines : lines;
+  let maxWidth = Math.max(...measured.map(l => ctx.measureText(l).width));
+
+  // Labels are drawn in a smaller font but can still be the widest thing in the box
+  // (e.g. "DIVE ANGLE" over "67.5°").
+  if (hasLabels) {
+    ctx.font = '600 ' + labelFontSize + 'px "Segoe UI", system-ui, sans-serif';
+    labels.forEach(l => {
+      if (!l) return;
+      const w = ctx.measureText(l).width;
+      if (w > maxWidth) maxWidth = w;
+    });
+    ctx.font = valueFont;
+  }
+
   const boxW = maxWidth + padding * 2;
   const boxH = lines.length * itemHeight + (lines.length - 1) * itemGap + padding * 2;
 
@@ -107,9 +152,10 @@ function computeInfoBoxSize(ctx, contentRect, lines, scale, labels) {
 function renderInfoWidget(ctx, contentRect, widget, dataIdx, units, scale, opacity) {
   const config = widget.config;
   const widgetUnits = config.units || units || 'both';
-  let lines, colors, labels;
+  let lines, colors, labels, widthLines = null;
   if (dataIdx >= 0 && state.currentFlightData && dataIdx < state.currentFlightData.times.length) {
     ({ lines, colors, labels } = getInfoLines(dataIdx, widgetUnits, config));
+    widthLines = getInfoWidthCandidates(widgetUnits, config);
   } else {
     ({ lines, colors, labels } = getSampleInfoLines(widgetUnits, config));
   }
@@ -119,13 +165,21 @@ function renderInfoWidget(ctx, contentRect, widget, dataIdx, units, scale, opaci
   ctx.globalAlpha = opacity !== undefined ? opacity : 1;
 
   const effectiveScale = widget.widgetScale || 1;
-  const p = computeInfoBoxSize(ctx, contentRect, lines, effectiveScale, labels);
+  const p = computeInfoBoxSize(ctx, contentRect, lines, effectiveScale, labels, widthLines);
   const cx = widget.x * contentRect.width;
   const cy = widget.y * contentRect.height;
   const x = cx - p.boxW / 2;
   const y = cy - p.boxH / 2;
 
   widget._bounds = { x: x, y: y, w: p.boxW, h: p.boxH };
+
+  // Keeps the box and its text legible over bright footage. Cleared by ctx.restore().
+  if (config.showShadow !== false) {
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = p.fontSize * 0.3;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = p.fontSize * 0.1;
+  }
 
   if (config.showBackground !== false) {
     ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
@@ -199,12 +253,15 @@ function buildInfoConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
     { key: 'showDiveAngle', label: t('cfg.infoDiveAngle') },
     { key: 'showScore', label: t('cfg.infoScore') },
     { key: 'showBackground', label: t('cfg.showBackground') },
+    { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
     { key: 'fadeIn', label: t('cfg.fadeIn') },
-  ].forEach(({ key, label }) => {
+  ].forEach(({ key, label, defaultOn }) => {
     const lbl = document.createElement('label');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = widget.config[key];
+    // defaultOn keys read `!== false` so widgets from a layout saved before the setting
+    // existed still get the shadow.
+    cb.checked = defaultOn ? widget.config[key] !== false : !!widget.config[key];
     cb.addEventListener('change', () => {
       widget.config[key] = cb.checked;
       drawOverlayPreview();

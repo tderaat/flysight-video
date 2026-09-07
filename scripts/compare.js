@@ -10,11 +10,20 @@ const HUE_GOLDEN_ANGLE = 137.508;
 state.compareSelected = new Set();
 state.compareDataCache = new Map();
 state.compareMapInstance = null;
+// Chart.js instances for the two graph views, built on view entry and destroyed
+// on leave (a chart built into a display:none container mis-sizes).
+state.compareVertSpeedChart = null;
+state.compareDiveAngleChart = null;
 state.compareJumpColors = new Map(); // name -> hsl color, rebuilt on each list render
+// Jump names in the order the list renders them, so the tables' baseline row
+// and the graphs' dataset order follow the display order rather than the order
+// the user happened to tick things in.
+state.compareJumpOrder = [];
 // Random hue offset, stable for the session so colors don't flicker between
 // re-opens but feel different each page load.
 state.compareHueOffset = Math.random() * 360;
-state.compareActiveView = 'topMap'; // topMap | view3d | vertSpeedTable | diveAngleTable
+// topMap | view3d | vertSpeedGraph | diveAngleGraph | vertSpeedTable | diveAngleTable
+state.compareActiveView = 'topMap';
 state.compare3dCamera = { yaw: 35, pitch: 25, zoom: 1, panX: 0, panY: 0 };
 // Cached satellite texture for the 3D ground plane: { key, canvas, bounds }
 state.compareGroundTexture = null;
@@ -53,6 +62,10 @@ state.compareClipRecorder = null;
 const COMPARE_CLIP_TAIL_SEC = 3;
 
 const COMPARE_TABLE_TIMES = [0, 5, 10, 15, 20, 25, 30];
+
+// Collapse state for this list's day groups — deliberately separate from the
+// sidebar's 'flysight_collapsed_days'.
+const COMPARE_COLLAPSED_DAYS_KEY = 'flysight_compare_collapsed_days';
 
 function rebuildCompareColorMap(jumps) {
   state.compareJumpColors = new Map();
@@ -182,6 +195,19 @@ function closeCompareModal() {
   }
   if (state.compare3dAnimating) stopCompare3dAnimation();
   if (state.compareClipRecording) abortCompareClip();
+  destroyCompareChart('vertSpeedGraph');
+  destroyCompareChart('diveAngleGraph');
+}
+
+// Tear down a graph view's Chart.js instance. Called when leaving the view and
+// when closing the modal, so a hidden or closed modal holds no chart (and no
+// resize observer) and the next entry rebuilds against a sized container.
+function destroyCompareChart(view) {
+  const key = view === 'vertSpeedGraph' ? 'compareVertSpeedChart' : 'compareDiveAngleChart';
+  if (state[key]) {
+    state[key].destroy();
+    state[key] = null;
+  }
 }
 
 function setCompareView(view) {
@@ -199,6 +225,11 @@ function setCompareView(view) {
     state.compareMapInstance.remove();
     state.compareMapInstance = null;
   }
+  // Same reasoning for the Chart.js graphs: a chart whose container is
+  // display:none has a 0x0 parent, so we destroy on leave and rebuild on
+  // return (renderCompareView() runs after the hidden flags are flipped).
+  if (view !== 'vertSpeedGraph') destroyCompareChart('vertSpeedGraph');
+  if (view !== 'diveAngleGraph') destroyCompareChart('diveAngleGraph');
   if (view !== 'view3d') {
     state.compare3dHover = null;
     const tooltip = document.getElementById('compare3dTooltip');
@@ -215,7 +246,7 @@ function setCompareView(view) {
 }
 
 function renderCompareView() {
-  // Empty-state placeholder is shared across all four views.
+  // Empty-state placeholder is shared across all six views.
   const emptyEl = document.getElementById('compareEmpty');
   const hasSelection = state.compareSelected.size > 0
     && Array.from(state.compareSelected).some(n => state.compareDataCache.get(n));
@@ -227,6 +258,8 @@ function renderCompareView() {
 
   switch (state.compareActiveView) {
     case 'view3d': renderCompare3d(); break;
+    case 'vertSpeedGraph': renderCompareGraph('vertSpeeds'); break;
+    case 'diveAngleGraph': renderCompareGraph('diveAngles'); break;
     case 'vertSpeedTable': renderCompareTable('vertSpeeds', 'km/h', 1); break;
     case 'diveAngleTable': renderCompareTable('diveAngles', '°', 1); break;
     case 'topMap':
@@ -267,63 +300,170 @@ async function renderCompareJumpsList() {
     return;
   }
 
-  jumps.forEach(j => {
-    const isSelected = state.compareSelected.has(j.name);
-    const built = getCompareData(j);
-    const row = document.createElement('label');
-    row.className = 'compare-jump-row' + (built === null ? ' disabled' : '');
+  // Same day grouping as the sidebar list (shared helpers in main.js), with its
+  // own collapse state so collapsing a day here doesn't disturb the sidebar.
+  const sortMode = readJumpSort();
+  const { groups, undated } = buildJumpDayGroups(jumps, sortMode);
+  const collapsed = getCollapsedDays(COMPARE_COLLAPSED_DAYS_KEY);
+  state.compareJumpOrder = [];
 
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = isSelected && built !== null;
-    cb.disabled = built === null;
-    cb.addEventListener('change', () => {
-      if (cb.checked) state.compareSelected.add(j.name);
-      else state.compareSelected.delete(j.name);
-      if (state.compareActiveView === 'view3d') refreshCompare3dScrub();
-      renderCompareView();
-      const swatch = row.querySelector('.compare-color-swatch');
-      if (swatch) {
-        if (cb.checked) {
-          swatch.style.background = compareJumpColor(j.name);
-          swatch.classList.remove('empty');
-        } else {
-          swatch.style.background = '';
-          swatch.classList.add('empty');
-        }
-      }
+  groups.forEach((g, gi) => {
+    const { group, header, jumpsWrap } = makeJumpDayGroup({
+      date: g.date,
+      dayKey: g.dayKey,
+      count: g.items.length,
+      collapsed: collapsed.has(g.dayKey),
+      storageKey: COMPARE_COLLAPSED_DAYS_KEY
     });
-
-    const swatch = document.createElement('span');
-    swatch.className = 'compare-color-swatch' + (isSelected && built !== null ? '' : ' empty');
-    if (isSelected && built !== null) swatch.style.background = compareJumpColor(j.name);
-
-    const name = document.createElement('span');
-    name.className = 'compare-jump-name';
-    const score = scores[j.name];
-    const baseName = built === null ? j.name + ' ' + t('compare.insufficient') : j.name;
-    if (score && built !== null) {
-      name.textContent = baseName + ' ';
-      const scoreEl = document.createElement('span');
-      scoreEl.className = 'score';
-      scoreEl.textContent = '(' + score.toFixed(1) + ' km/h)';
-      name.appendChild(scoreEl);
-    } else {
-      name.textContent = baseName;
-    }
-
-    row.appendChild(cb);
-    row.appendChild(swatch);
-    row.appendChild(name);
-    listEl.appendChild(row);
+    // Select-all sits left of the date; the sort toggle only in the first header.
+    const dayCb = makeCompareDaySelectAll(group, g.items);
+    header.insertBefore(dayCb, header.firstChild);
+    if (gi === 0) header.appendChild(makeJumpSortToggle(sortMode));
+    g.items.forEach(it => jumpsWrap.appendChild(makeCompareJumpRow(it.jump, scores)));
+    listEl.appendChild(group);
+    // indeterminate must be set after the node is live, and always after
+    // .checked, which clears it.
+    syncCompareDayCheckbox(group);
   });
+  // Undated jumps (unreadable CSV and no addedAt) fall back to a flat list.
+  undated.forEach(it => listEl.appendChild(makeCompareJumpRow(it.jump, scores)));
 }
 
+// One jump row: checkbox, color swatch, name (+ speed score when known).
+// Rows for jumps whose data can't be built are disabled.
+function makeCompareJumpRow(j, scores) {
+  const isSelected = state.compareSelected.has(j.name);
+  const built = getCompareData(j);
+  state.compareJumpOrder.push(j.name);
+
+  const row = document.createElement('label');
+  row.className = 'compare-jump-row' + (built === null ? ' disabled' : '');
+  row.dataset.jump = j.name;
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = isSelected && built !== null;
+  cb.disabled = built === null;
+  cb.addEventListener('change', () => {
+    if (cb.checked) state.compareSelected.add(j.name);
+    else state.compareSelected.delete(j.name);
+    applyCompareRowVisual(row, j.name, cb.checked);
+    // Ticking one jump can flip its day header to indeterminate.
+    const group = row.closest('.jump-day');
+    if (group) syncCompareDayCheckbox(group);
+    refreshCompareSelectionUi();
+  });
+
+  const swatch = document.createElement('span');
+  swatch.className = 'compare-color-swatch';
+
+  const name = document.createElement('span');
+  name.className = 'compare-jump-name';
+  const score = scores[j.name];
+  const baseName = built === null ? j.name + ' ' + t('compare.insufficient') : j.name;
+  if (score && built !== null) {
+    name.textContent = baseName + ' ';
+    const scoreEl = document.createElement('span');
+    scoreEl.className = 'score';
+    scoreEl.textContent = '(' + score.toFixed(1) + ' km/h)';
+    name.appendChild(scoreEl);
+  } else {
+    name.textContent = baseName;
+  }
+
+  row.appendChild(cb);
+  row.appendChild(swatch);
+  row.appendChild(name);
+  applyCompareRowVisual(row, j.name, cb.checked);
+  return row;
+}
+
+// The swatch shows a jump's track color only while it's selected. Shared by the
+// row and per-day handlers so the two can't drift.
+function applyCompareRowVisual(rowEl, name, on) {
+  const swatch = rowEl.querySelector('.compare-color-swatch');
+  if (!swatch) return;
+  if (on) {
+    swatch.style.background = compareJumpColor(name);
+    swatch.classList.remove('empty');
+  } else {
+    swatch.style.background = '';
+    swatch.classList.add('empty');
+  }
+}
+
+// Tri-state select-all for one day: checked when every selectable jump that day
+// is selected, indeterminate when only some are. Days whose jumps all lack
+// usable data get a disabled box.
+function makeCompareDaySelectAll(groupEl, items) {
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'compare-day-select';
+  const tip = t('compare.selectDay');
+  cb.setAttribute('data-tip', tip);
+  cb.setAttribute('aria-label', tip);
+
+  const selectable = items
+    .filter(it => getCompareData(it.jump) !== null)
+    .map(it => it.jump.name);
+  groupEl._compareSelectable = selectable;
+  groupEl._compareDayCb = cb;
+  cb.disabled = selectable.length === 0;
+
+  // The header's own click handler collapses the day — this must not.
+  cb.addEventListener('click', e => e.stopPropagation());
+  cb.addEventListener('change', () => setCompareDaySelection(groupEl, cb.checked));
+  return cb;
+}
+
+// Select or deselect a whole day, updating its rows in place rather than
+// re-rendering the list: keeps the list's scroll position, avoids an IndexedDB
+// round trip per click, and avoids re-entering an async render from a handler.
+function setCompareDaySelection(groupEl, on) {
+  const selectable = groupEl._compareSelectable || [];
+  selectable.forEach(name => {
+    if (on) state.compareSelected.add(name);
+    else state.compareSelected.delete(name);
+  });
+  groupEl.querySelectorAll('.compare-jump-row').forEach(row => {
+    const name = row.dataset.jump;
+    if (selectable.indexOf(name) < 0) return;
+    const rowCb = row.querySelector('input[type="checkbox"]');
+    if (rowCb) rowCb.checked = on;
+    applyCompareRowVisual(row, name, on);
+  });
+  syncCompareDayCheckbox(groupEl);
+  refreshCompareSelectionUi();
+}
+
+// Recompute one day header checkbox from the live selection.
+function syncCompareDayCheckbox(groupEl) {
+  const cb = groupEl._compareDayCb;
+  if (!cb) return;
+  const selectable = groupEl._compareSelectable || [];
+  const on = selectable.filter(n => state.compareSelected.has(n)).length;
+  cb.checked = selectable.length > 0 && on === selectable.length;
+  cb.indeterminate = on > 0 && on < selectable.length;
+}
+
+// Shared exit path after any selection change.
+function refreshCompareSelectionUi() {
+  if (state.compareActiveView === 'view3d') refreshCompare3dScrub();
+  renderCompareView();
+}
+
+// Selected jumps in list order (not the order they were ticked in), so the
+// tables' baseline row and the graphs' dataset order are deterministic.
 function getSelectedCompareEntries() {
+  const order = state.compareJumpOrder || [];
   const entries = [];
   Array.from(state.compareSelected).forEach(name => {
     const cached = state.compareDataCache.get(name);
     if (cached) entries.push({ name, data: cached });
+  });
+  entries.sort((a, b) => {
+    const ia = order.indexOf(a.name), ib = order.indexOf(b.name);
+    return (ia < 0 ? order.length : ia) - (ib < 0 ? order.length : ib);
   });
   return entries;
 }
@@ -387,8 +527,10 @@ function renderCompareMap() {
   }
 
   // Modal layout may not be flushed yet on first open; let Leaflet
-  // recompute its container size once the browser has painted.
-  setTimeout(() => map.invalidateSize(), 0);
+  // recompute its container size once the browser has painted. Guarded because
+  // a fast view switch can .remove() this map before the callback runs, and
+  // invalidateSize() on a removed map throws.
+  setTimeout(() => { if (state.compareMapInstance === map) map.invalidateSize(); }, 0);
 
   state.compareMapInstance = map;
 }
@@ -488,6 +630,157 @@ function renderCompareTable(field, unit, decimals) {
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
+}
+
+// ── Vertical-speed / dive-angle graph view ──
+// One Chart.js line per selected jump, in that jump's track color, plotted
+// against time since exit. Jumps differ in length and logging rate, so the
+// datasets are {x, y} points on a linear x axis rather than a shared label
+// array. Styling mirrors the main chart in chart.js.
+
+function compareGraphConfig(field) {
+  if (field === 'vertSpeeds') {
+    return {
+      canvasId: 'compareVertSpeedGraph', stateKey: 'compareVertSpeedChart',
+      axisKey: 'axis.vertSpeed', unit: ' km/h', decimals: 1,
+      yMin: undefined, yMax: undefined
+    };
+  }
+  return {
+    canvasId: 'compareDiveAngleGraph', stateKey: 'compareDiveAngleChart',
+    axisKey: 'axis.diveAngle', unit: '°', decimals: 1,
+    yMin: 0, yMax: 90
+  };
+}
+
+function renderCompareGraph(field) {
+  const cfg = compareGraphConfig(field);
+  // Destroy before the early return: .compare-empty has no background, so a
+  // stale chart would show through the placeholder.
+  destroyCompareChart(field === 'vertSpeeds' ? 'vertSpeedGraph' : 'diveAngleGraph');
+
+  const canvas = document.getElementById(cfg.canvasId);
+  if (!canvas) return;
+  const entries = getSelectedCompareEntries();
+  if (entries.length === 0) return;
+
+  const themeBgCard = getThemeColor('bg-card') || '#1e293b';
+  const themeBorder = getThemeColor('border') || '#334155';
+  const themeText = getThemeColor('text') || '#cbd5e1';
+  const themeTextStrong = getThemeColor('text-strong') || '#f8fafc';
+  const themeTextMuted = getThemeColor('text-muted') || '#94a3b8';
+  const themeTextDim = getThemeColor('text-dim') || '#64748b';
+
+  let tMin = Infinity, tMax = -Infinity;
+  const datasets = entries.map(({ name, data }) => {
+    if (data.times.length) {
+      tMin = Math.min(tMin, data.times[0]);
+      tMax = Math.max(tMax, data.times[data.times.length - 1]);
+    }
+    const color = compareJumpColor(name);
+    return {
+      label: name,
+      // Nulls are kept (spanGaps stays false) so a GPS dropout or a
+      // zero-horizontal-speed sample reads as a gap, as on the main chart.
+      data: data.times.map((tRel, i) => ({ x: tRel, y: data[field][i] })),
+      borderColor: color,
+      backgroundColor: color,
+      fill: false,
+      pointRadius: 0,
+      pointHitRadius: 4,
+      borderWidth: 1.5,
+      tension: 0.2
+    };
+  });
+
+  state[cfg.stateKey] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { datasets: datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      // 'x' rather than the main chart's 'index': index mode assumes a shared
+      // labels array and would pair up unrelated samples across jumps logged at
+      // different rates.
+      interaction: { mode: 'x', intersect: false },
+      plugins: {
+        zoom: {
+          pan: { enabled: true, mode: 'x' },
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          limits: { x: { min: tMin, max: tMax } }
+        },
+        annotation: {
+          annotations: {
+            exitLine: {
+              type: 'line',
+              xMin: 0, xMax: 0,
+              borderColor: '#facc15',
+              borderWidth: 2,
+              borderDash: [6, 6],
+              label: {
+                display: true,
+                content: t('annot.exit'),
+                position: 'start',
+                backgroundColor: 'rgba(250,204,21,0.8)',
+                color: '#0f172a',
+                font: { size: 10, weight: 'bold' }
+              }
+            }
+          }
+        },
+        // With a handful of jumps an in-plot key is the quickest read; beyond
+        // that it would eat the plot, and the list's swatches already serve.
+        legend: {
+          display: entries.length <= 8,
+          labels: { color: themeText, font: { size: 12 }, usePointStyle: true, pointStyle: 'line' }
+        },
+        tooltip: {
+          animation: false,
+          backgroundColor: themeBgCard,
+          titleColor: themeTextStrong,
+          bodyColor: themeText,
+          borderColor: themeBorder,
+          borderWidth: 1,
+          // 'x' mode can return both samples bracketing the pointer for a
+          // dataset; keep one row per jump.
+          filter: (item, i, items) =>
+            items.findIndex(it => it.datasetIndex === item.datasetIndex) === i,
+          callbacks: {
+            title: items => formatChartTooltipTime(items[0].parsed.x),
+            label: function(ctx) {
+              const y = ctx.parsed.y;
+              if (y == null || isNaN(y)) return null;
+              return ' ' + ctx.dataset.label + ': ' + y.toFixed(cfg.decimals) + cfg.unit;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: t('axis.time'), color: themeTextMuted },
+          ticks: { color: themeTextDim, callback: formatChartTickLabel },
+          grid: { color: 'rgba(148,163,184,0.08)' }
+        },
+        y: {
+          type: 'linear',
+          position: 'left',
+          min: cfg.yMin,
+          max: cfg.yMax,
+          title: { display: true, text: t(cfg.axisKey), color: themeTextMuted },
+          ticks: { color: themeTextDim },
+          grid: { color: 'rgba(148,163,184,0.08)' }
+        }
+      }
+    }
+  });
+
+  // Reopening the modal straight onto a graph view renders in the same task
+  // that reveals it, before layout has flushed — same guard the map uses.
+  setTimeout(() => {
+    const c = state[cfg.stateKey];
+    if (c) c.resize();
+  }, 0);
 }
 
 // ── 3D ground texture: stitched satellite tiles ──

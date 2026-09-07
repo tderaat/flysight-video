@@ -277,14 +277,18 @@ function formatJumpDayHeader(d) {
   return wd + ', ' + dd + '-' + mm + '-' + d.getUTCFullYear();
 }
 
-// Per-day collapse state for the jump list, persisted in localStorage so a
-// collapsed day stays collapsed across reloads. Keyed by jumpDayKey().
-function getCollapsedDays() {
-  try { return new Set(JSON.parse(localStorage.getItem('flysight_collapsed_days') || '[]')); }
+// Per-day collapse state for a jump list, persisted in localStorage so a
+// collapsed day stays collapsed across reloads. Keyed by jumpDayKey(). The
+// storage key is a parameter because the sidebar list and the compare modal's
+// list keep independent collapse state (collapsing a day while comparing
+// shouldn't disturb the sidebar).
+const COLLAPSED_DAYS_KEY = 'flysight_collapsed_days';
+function getCollapsedDays(key) {
+  try { return new Set(JSON.parse(localStorage.getItem(key || COLLAPSED_DAYS_KEY) || '[]')); }
   catch (e) { return new Set(); }
 }
-function saveCollapsedDays(set) {
-  try { localStorage.setItem('flysight_collapsed_days', JSON.stringify([...set])); } catch (e) {}
+function saveCollapsedDays(set, key) {
+  try { localStorage.setItem(key || COLLAPSED_DAYS_KEY, JSON.stringify([...set])); } catch (e) {}
 }
 
 // ── Jump list sorting ──
@@ -315,10 +319,15 @@ function writeJumpSort(v) {
   try { localStorage.setItem('flysight_jump_sort', v); } catch (e) {}
 }
 
-// Flip between oldest-first and newest-first, then re-render.
+// Flip between oldest-first and newest-first, then re-render. The direction is
+// shared app-wide, so the compare modal's list re-renders too when it's open.
 function toggleJumpSort() {
   writeJumpSort(readJumpSort() === 'date-asc' ? 'date-desc' : 'date-asc');
   renderJumpList();
+  const cmp = document.getElementById('compareModal');
+  if (cmp && cmp.classList.contains('open') && typeof renderCompareJumpsList === 'function') {
+    try { renderCompareJumpsList(); } catch (e) {}
+  }
 }
 
 // Date comparator for the active direction. Undated jumps (unreadable CSV and
@@ -337,6 +346,73 @@ function jumpSortComparator(mode) {
     if (tb == null) return -1;
     return (ta - tb) * dir;
   };
+}
+
+// Group jumps into day runs, shared by the sidebar list and the compare modal's
+// list so the two can't drift on grouping or sort semantics. Pure — no DOM.
+// Each jump's date is its flight date from the CSV, falling back to its upload
+// time; undated jumps (unreadable CSV and no addedAt) come back separately and
+// belong at the bottom of the list.
+// Note the input array is not sorted in place: callers key other things
+// (compare colors) off the stored order.
+function buildJumpDayGroups(jumps, sortMode) {
+  const items = jumps.map(j => {
+    const flight = jumpFlightDate(j.csv);
+    return { jump: j, date: flight || (j.addedAt ? new Date(j.addedAt) : null) };
+  });
+  items.sort(jumpSortComparator(sortMode));
+
+  const groups = [];
+  const undated = [];
+  let last = null;
+  items.forEach(it => {
+    if (!it.date) { undated.push(it); return; }
+    const dayKey = jumpDayKey(it.date);
+    if (!last || last.dayKey !== dayKey) {
+      last = { dayKey: dayKey, date: it.date, items: [] };
+      groups.push(last);
+    }
+    last.items.push(it);
+  });
+  return { groups: groups, undated: undated };
+}
+
+// One collapsible day group: a small grey header (date, chevron, count) plus the
+// wrapper its jumps go into. Returns the pieces so the caller can add its own
+// header controls (the sidebar's sort toggle, the compare list's select-all
+// checkbox) before filling the wrapper.
+function makeJumpDayGroup(opts) {
+  const group = document.createElement('div');
+  group.className = 'jump-day' + (opts.collapsed ? ' collapsed' : '');
+  const header = document.createElement('div');
+  header.className = 'jump-day-header';
+  const label = document.createElement('span');
+  label.className = 'jump-day-label';
+  label.textContent = formatJumpDayHeader(opts.date);
+  const chevron = document.createElement('span');
+  chevron.className = 'jump-day-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = '▾'; // ▾, rotated to ▸ when collapsed (CSS)
+  const count = document.createElement('span');
+  count.className = 'jump-day-count';
+  count.textContent = '(' + opts.count + ')';
+  header.appendChild(label);
+  header.appendChild(chevron);
+  header.appendChild(count);
+
+  const dk = opts.dayKey;
+  const storageKey = opts.storageKey;
+  header.addEventListener('click', function() {
+    const set = getCollapsedDays(storageKey);
+    if (group.classList.toggle('collapsed')) set.add(dk); else set.delete(dk);
+    saveCollapsedDays(set, storageKey);
+  });
+
+  const jumpsWrap = document.createElement('div');
+  jumpsWrap.className = 'jump-day-jumps';
+  group.appendChild(header);
+  group.appendChild(jumpsWrap);
+  return { group: group, header: header, jumpsWrap: jumpsWrap };
 }
 
 // The sort toggle shown in the first day header: an arrow pointing the way the
@@ -366,69 +442,13 @@ async function renderJumpList() {
   list.innerHTML = '';
   const storedNames = new Set(jumps.map(j => j.name));
 
-  // Resolve each jump's grouping date (flight date from the CSV, falling back to
-  // its upload time), then sort by date in the user's chosen direction so
-  // same-day jumps stay contiguous and can be grouped into collapsible days.
+  // Sort by date in the user's chosen direction and group same-day jumps into
+  // collapsible days (shared with the compare modal's list).
   const sortMode = readJumpSort();
-  const items = jumps.map(j => {
-    const flight = jumpFlightDate(j.csv);
-    const date = flight || (j.addedAt ? new Date(j.addedAt) : null);
-    return { jump: j, date: date };
-  });
-  items.sort(jumpSortComparator(sortMode));
-
+  const { groups, undated } = buildJumpDayGroups(jumps, sortMode);
   const collapsed = getCollapsedDays();
-  // Jump count per day, shown after the date when a day is collapsed.
-  const dayCounts = {};
-  items.forEach(it => {
-    if (!it.date) return;
-    const k = jumpDayKey(it.date);
-    dayCounts[k] = (dayCounts[k] || 0) + 1;
-  });
-  let lastDayKey = null;
-  let dayJumpsWrap = null; // the .jump-day-jumps container for the current day
-  let isFirstDay = true;   // the sort toggle only goes in the first day header
-  items.forEach(({ jump: j, date }) => {
-    const dayKey = date ? jumpDayKey(date) : null;
-    if (date && dayKey !== lastDayKey) {
-      lastDayKey = dayKey;
-      // New collapsible day group: header (chevron + label) + jumps wrapper.
-      const group = document.createElement('div');
-      group.className = 'jump-day' + (collapsed.has(dayKey) ? ' collapsed' : '');
-      const header = document.createElement('div');
-      header.className = 'jump-day-header';
-      const chevron = document.createElement('span');
-      chevron.className = 'jump-day-chevron';
-      chevron.setAttribute('aria-hidden', 'true');
-      chevron.textContent = '▾'; // ▾, rotated to ▸ when collapsed (CSS)
-      const label = document.createElement('span');
-      label.className = 'jump-day-label';
-      label.textContent = formatJumpDayHeader(date);
-      const count = document.createElement('span');
-      count.className = 'jump-day-count';
-      count.textContent = '(' + (dayCounts[dayKey] || 0) + ')';
-      header.appendChild(label);
-      header.appendChild(chevron);
-      header.appendChild(count);
-      if (isFirstDay) {
-        header.appendChild(makeJumpSortToggle(sortMode));
-        isFirstDay = false;
-      }
-      const dk = dayKey;
-      header.addEventListener('click', function() {
-        const set = getCollapsedDays();
-        if (group.classList.toggle('collapsed')) set.add(dk); else set.delete(dk);
-        saveCollapsedDays(set);
-      });
-      dayJumpsWrap = document.createElement('div');
-      dayJumpsWrap.className = 'jump-day-jumps';
-      group.appendChild(header);
-      group.appendChild(dayJumpsWrap);
-      list.appendChild(group);
-    }
-    // Dated jumps go inside their day's wrapper; undated ones (none in practice)
-    // fall back to the flat list.
-    const target = (date && dayJumpsWrap) ? dayJumpsWrap : list;
+
+  const appendJump = (target, j) => {
     // If a stored jump is being reprocessed (same filename re-dropped), show
     // it as a spinner row instead of the regular chip until the new parse
     // finishes.
@@ -449,7 +469,24 @@ async function renderJumpList() {
       <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${safeName}')" data-tip="${t('tip.remove')}">&times;</button>
     `;
     target.appendChild(chip);
+  };
+
+  groups.forEach((g, gi) => {
+    const { header, group, jumpsWrap } = makeJumpDayGroup({
+      date: g.date,
+      dayKey: g.dayKey,
+      count: g.items.length,
+      collapsed: collapsed.has(g.dayKey)
+    });
+    // The sort toggle only goes in the first day header.
+    if (gi === 0) header.appendChild(makeJumpSortToggle(sortMode));
+    g.items.forEach(it => appendJump(jumpsWrap, it.jump));
+    list.appendChild(group);
   });
+  // Undated jumps (unreadable CSV and no addedAt — none in practice) fall back
+  // to the flat list at the bottom.
+  undated.forEach(it => appendJump(list, it.jump));
+
   // Append loading chips for filenames that haven't landed in IndexedDB yet
   // (i.e. brand-new uploads, not re-uploads of an existing jump). They have no
   // CSV yet, so they sit at the bottom until parsed and re-rendered into a day.

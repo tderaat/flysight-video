@@ -12,7 +12,7 @@
 // The on-canvas video-overlay widget labels are intentionally NOT translated
 // (see translations.js) — exported video looks the same in every language.
 
-var LANGUAGES = ['en', 'de', 'nl', 'it'];
+var LANGUAGES = ['en', 'de', 'nl', 'it', 'sv', 'es', 'pl'];
 var DEFAULT_LANG = 'en';
 
 function setLangCookie(value) {
@@ -167,6 +167,9 @@ var LANG_META = [
   { value: 'de', name: 'Deutsch',     code: 'DE' },
   { value: 'nl', name: 'Nederlands',  code: 'NL' },
   { value: 'it', name: 'Italiano',    code: 'IT' },
+  { value: 'sv', name: 'Svenska',     code: 'SV' },
+  { value: 'es', name: 'Español',     code: 'ES' },
+  { value: 'pl', name: 'Polski',      code: 'PL' },
 ];
 
 function updateLangButton() {

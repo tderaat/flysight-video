@@ -38,21 +38,21 @@ function buildUnitsConfig(widget, options) {
 const WIDGET_TYPES = {
   info: {
     label: 'Info',
-    defaultConfig: { showTime: true, showAltitude: true, showSpeed: true, showHSpeed: true, showDiveAngle: true, showScore: true, showBackground: true, units: 'both', fadeIn: true },
+    defaultConfig: { showTime: true, showAltitude: true, showSpeed: true, showHSpeed: true, showDiveAngle: true, showScore: true, showBackground: true, showShadow: true, units: 'both', fadeIn: true },
     render: renderInfoWidget,
     renderPreview: renderInfoPreviewCard,
     configUI: (widget) => buildInfoConfigPanel(widget, drawOverlayPreview, buildUnitsConfig),
   },
   vertSpeed: {
     label: 'Vert. Speed',
-    defaultConfig: { dataSource: 'vertSpeed', units: 'metric', fadeIn: true, showBackground: false, showLabel: false },
+    defaultConfig: { dataSource: 'vertSpeed', units: 'metric', fadeIn: true, showBackground: false, showShadow: true, showLabel: false },
     render: renderSpeedWidget,
     renderPreview: renderVertSpeedPreviewCard,
     configUI: (widget) => buildSpeedConfigPanel(widget, drawOverlayPreview, buildUnitsConfig),
   },
   horzSpeed: {
     label: 'Horiz. Speed',
-    defaultConfig: { dataSource: 'horzSpeed', units: 'metric', fadeIn: true, showBackground: false, showLabel: false },
+    defaultConfig: { dataSource: 'horzSpeed', units: 'metric', fadeIn: true, showBackground: false, showShadow: true, showLabel: false },
     render: renderSpeedWidget,
     renderPreview: renderHorzSpeedPreviewCard,
     configUI: (widget) => buildSpeedConfigPanel(widget, drawOverlayPreview, buildUnitsConfig),
@@ -87,7 +87,7 @@ const WIDGET_TYPES = {
   },
   gForce: {
     label: 'G-Force',
-    defaultConfig: { showBackground: false, showLabel: false, fadeIn: true },
+    defaultConfig: { showBackground: false, showShadow: true, showLabel: false, fadeIn: true },
     render: renderGForceWidget,
     renderPreview: renderGForcePreviewCard,
     configUI: (widget) => buildGForceConfigPanel(widget, drawOverlayPreview),

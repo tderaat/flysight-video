@@ -75,6 +75,28 @@ function formatAmsterdamTimestamp(iso) {
   }
 }
 
+// Exit-relative clock used by every time axis in the app (the main chart and
+// the compare modal's graphs), so they can't drift apart.
+// Tooltip form carries tenths of a second — matches the FlySight's 10 Hz
+// logging rate and the map's hover tooltip. Rounded before the m:ss split so
+// e.g. 59.97 s reads "1:00.0", not "0:60.0".
+function formatChartTooltipTime(sec) {
+  const abs = Math.round(Math.abs(sec) * 10) / 10;
+  const m = Math.floor(abs / 60);
+  const s = abs - m * 60;
+  const sign = sec < 0 ? '- ' : '+ ';
+  return 'T' + sign + m + ':' + s.toFixed(1).padStart(4, '0');
+}
+
+// Axis-tick form: signed whole seconds as m:ss.
+function formatChartTickLabel(v) {
+  const abs = Math.abs(v);
+  const m = Math.floor(abs / 60);
+  const s = Math.floor(abs % 60);
+  const sign = v < 0 ? '-' : '';
+  return sign + m + ':' + s.toString().padStart(2, '0');
+}
+
 function zoomChart(direction) {
   if (!state.chartInstance) return;
   state.chartInstance.zoom(direction > 0 ? 1.2 : 1 / 1.2);
@@ -215,7 +237,11 @@ async function renderCurrentJump(showFull) {
   //  - Downward acceleration (m/s²): central-difference derivative of velD.
   //    Positive = speeding up downward; negative = decelerating (e.g. canopy opening).
   //  - Satellite count (numSV): GPS fix quality indicator.
-  const chartAccelDown = [], chartNumSV = [];
+  //  - GPS vertical accuracy (vAcc, m): the receiver's own estimate of its
+  //    altitude error. A data-quality trace — when it climbs, the exit /
+  //    landing detection and every altitude-derived score get less
+  //    trustworthy, which is what makes it worth plotting.
+  const chartAccelDown = [], chartNumSV = [], chartVAcc = [];
   for (let i = 0; i < data.length; i++) {
     let a;
     if (i === 0) {
@@ -228,10 +254,52 @@ async function renderCurrentJump(showFull) {
     chartAccelDown.push(isFinite(a) ? a : null);
     const nsv = parseInt(data[i].numSV, 10);
     chartNumSV.push(isNaN(nsv) ? null : nsv);
+    const va = parseFloat(data[i].vAcc);
+    chartVAcc.push(isFinite(va) ? va : null);
   }
   // Headroom above the satellite max so the line doesn't sit flush on the top edge.
   const satValues = chartNumSV.filter(v => v != null && isFinite(v));
   const maxSat = satValues.length ? Math.max.apply(null, satValues) : 0;
+
+  // Keep the acceleration trace inside the middle 50 % of the plot height, so
+  // the top and bottom quarters stay clear of the other series. Padding the
+  // data range by half its own size on each side makes the axis twice as tall
+  // as the data, which puts the data in the central 50 %.
+  const accelValues = chartAccelDown.filter(v => v != null && isFinite(v));
+  let accelMin, accelMax;
+  if (accelValues.length) {
+    const lo = Math.min.apply(null, accelValues);
+    const hi = Math.max.apply(null, accelValues);
+    const pad = (hi - lo) / 2 || 1;
+    accelMin = lo - pad;
+    accelMax = hi + pad;
+  }
+
+  // Two things about the GPS-accuracy range:
+  //
+  //  - The top of the range is the 98th percentile, not the maximum. Accuracy
+  //    is always worst at first fix, before the aircraft has even taxied
+  //    (130 m on the FlySight 2 sample against an 11 m in-flight median), and
+  //    scaling to that spike would flatten the entire useful part of the trace
+  //    onto the axis floor. The excursion still reads correctly as the line
+  //    leaving the top of the plot area.
+  //  - The range is then padded by half its own size on each side, exactly as
+  //    the acceleration axis is, so the trace occupies the middle 50 % of the
+  //    plot height and leaves the top and bottom quarters to the other series.
+  //    The floor can land below zero as a result; that is only axis headroom,
+  //    the same way the acceleration axis extends past its own data.
+  //
+  // Both are computed over the full recording, so the axis stays put while the
+  // user pans and zooms — same contract as yAlt / ySpeed.
+  const vAccValues = chartVAcc.filter(v => v != null && isFinite(v)).sort((a, b) => a - b);
+  let vAccMin, vAccMax;
+  if (vAccValues.length) {
+    const lo = vAccValues[0];
+    const hi = vAccValues[Math.min(vAccValues.length - 1, Math.floor(vAccValues.length * 0.98))];
+    const pad = (hi - lo) / 2 || 1;
+    vAccMin = lo - pad;
+    vAccMax = hi + pad;
+  }
 
   // G-force per sample (shown in the tooltip). Magnitude of the GPS-velocity
   // change vector over time, in g — same formula and 3-point smoothing as the
@@ -365,20 +433,32 @@ async function renderCurrentJump(showFull) {
   const exitValid = exitAltAGL >= EXIT_MIN_AGL && exitAltAGL <= EXIT_MAX_AGL;
   const exitTooHigh = exitAltAGL > EXIT_MAX_AGL;
 
-  let exitBadgeClass, exitBadgeIcon, exitTooltip;
-  if (exitValid) {
-    exitBadgeClass = 'badge-valid';
-    exitBadgeIcon = '&#10003;';
-    exitTooltip = t('exit.valid', { max: EXIT_MAX_AGL });
-  } else if (exitTooHigh) {
-    exitBadgeClass = 'badge-invalid';
-    exitBadgeIcon = '&#9888;';
-    exitTooltip = t('exit.tooHigh', { max: EXIT_MAX_AGL });
-  } else {
-    exitBadgeClass = 'badge-invalid';
-    exitBadgeIcon = '&#9888;';
-    exitTooltip = t('exit.tooLow', { min: EXIT_MIN_AGL });
-  }
+  // A valid exit keeps the green corner badge with its hover tooltip; an invalid
+  // one drops the badge and states the reason permanently, in red, between the
+  // card's label and its value.
+  const exitMessage = exitValid
+    ? t('exit.valid', { max: EXIT_MAX_AGL })
+    : (exitTooHigh ? t('exit.tooHigh', { max: EXIT_MAX_AGL }) : t('exit.tooLow', { min: EXIT_MIN_AGL }));
+
+  const exitBadgeHtml = exitValid
+    ? `<span class="exit-badge badge-valid">
+        <span class="exit-badge-icon">&#10003;</span>
+        <span class="exit-tooltip">${exitMessage.replace('\n', '<br>')}</span>
+      </span>`
+    : '';
+  // Every language writes the message as "<verdict> — <limit>", so split on that
+  // separator to put the verdict on its own bold line above the limit. A string
+  // without the separator falls back to a single unbolded line.
+  const exitParts = exitMessage.split(/\s*—\s*/);
+  const exitWarningText = exitParts.length > 1
+    ? `<strong>${exitParts[0]}</strong><br>${exitParts.slice(1).join(' — ')}`
+    : exitMessage.replace('\n', '<br>');
+  const exitWarningHtml = exitValid
+    ? ''
+    : `<div class="exit-warning">
+        <span class="exit-warning-icon">&#9888;</span>
+        <span class="exit-warning-text">${exitWarningText}</span>
+      </div>`;
 
   const speedScoreHtml = speedScore !== null
     ? `<div class="stat-card">
@@ -397,11 +477,9 @@ async function renderCurrentJump(showFull) {
       <div class="stat-value alt">${maxSpeedKmh} km/h / ${(maxFallSpeed * 2.23694).toFixed(0)} mph</div>
     </div>
     <div class="stat-card">
-      <span class="exit-badge ${exitBadgeClass}">
-        <span class="exit-badge-icon">${exitBadgeIcon}</span>
-        <span class="exit-tooltip">${exitTooltip.replace('\n', '<br>')}</span>
-      </span>
+      ${exitBadgeHtml}
       <div class="stat-label">${t('stat.exitAltitude')}</div>
+      ${exitWarningHtml}
       <div class="stat-value alt">${exitAlt.toFixed(0)} m / ${(exitAlt * 3.28084).toFixed(0)} ft</div>
     </div>
     <div class="stat-card">
@@ -515,6 +593,20 @@ async function renderCurrentJump(showFull) {
           tension: 0,
           hidden: true,
           order: 0
+        },
+        {
+          label: t('chart.vertAccuracy'),
+          seriesKey: 'vertAccuracy',
+          data: chartVAcc,
+          borderColor: '#facc15',
+          backgroundColor: 'rgba(250,204,21,0.08)',
+          fill: false,
+          yAxisID: 'yGpsAcc',
+          pointRadius: 0,
+          borderWidth: 1.5,
+          tension: 0.2,
+          hidden: true,
+          order: 0
         }
       ]
     },
@@ -624,35 +716,32 @@ async function renderCurrentJump(showFull) {
           borderColor: themeBorder,
           borderWidth: 1,
           callbacks: {
-            title: function(items) {
-              const sec = items[0].parsed.x;
-              // Tenths of a second — matches the FlySight's 10 Hz logging rate
-              // and the map's hover tooltip. Rounded before the m:ss split so
-              // e.g. 59.97 s reads "1:00.0", not "0:60.0".
-              const abs = Math.round(Math.abs(sec) * 10) / 10;
-              const m = Math.floor(abs / 60);
-              const s = abs - m * 60;
-              const sign = sec < 0 ? '- ' : '+ ';
-              return 'T' + sign + m + ':' + s.toFixed(1).padStart(4, '0');
-            },
+            title: items => formatChartTooltipTime(items[0].parsed.x),
+            // Keyed on seriesKey rather than datasetIndex, so adding or
+            // reordering a dataset can't silently shift every branch.
             label: function(ctx) {
-              const di = ctx.datasetIndex;
-              if (di === 0) {
-                const m = ctx.parsed.y;
-                return ' ' + t('tt.altitude') + ': ' + m.toFixed(0) + ' m (' + (m * 3.28084).toFixed(0) + ' ft)';
-              } else if (di === 1) {
-                return ' ' + t('tt.vertSpeed') + ': ' + ctx.parsed.y.toFixed(0) + ' km/h';
-              } else if (di === 2) {
-                return ' ' + t('tt.groundSpeed') + ': ' + ctx.parsed.y.toFixed(0) + ' km/h';
-              } else if (di === 3) {
-                if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
-                return ' ' + t('tt.diveAngle') + ': ' + ctx.parsed.y.toFixed(1) + '°';
-              } else if (di === 4) {
-                if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
-                return ' ' + t('tt.accelDown') + ': ' + ctx.parsed.y.toFixed(1) + ' m/s²';
-              } else {
-                if (ctx.parsed.y == null || isNaN(ctx.parsed.y)) return null;
-                return ' ' + t('tt.satellites') + ': ' + ctx.parsed.y;
+              const y = ctx.parsed.y;
+              switch (ctx.dataset.seriesKey) {
+                case 'altitude':
+                  return ' ' + t('tt.altitude') + ': ' + y.toFixed(0) + ' m (' + (y * 3.28084).toFixed(0) + ' ft)';
+                case 'vertSpeed':
+                  return ' ' + t('tt.vertSpeed') + ': ' + y.toFixed(0) + ' km/h';
+                case 'groundSpeed':
+                  return ' ' + t('tt.groundSpeed') + ': ' + y.toFixed(0) + ' km/h';
+                case 'diveAngle':
+                  if (y == null || isNaN(y)) return null;
+                  return ' ' + t('tt.diveAngle') + ': ' + y.toFixed(1) + '°';
+                case 'accelDown':
+                  if (y == null || isNaN(y)) return null;
+                  return ' ' + t('tt.accelDown') + ': ' + y.toFixed(1) + ' m/s²';
+                case 'satellites':
+                  if (y == null || isNaN(y)) return null;
+                  return ' ' + t('tt.satellites') + ': ' + y;
+                case 'vertAccuracy':
+                  if (y == null || isNaN(y)) return null;
+                  return ' ' + t('tt.vertAccuracy') + ': ' + y.toFixed(1) + ' m';
+                default:
+                  return null;
               }
             },
             afterBody: function(items) {
@@ -670,16 +759,7 @@ async function renderCurrentJump(showFull) {
           min: showFull ? undefined : -5,
           max: showFull ? undefined : (canopyTimeRel + 5),
           title: { display: true, text: t('axis.time'), color: themeTextMuted },
-          ticks: {
-            color: themeTextDim,
-            callback: v => {
-              const abs = Math.abs(v);
-              const m = Math.floor(abs / 60);
-              const s = Math.floor(abs % 60);
-              const sign = v < 0 ? '-' : '';
-              return sign + m + ':' + s.toString().padStart(2,'0');
-            }
-          },
+          ticks: { color: themeTextDim, callback: formatChartTickLabel },
           grid: { color: 'rgba(148,163,184,0.08)' }
         },
         yAlt: {
@@ -713,6 +793,8 @@ async function renderCurrentJump(showFull) {
           type: 'linear',
           position: 'right',
           display: 'auto',
+          min: accelMin,
+          max: accelMax,
           title: { display: true, text: t('axis.accelDown'), color: '#fb923c' },
           ticks: { color: '#fb923c' },
           grid: { drawOnChartArea: false }
@@ -725,6 +807,16 @@ async function renderCurrentJump(showFull) {
           max: maxSat + 2,
           title: { display: true, text: t('axis.satellites'), color: '#a78bfa' },
           ticks: { color: '#a78bfa', precision: 0, stepSize: 1 },
+          grid: { drawOnChartArea: false }
+        },
+        yGpsAcc: {
+          type: 'linear',
+          position: 'right',
+          display: 'auto',
+          min: vAccMin,
+          max: vAccMax,
+          title: { display: true, text: t('axis.vertAccuracy'), color: '#facc15' },
+          ticks: { color: '#facc15' },
           grid: { drawOnChartArea: false }
         }
       }

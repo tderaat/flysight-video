@@ -50,6 +50,12 @@ function applyTheme(t) {
       typeof state !== 'undefined' && state.currentJumpName) {
     try { renderCurrentJump(); } catch (e) {}
   }
+  // Same for the compare modal's canvas surfaces (graphs, 3D view) while it's
+  // open — they read theme colors at render time, not from CSS.
+  var cmp = document.getElementById('compareModal');
+  if (cmp && cmp.classList.contains('open') && typeof renderCompareView === 'function') {
+    try { renderCompareView(); } catch (e) {}
+  }
 }
 
 // Reads a CSS custom property from <html>. Returned strings are
@@ -133,9 +139,13 @@ function updateFavicon(theme) {
 }
 
 // Each theme's representative accent swatch (matches the CSS --accent per theme).
+// `dot` overrides the dropdown bullet where the accent would misrepresent the
+// theme: "Light · Gray" is a gray theme, so a blue bullet reads as wrong even
+// though its accent really is blue. `swatch` stays the accent, since it also
+// backs the favicon fallback.
 var THEME_META = [
   { value: 'dark-blue',  swatch: '#38bdf8', key: 'theme.darkBlue' },
-  { value: 'light',      swatch: '#0284c7', key: 'theme.light' },
+  { value: 'light',      swatch: '#0284c7', dot: '#94a3b8', key: 'theme.light' },
   { value: 'dark-red',   swatch: '#b91c1c', key: 'theme.darkRed' },
   { value: 'dark-green', swatch: '#22ee5e', key: 'theme.darkGreen' },
 ];
@@ -154,7 +164,7 @@ function renderThemeMenu() {
     opt.setAttribute('aria-selected', String(m.value === current));
     var sw = document.createElement('span');
     sw.className = 'picker-swatch';
-    sw.style.background = m.swatch;
+    sw.style.background = m.dot || m.swatch;
     var label = document.createElement('span');
     label.textContent = (typeof t === 'function') ? t(m.key) : m.value;
     opt.appendChild(sw);

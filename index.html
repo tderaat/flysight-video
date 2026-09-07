@@ -372,8 +372,10 @@
       <div class="compare-view-tabs" id="compareViewTabs">
         <button type="button" class="compare-view-tab active" data-view="topMap" data-i18n="compare.tabTopView">Top view</button>
         <button type="button" class="compare-view-tab" data-view="view3d" data-i18n="compare.tab3dView">3D view</button>
-        <button type="button" class="compare-view-tab" data-view="vertSpeedTable" data-i18n="compare.tabVertSpeed">Vert. speed</button>
-        <button type="button" class="compare-view-tab" data-view="diveAngleTable" data-i18n="compare.tabDiveAngle">Dive angle</button>
+        <button type="button" class="compare-view-tab" data-view="vertSpeedGraph" data-i18n="compare.tabVertSpeedGraph">Vert. speed graph</button>
+        <button type="button" class="compare-view-tab" data-view="diveAngleGraph" data-i18n="compare.tabDiveAngleGraph">Dive angle graph</button>
+        <button type="button" class="compare-view-tab" data-view="vertSpeedTable" data-i18n="compare.tabVertSpeedTable">Vert. speed table</button>
+        <button type="button" class="compare-view-tab" data-view="diveAngleTable" data-i18n="compare.tabDiveAngleTable">Dive angle table</button>
       </div>
       <button class="modal-close" onclick="closeCompareModal()">&times;</button>
     </div>
@@ -406,6 +408,12 @@
                 </div>
               </div>
               <div class="compare-3d-tooltip" id="compare3dTooltip" hidden></div>
+            </div>
+            <div class="compare-view compare-graph-view" data-view="vertSpeedGraph" hidden>
+              <canvas id="compareVertSpeedGraph"></canvas>
+            </div>
+            <div class="compare-view compare-graph-view" data-view="diveAngleGraph" hidden>
+              <canvas id="compareDiveAngleGraph"></canvas>
             </div>
             <div class="compare-view compare-table-view" data-view="vertSpeedTable" hidden>
               <div class="compare-table-scroll"><table id="compareVertSpeedTable" class="compare-table"></table></div>
