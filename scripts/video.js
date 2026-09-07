@@ -172,6 +172,70 @@ function sniffVideoTrackFourcc(file) {
   return step();
 }
 
+// A successful metadata load is NOT proof the browser can show the footage.
+// Given an H.265 file it has no decoder for, Chrome fires loadedmetadata AND
+// loadeddata, reports the right dimensions and duration and a readyState of 4,
+// and then produces no frames at all: getVideoPlaybackQuality().totalVideoFrames
+// stays 0, the first seek never completes, and the pipeline only fails later
+// with PIPELINE_ERROR_DECODE. Left unchecked that is a black preview with no
+// explanation, which is exactly what a user sees. (Firefox is more honest and
+// fails during the load, so the `error` listener catches it there.)
+//
+// So force the first frame out of the decoder and wait for it. Frames are only
+// counted once something advances the presentation, which is why this seeks
+// rather than just reading the counter after loadeddata (it is 0 at that point
+// even for a perfectly good H.264 file).
+//
+// A working file resolves in a few tens of milliseconds (measured 26 ms for the
+// repo's H.264 sample), so the happy path pays nothing.
+var FIRST_FRAME_TIMEOUT_MS = 6000;
+
+function probeFirstFrame(video) {
+  return new Promise(function(resolve) {
+    var settled = false;
+    var rvfcId = null;
+
+    function decodedFrames() {
+      try {
+        // null = browser will not say, so give the file the benefit of the doubt.
+        return video.getVideoPlaybackQuality
+          ? video.getVideoPlaybackQuality().totalVideoFrames
+          : null;
+      } catch (e) { return null; }
+    }
+
+    function finish(ok) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      video.removeEventListener('seeked', onSeeked);
+      video.removeEventListener('error', onError);
+      if (rvfcId != null && video.cancelVideoFrameCallback) {
+        try { video.cancelVideoFrameCallback(rvfcId); } catch (e) {}
+      }
+      resolve(ok);
+    }
+
+    function onSeeked() { finish(true); }
+    function onError() { finish(false); }
+
+    // Only a decoder that has produced nothing at all counts as a failure: a
+    // slow seek on a huge file is fine as long as frames are coming out.
+    var timer = setTimeout(function() { finish(decodedFrames() !== 0); }, FIRST_FRAME_TIMEOUT_MS);
+
+    video.addEventListener('seeked', onSeeked);
+    video.addEventListener('error', onError);
+    if (video.requestVideoFrameCallback) {
+      rvfcId = video.requestVideoFrameCallback(function() { finish(true); });
+    }
+    try {
+      video.currentTime = Math.min(0.04, (video.duration || 1) / 100);
+    } catch (e) {
+      finish(true); // Cannot probe, so do not stand in the user's way.
+    }
+  });
+}
+
 // Called from the <video> `error` handler. Everything here is best-effort: if
 // the sniff fails we still surface the MediaError reason.
 function reportVideoLoadError(file, mediaError) {
@@ -248,21 +312,38 @@ function handleVideoFile(file) {
   // Attach listeners BEFORE setting src so we never miss the metadata event.
   video.addEventListener('loadedmetadata', function onMeta() {
     video.removeEventListener('loadedmetadata', onMeta);
+    // probeFirstFrame() owns error handling from here, so there is exactly one
+    // path into reportVideoLoadError().
     video.removeEventListener('error', onLoadError);
-    document.getElementById('videoDuration').textContent = '/ ' + formatVideoTimecode(video.duration);
-    document.getElementById('videoScrubber').max = Math.floor(video.duration * 1000);
-    document.getElementById('videoStep1').style.display = 'none';
-    document.getElementById('videoStep2').style.display = 'block';
-    // Reset exit
-    state.videoExitTime = null;
-    document.getElementById('videoExitTimecode').textContent = t('video.notSet');
-    // Redraw — by now any in-flight restore has likely landed, and even if not,
-    // drawOverlayPreview will re-fire from the loadeddata listener.
-    drawOverlayPreview();
+
+    probeFirstFrame(video).then(function(playable) {
+      // The user closed the modal while we were probing: closeVideoModal()
+      // strips the src, and its own load() is what raised the error we may
+      // have just caught. Nothing left to report.
+      if (!video.getAttribute('src')) return;
+
+      if (!playable) {
+        reportVideoLoadError(file, video.error);
+        return;
+      }
+
+      video.currentTime = 0;
+      document.getElementById('videoDuration').textContent = '/ ' + formatVideoTimecode(video.duration);
+      document.getElementById('videoScrubber').max = Math.floor(video.duration * 1000);
+      document.getElementById('videoStep1').style.display = 'none';
+      document.getElementById('videoStep2').style.display = 'block';
+      // Reset exit
+      state.videoExitTime = null;
+      document.getElementById('videoExitTimecode').textContent = t('video.notSet');
+      // Redraw — by now any in-flight restore has likely landed, and even if not,
+      // drawOverlayPreview will re-fire from the loadeddata listener.
+      drawOverlayPreview();
+    });
   });
-  // A failed load fires a bare `error` event; reportVideoLoadError() inspects
-  // the file to explain why. Detached once metadata is in, so the empty-src
-  // error that closeVideoModal()'s load() can raise never pops an alert.
+  // A load that fails outright fires a bare `error` event; reportVideoLoadError()
+  // inspects the file to explain why. Handed over to probeFirstFrame() once
+  // metadata is in, because a browser with no usable decoder gets that far and
+  // only fails afterwards.
   function onLoadError() {
     video.removeEventListener('error', onLoadError);
     reportVideoLoadError(file, video.error);
