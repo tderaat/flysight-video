@@ -337,8 +337,9 @@ function renderCompareMap() {
   const buildEntries = getSelectedCompareEntries();
   if (buildEntries.length === 0) return;
 
+  setMapTilesOffline(false); // re-evaluated as tiles load
   const map = L.map('compareMap', { attributionControl: true });
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  cachedTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '&copy; Esri, Maxar, Earthstar Geographics',
     maxZoom: 19
   }).addTo(map);
@@ -548,14 +549,13 @@ function loadCompareGroundTexture(b) {
   for (let ty = minTy; ty <= maxTy; ty++) {
     for (let tx = minTx; tx <= maxTx; tx++) {
       const url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + ty + '/' + tx;
-      fetches.push(new Promise(resolve => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        const dx = (tx - minTx) * COMPARE_TILE_SIZE;
-        const dy = (ty - minTy) * COMPARE_TILE_SIZE;
-        img.onload = () => { ctx.drawImage(img, dx, dy); resolve(); };
-        img.onerror = () => resolve(); // missing tile leaves a blank patch
-        img.src = url;
+      const dx = (tx - minTx) * COMPARE_TILE_SIZE;
+      const dy = (ty - minTy) * COMPARE_TILE_SIZE;
+      // Goes through the offline tile cache (scripts/tiles.js); resolves
+      // null when the tile is neither cached nor reachable, which leaves a
+      // blank patch in the mosaic.
+      fetches.push(loadCachedTileImage(url).then(img => {
+        if (img) ctx.drawImage(img, dx, dy);
       }));
     }
   }

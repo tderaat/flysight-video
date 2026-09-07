@@ -770,8 +770,9 @@ async function renderCurrentJump(showFull) {
     state.hoverMarker = null;
     state.mapHoverTooltip = null;
 
+    setMapTilesOffline(false); // re-evaluated as tiles load
     state.mapInstance = L.map('map', { attributionControl: true });
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    cachedTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri, Maxar, Earthstar Geographics',
       maxZoom: 19
     }).addTo(state.mapInstance);

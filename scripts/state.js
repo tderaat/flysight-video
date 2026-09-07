@@ -20,6 +20,10 @@ var state = {
   mapHoverTooltip: null,
   lastRenderMap: null,
 
+  // True once a map tile has missed the offline cache while the browser
+  // reports no connection — drives the ".map-offline-note" overlay.
+  mapTilesOffline: false,
+
   // Names of jumps currently being read / stored / parsed after a CSV drop.
   // Rendered as loading chips in the sidebar so users see progress while
   // large files are processed.

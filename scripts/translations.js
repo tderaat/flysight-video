@@ -112,6 +112,7 @@ var I18N = {
     'map.alt': 'Alt',
     'map.vert': 'Vert',
     'map.horz': 'Horz',
+    'map.offlineTiles': 'Offline: showing cached map tiles only',
 
     // Chart right-click context menu
     'ctx.setExit': 'Set exit point here',
@@ -193,6 +194,7 @@ var I18N = {
     'alert.onlyCsv': 'Only CSV files can be uploaded here.\n\nRejected: {files}\n\nTo add a video, click "Create video overlay".',
     'alert.jumpExists': 'A jump named "{name}" already exists. Choose a different name.',
     'alert.storageFull': 'Storage is full. Remove some jumps to free space before adding new ones.',
+    'alert.dbBlocked': 'FlySight Insights is open in another tab. Close the other tabs and reload this page to finish upgrading local storage.',
 
     // Widget config panels
     'cfg.units': 'Units',
@@ -315,6 +317,7 @@ var I18N = {
     'map.alt': 'Höhe',
     'map.vert': 'Vert.',
     'map.horz': 'Horiz.',
+    'map.offlineTiles': 'Offline: nur zwischengespeicherte Kartenkacheln',
 
     // Chart right-click context menu
     'ctx.setExit': 'Absprungpunkt hier setzen',
@@ -396,6 +399,7 @@ var I18N = {
     'alert.onlyCsv': 'Hier können nur CSV-Dateien hochgeladen werden.\n\nAbgelehnt: {files}\n\nUm ein Video hinzuzufügen, klicken Sie auf "Video-Overlay erstellen".',
     'alert.jumpExists': 'Ein Sprung mit dem Namen "{name}" existiert bereits. Wählen Sie einen anderen Namen.',
     'alert.storageFull': 'Der Speicher ist voll. Entfernen Sie einige Sprünge, um Platz zu schaffen, bevor Sie neue hinzufügen.',
+    'alert.dbBlocked': 'FlySight Insights ist in einem anderen Tab geöffnet. Schließen Sie die anderen Tabs und laden Sie diese Seite neu, um die Aktualisierung des lokalen Speichers abzuschließen.',
 
     // Widget config panels
     'cfg.units': 'Einheiten',
@@ -518,6 +522,7 @@ var I18N = {
     'map.alt': 'Hoogte',
     'map.vert': 'Vert.',
     'map.horz': 'Horiz.',
+    'map.offlineTiles': 'Offline: alleen gecachte kaarttegels',
 
     // Chart right-click context menu
     'ctx.setExit': 'Exitpunt hier instellen',
@@ -599,6 +604,7 @@ var I18N = {
     'alert.onlyCsv': 'Hier kunnen alleen CSV-bestanden worden geüpload.\n\nGeweigerd: {files}\n\nKlik op "Video-overlay maken" om een video toe te voegen.',
     'alert.jumpExists': 'Er bestaat al een sprong met de naam "{name}". Kies een andere naam.',
     'alert.storageFull': 'De opslag is vol. Verwijder enkele sprongen om ruimte vrij te maken voordat je nieuwe toevoegt.',
+    'alert.dbBlocked': 'FlySight Insights is in een ander tabblad geopend. Sluit de andere tabbladen en herlaad deze pagina om de upgrade van de lokale opslag te voltooien.',
 
     // Widget config panels
     'cfg.units': 'Eenheden',
@@ -721,6 +727,7 @@ var I18N = {
     'map.alt': 'Quota',
     'map.vert': 'Vert.',
     'map.horz': 'Oriz.',
+    'map.offlineTiles': 'Offline: solo tasselli mappa in cache',
 
     // Chart right-click context menu
     'ctx.setExit': 'Imposta qui il punto di uscita',
@@ -802,6 +809,7 @@ var I18N = {
     'alert.onlyCsv': 'Qui si possono caricare solo file CSV.\n\nRifiutati: {files}\n\nPer aggiungere un video, clicca su "Crea overlay video".',
     'alert.jumpExists': 'Esiste già un lancio chiamato "{name}". Scegli un altro nome.',
     'alert.storageFull': 'Spazio di archiviazione pieno. Rimuovi alcuni lanci per liberare spazio prima di aggiungerne di nuovi.',
+    'alert.dbBlocked': "FlySight Insights è aperto in un'altra scheda. Chiudi le altre schede e ricarica questa pagina per completare l'aggiornamento dell'archiviazione locale.",
 
     // Widget config panels
     'cfg.units': 'Unità',

@@ -3,13 +3,14 @@
 // On first load after upgrading from the old localStorage backend, any
 // existing `flysight_jumps` blob is migrated over and then cleared.
 const DB_NAME = 'flysight';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_JUMPS = 'jumps';
 const STORE_SETTINGS = 'settings';
 const LEGACY_KEY = 'flysight_jumps';
 const SETTING_WIDGET_LAYOUT = 'widgetLayout';
 
 let _dbPromise = null;
+let _dbBlockedWarned = false;
 
 function openDB() {
   if (_dbPromise) return _dbPromise;
@@ -23,9 +24,28 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
         db.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
       }
+      // Offline map-tile cache (see scripts/tiles.js). Keyed by tile URL,
+      // with an `at` index so the oldest tiles can be pruned first.
+      if (!db.objectStoreNames.contains('tiles')) {
+        const tiles = db.createObjectStore('tiles', { keyPath: 'key' });
+        tiles.createIndex('at', 'at');
+      }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // Don't hold an old version open and block another tab's upgrade.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
+    // Another tab has the database open at an older version, so the upgrade
+    // can't run. Without this the open request never settles and every
+    // storage call hangs silently — tell the user what to do instead.
+    req.onblocked = () => {
+      if (_dbBlockedWarned) return;
+      _dbBlockedWarned = true;
+      alert(t('alert.dbBlocked'));
+    };
   }).then(async db => {
     await migrateFromLocalStorage(db);
     return db;

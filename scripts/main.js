@@ -114,6 +114,54 @@ function nextPaint() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()));
 }
 
+// ── Upload naming ──
+// A jump is keyed by its filename, and a duplicate name deliberately
+// overwrites (that's how re-uploading a corrected file works). FlySight 2
+// breaks that assumption: it writes every recording to a fixed filename
+// inside a per-jump folder (/<date>/<time>/TRACK.CSV), so dropping a season's
+// worth of jumps would collapse them all into one "TRACK" chip, each file
+// silently overwriting the last. For those generic names the flight's own
+// start time is appended, which keeps genuinely different jumps apart while
+// still letting a re-upload of the same recording overwrite itself.
+var GENERIC_JUMP_NAMES = ['track', 'sensor', 'raw'];
+
+function baseJumpName(file) {
+  return file.name.replace(/\.csv$/i, '');
+}
+
+function isGenericJumpName(name) {
+  return GENERIC_JUMP_NAMES.indexOf(name.trim().toLowerCase()) !== -1;
+}
+
+// "2026-07-11 09-47" — the recording's own UTC start, from jumpFlightDate().
+// Hyphens rather than colons so downloadJump()'s suggested filename stays
+// valid on Windows. Minute resolution is enough: a recording spans minutes,
+// so two of them can't start in the same one.
+function flightStamp(csv) {
+  const d = jumpFlightDate(csv);
+  if (!d) return null;
+  const p = n => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) +
+    ' ' + p(d.getUTCHours()) + '-' + p(d.getUTCMinutes());
+}
+
+// Storage name for an uploaded file. Generic FlySight 2 filenames get the
+// flight start time appended; every other name is kept verbatim so the
+// existing overwrite-on-re-upload behaviour is untouched. `taken` holds the
+// names already claimed by *this* batch (not the stored ones), so two dropped
+// files that resolve to the same name can't overwrite each other mid-batch.
+function resolveJumpName(base, csv, taken) {
+  let name = base;
+  if (isGenericJumpName(base)) {
+    const stamp = flightStamp(csv);
+    if (stamp) name = base + ' ' + stamp;
+  }
+  if (!taken.has(name)) return name;
+  let n = 2;
+  while (taken.has(name + ' (' + n + ')')) n++;
+  return name + ' (' + n + ')';
+}
+
 async function handleFiles(files) {
   const all = Array.from(files);
   const csvFiles = all.filter(isCsvFile);
@@ -127,17 +175,28 @@ async function handleFiles(files) {
   // so the user sees spinner chips immediately — even before FileReader
   // finishes on the first byte. Yield to the browser so the chips paint
   // before we kick off the parse work for the first file.
+  // Keyed by the *filename*, since the final jump name isn't known until the
+  // CSV has been read (see resolveJumpName). state.loadingJumps is a Set, so a
+  // batch of same-named files (every FlySight 2 drop) shares one spinner —
+  // pendingPerName counts them down so it isn't cleared while others are still
+  // being read.
+  const pendingPerName = new Map();
   csvFiles.forEach(file => {
-    state.loadingJumps.add(file.name.replace(/\.csv$/i, ''));
+    const base = baseJumpName(file);
+    pendingPerName.set(base, (pendingPerName.get(base) || 0) + 1);
+    state.loadingJumps.add(base);
   });
   await renderJumpList();
   await nextPaint();
 
   let lastName = null;
+  const takenNames = new Set();
   for (const file of csvFiles) {
-    const name = file.name.replace(/\.csv$/i, '');
+    const base = baseJumpName(file);
     try {
       const csv = await readFileAsText(file);
+      const name = resolveJumpName(base, csv, takenNames);
+      takenNames.add(name);
       await storeJump(name, csv);
       if (state.compareDataCache) state.compareDataCache.delete(name);
       lastName = name;
@@ -145,7 +204,9 @@ async function handleFiles(files) {
       // Individual file failures shouldn't block the rest of the batch.
       console.error('Failed to load', file.name, e);
     }
-    state.loadingJumps.delete(name);
+    const stillPending = (pendingPerName.get(base) || 1) - 1;
+    pendingPerName.set(base, stillPending);
+    if (stillPending <= 0) state.loadingJumps.delete(base);
     await renderJumpList();
     // Yield before the next file's CPU work so this row's spinner clears
     // and any other still-loading rows keep animating smoothly.
@@ -170,19 +231,29 @@ function makeLoadingChip(name) {
 }
 
 // Extract a jump's flight date from its CSV — the first data row's UTC
-// timestamp (row 1 = header, row 2 = units, row 3 = first sample). Cheap string
-// slicing, no full parse. Returns null if it can't be read.
+// timestamp. Cheap string slicing over the first few lines, no full parse, so
+// it works for both layouts without caring how tall the preamble is:
+// FlySight 1 has header + units rows, FlySight 2 has a variable-length
+// $FLYS/$VAR/$COL/$UNIT/$DATA block and prefixes each sample with `$GNSS,`.
+// Returns null if it can't be read.
 function jumpFlightDate(csv) {
   if (!csv) return null;
-  const i1 = csv.indexOf('\n');
-  if (i1 < 0) return null;
-  const i2 = csv.indexOf('\n', i1 + 1);
-  if (i2 < 0) return null;
-  let i3 = csv.indexOf('\n', i2 + 1);
-  if (i3 < 0) i3 = csv.length;
-  const ts = csv.slice(i2 + 1, i3).split(',')[0].trim();
-  const d = new Date(ts);
-  return isNaN(d.getTime()) ? null : d;
+  const MAX_PREAMBLE_LINES = 40;
+  let pos = 0;
+  for (let n = 0; n < MAX_PREAMBLE_LINES && pos < csv.length; n++) {
+    let end = csv.indexOf('\n', pos);
+    if (end < 0) end = csv.length;
+    const fields = csv.slice(pos, end).split(',');
+    // FlySight 1: timestamp in the first field. FlySight 2: in the second,
+    // behind the record tag.
+    const ts = (fields[0] === '$GNSS' ? fields[1] : fields[0] || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}T/.test(ts)) {
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    pos = end + 1;
+  }
+  return null;
 }
 
 // Day bucket key (UTC) used to group consecutive jumps from the same day.
