@@ -48,7 +48,7 @@ function applyTheme(t) {
   // Re-render the chart + map so JS-side theme colors update too.
   if (typeof renderCurrentJump === 'function' &&
       typeof state !== 'undefined' && state.currentJumpName) {
-    try { renderCurrentJump(); } catch (e) {}
+    try { renderCurrentJump(state.chartView); } catch (e) {}
   }
   // Same for the compare modal's canvas surfaces (graphs, 3D view) while it's
   // open — they read theme colors at render time, not from CSS.

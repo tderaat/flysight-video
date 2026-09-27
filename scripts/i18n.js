@@ -120,7 +120,7 @@ function applyLanguage(lang) {
   }
   if (typeof renderCurrentJump === 'function' &&
       typeof state !== 'undefined' && state.currentJumpName) {
-    try { renderCurrentJump(state.chartShowFull); } catch (e) {}
+    try { renderCurrentJump(state.chartView); } catch (e) {}
   }
   // Compare modal: refresh list + active view if it's open.
   if (typeof state !== 'undefined' &&

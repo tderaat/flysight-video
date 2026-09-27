@@ -25,6 +25,18 @@ function clearExitOverride(name) {
   try { localStorage.setItem('flysight_exit_overrides', JSON.stringify(o)); } catch (e) { /* ignore */ }
 }
 
+// Fixed y range for the Accel Down axis, shared with the compare view's Accel
+// Down graph so a trace means the same thing in both and two jumps can be read
+// against each other. -2 to +10 m/s² frames the part of the dive that is
+// actually being flown: freefall runs from around +12 m/s² just after exit
+// down to about +1 at the bottom of the window, so the exit transient leaves
+// the top of the plot area and everything from the build onwards fills the
+// height, with just enough below zero to show a brief deceleration.
+// It clips on purpose, and off the scale reads as off the scale — widening
+// the range to fit the exit transient and the single-sample GPS spikes (the
+// raw extremes are -57 and +76) flattens everything that matters.
+var ACCEL_AXIS_MIN = -2, ACCEL_AXIS_MAX = 10;
+
 // ── Chart series on/off persistence ──
 // Which datasets the user has toggled via the chart legend, persisted globally
 // (not per-jump) as a map of dataset label -> visible boolean. Tiny + synchronous,
@@ -134,7 +146,14 @@ function clearChartActive() {
   c.draw();
 }
 
-async function renderCurrentJump(showFull) {
+// The chart's three range presets. `view` is 'scoring' (default), 'jump' or
+// 'full'; `true` is still accepted for 'full' so an older call site can't break.
+const CHART_VIEWS = ['scoring', 'jump', 'full'];
+
+async function renderCurrentJump(view) {
+  if (view === true) view = 'full';
+  if (CHART_VIEWS.indexOf(view) < 0) view = 'scoring';
+  const showFull = view === 'full';
   const jumps = await getStoredJumps();
   const jump = jumps.find(j => j.name === state.currentJumpName);
   if (!jump) return;
@@ -179,7 +198,7 @@ async function renderCurrentJump(showFull) {
   // clicked x-value (time relative to the current exit) back into an absolute
   // recording-relative time, plus current view mode for re-render.
   state.exitEditCtx = { allTimes, exitTimeRel: exitTime, hasOverride: exitOverrideSec !== null };
-  state.chartShowFull = !!showFull;
+  state.chartView = view;
 
   if (!showFull) {
     const beforeSec = 5;
@@ -264,20 +283,6 @@ async function renderCurrentJump(showFull) {
   // Headroom above the satellite max so the line doesn't sit flush on the top edge.
   const satValues = chartNumSV.filter(v => v != null && isFinite(v));
   const maxSat = satValues.length ? Math.max.apply(null, satValues) : 0;
-
-  // Keep the acceleration trace inside the middle 50 % of the plot height, so
-  // the top and bottom quarters stay clear of the other series. Padding the
-  // data range by half its own size on each side makes the axis twice as tall
-  // as the data, which puts the data in the central 50 %.
-  const accelValues = chartAccelDown.filter(v => v != null && isFinite(v));
-  let accelMin, accelMax;
-  if (accelValues.length) {
-    const lo = Math.min.apply(null, accelValues);
-    const hi = Math.max.apply(null, accelValues);
-    const pad = (hi - lo) / 2 || 1;
-    accelMin = lo - pad;
-    accelMax = hi + pad;
-  }
 
   // Three things about the GPS-accuracy range:
   //
@@ -440,6 +445,19 @@ async function renderCurrentJump(showFull) {
     }
   }
 
+  // Visible x range for the active preset. 'scoring' frames the part of the jump
+  // that is actually scored (exit -1 s through the performance window end +3 s);
+  // it falls back to the jump window when the window end wasn't found, since an
+  // unscorable recording has nothing to frame.
+  let viewMin = -5, viewMax = canopyTimeRel + 5;
+  if (showFull) {
+    viewMin = undefined;
+    viewMax = undefined;
+  } else if (view === 'scoring' && perfWindowEndTime !== null && isFinite(perfWindowEndTime)) {
+    viewMin = -1;
+    viewMax = perfWindowEndTime + 3;
+  }
+
   // Over-steep / past-vertical markers. Both need a wind estimate, so neither
   // is ever placed off the wind-contaminated ground-relative angle. The
   // over-steep line is informational: across the 2026 season it did not
@@ -534,6 +552,50 @@ async function renderCurrentJump(showFull) {
         <span class="exit-warning-text">${exitWarningText}</span>
       </div>`;
 
+  // Accel Down is plotted ONLY between exit and the end of the scoring
+  // window. Outside it the series is dominated by the exit transient and by
+  // the canopy opening (30-40 m/s² of deceleration), neither of which is
+  // being flown — and both of which force the axis so wide that the freefall
+  // detail flattens out. Same null-mask idea as the dive-angle series.
+  const perfWindowEndTimeExists = perfWindowEndTime !== null && isFinite(perfWindowEndTime);
+  const chartAccelDownWindow = chartAccelDown.map((v, i) =>
+    (perfWindowEndTimeExists && chartTimes[i] >= 0 && chartTimes[i] <= perfWindowEndTime) ? v : null);
+  // Mean downward acceleration over two windows. Physically this is gravity
+  // minus drag, so a jump carrying more drag — a dirtier position, or moving
+  // around mid-dive — averages lower.
+  //
+  // Two figures because they say different things. Exit to window end covers
+  // the whole build and is dominated by the early acceleration, so it tracks
+  // the speed score closely (r = 0.89 across the 2026 season) rather than
+  // adding independent information. The fastest 3 s is the interesting one:
+  // by then the jump is near terminal, the figure is small, and what is left
+  // is whether it was still gaining at the moment the score was taken.
+  const meanAccelBetween = (fromT, toT) => {
+    if (fromT == null || toT == null) return null;
+    let sum = 0, count = 0;
+    for (let i = 0; i < chartAccelDown.length; i++) {
+      const v = chartAccelDown[i];
+      if (v == null || !isFinite(v)) continue;
+      if (chartTimes[i] < fromT || chartTimes[i] > toT) continue;
+      sum += v; count++;
+    }
+    return count >= 3 ? sum / count : null;
+  };
+  // From exit (T=0), not from the window opening: the user-facing question is
+  // "how hard did I accelerate on this jump", and the window opens a fraction
+  // of a second after exit anyway.
+  const avgAccelExitToEnd = meanAccelBetween(0, perfWindowEndTime);
+  const avgAccelBest3s = meanAccelBetween(best3sStart, best3sEnd);
+  const accelRow = (labelKey, v) => v === null ? '' :
+    `<div class="stat-detail alt"><span class="stat-detail-label">${t(labelKey)}</span> ${v.toFixed(2)} m/s²</div>`;
+  const avgAccelHtml = (avgAccelExitToEnd !== null || avgAccelBest3s !== null)
+    ? `<div class="stat-card" data-tip="${t('stat.avgAccelDownTip')}">
+        <div class="stat-label">${t('stat.avgAccelDown')}</div>
+        ${accelRow('stat.accelExitToEnd', avgAccelExitToEnd)}
+        ${accelRow('stat.accelBest3s', avgAccelBest3s)}
+      </div>`
+    : '';
+
   const speedScoreHtml = speedScore !== null
     ? `<div class="stat-card">
         <div class="stat-label">${t('stat.speedScore3s')}</div>
@@ -552,7 +614,6 @@ async function renderCurrentJump(showFull) {
     : '';
 
   const utcStart = formatUtcTimestamp(data[0].time);
-  const amsStart = formatAmsterdamTimestamp(data[0].time);
 
   document.getElementById('stats').innerHTML = `
     ${speedScoreHtml}
@@ -572,16 +633,21 @@ async function renderCurrentJump(showFull) {
       <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.start')}</span> ${perfWindowStartAlt !== null ? perfWindowStartAlt.toFixed(0) + ' m / ' + (perfWindowStartAlt * 3.28084).toFixed(0) + ' ft' : '—'}</div>
       <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.end')}</span> ${perfWindowEndAlt.toFixed(0)} m / ${(perfWindowEndAlt * 3.28084).toFixed(0)} ft</div>
     </div>
-    <div class="stat-card"${amsStart ? ` data-tip="${t('stat.amsterdamTip', { time: amsStart })}"` : ''}>
+    <div class="stat-card">
       <div class="stat-label">${t('stat.utcStart')}</div>
-      <div class="stat-detail alt">${utcStart.date}</div>
-      <div class="stat-detail alt">${utcStart.time}</div>
+      <div class="stat-detail alt compact">${utcStart.date} ${utcStart.time}</div>
     </div>
+    ${avgAccelHtml}
   `;
 
   // ── Theme-aware colors (read fresh each render so theme switches take effect) ──
   const themeAccent     = getThemeColor('accent')      || '#38bdf8';
   const themeAccentFill = getThemeColor('accent-fill') || hexToRgba(themeAccent, 0.08);
+  // The altitude line and its y-axis follow the accent in every theme but
+  // dark-green, where the neon-green accent is indistinguishable from the
+  // (non-themeable) green Vertical Speed series. See --chart-altitude.
+  const themeAlt        = getThemeColor('chart-altitude')      || themeAccent;
+  const themeAltFill    = getThemeColor('chart-altitude-fill') || themeAccentFill;
   const themeBgCard     = getThemeColor('bg-card')     || '#1e293b';
   const themeBorder     = getThemeColor('border')      || '#334155';
   const themeText       = getThemeColor('text-mid')    || '#cbd5e1';
@@ -602,8 +668,8 @@ async function renderCurrentJump(showFull) {
           label: t('chart.altitude'),
           seriesKey: 'altitude',
           data: chartAlts,
-          borderColor: themeAccent,
-          backgroundColor: themeAccentFill,
+          borderColor: themeAlt,
+          backgroundColor: themeAltFill,
           fill: true,
           yAxisID: 'yAlt',
           pointRadius: 0,
@@ -673,7 +739,7 @@ async function renderCurrentJump(showFull) {
         {
           label: t('chart.accelDown'),
           seriesKey: 'accelDown',
-          data: chartAccelDown,
+          data: chartAccelDownWindow,
           borderColor: '#fb923c',
           backgroundColor: 'rgba(251,146,60,0.08)',
           fill: false,
@@ -849,7 +915,21 @@ async function renderCurrentJump(showFull) {
           bodyColor: themeText,
           borderColor: themeBorder,
           borderWidth: 1,
+          // Solid dot in the series colour instead of the default bordered
+          // square: a line dataset's backgroundColor is its area fill (or
+          // unset), so the default swatch renders near-white and only the
+          // border carries the colour.
+          usePointStyle: true,
+          // The dot's diameter is min(boxWidth, boxHeight); both default to
+          // bodyFont.size (12), so 11 is one pixel smaller than stock.
+          boxWidth: 11,
+          boxHeight: 11,
           callbacks: {
+            labelPointStyle: () => ({ pointStyle: 'circle', rotation: 0 }),
+            labelColor: function(ctx) {
+              const c = ctx.dataset.borderColor;
+              return { backgroundColor: c, borderColor: c, borderWidth: 0 };
+            },
             title: items => formatChartTooltipTime(items[0].parsed.x),
             // Keyed on seriesKey rather than datasetIndex, so adding or
             // reordering a dataset can't silently shift every branch.
@@ -893,8 +973,8 @@ async function renderCurrentJump(showFull) {
       scales: {
         x: {
           type: 'linear',
-          min: showFull ? undefined : -5,
-          max: showFull ? undefined : (canopyTimeRel + 5),
+          min: viewMin,
+          max: viewMax,
           title: { display: true, text: t('axis.time'), color: themeTextMuted },
           ticks: { color: themeTextDim, callback: formatChartTickLabel },
           grid: { color: 'rgba(148,163,184,0.08)' }
@@ -904,9 +984,9 @@ async function renderCurrentJump(showFull) {
           position: 'left',
           min: yAltMin,
           max: yAltMax,
-          title: { display: true, text: t('axis.altitude'), color: themeAccent },
-          ticks: { color: themeAccent },
-          grid: { color: themeAccentFill }
+          title: { display: true, text: t('axis.altitude'), color: themeAlt },
+          ticks: { color: themeAlt },
+          grid: { color: themeAltFill }
         },
         ySpeed: {
           type: 'linear',
@@ -930,8 +1010,8 @@ async function renderCurrentJump(showFull) {
           type: 'linear',
           position: 'right',
           display: 'auto',
-          min: accelMin,
-          max: accelMax,
+          min: ACCEL_AXIS_MIN,
+          max: ACCEL_AXIS_MAX,
           title: { display: true, text: t('axis.accelDown'), color: '#fb923c' },
           ticks: { color: '#fb923c' },
           grid: { drawOnChartArea: false }
@@ -1181,8 +1261,8 @@ async function renderCurrentJump(showFull) {
 
   state.lastRenderMap = renderMap;
 
-  const initialMin = showFull ? chartTimes[0] : -5;
-  const initialMax = showFull ? chartTimes[chartTimes.length - 1] : (canopyTimeRel + 5);
+  const initialMin = showFull ? chartTimes[0] : viewMin;
+  const initialMax = showFull ? chartTimes[chartTimes.length - 1] : viewMax;
   renderMap(initialMin, initialMax);
 
   // Expose flight data for video overlay sync. `landingTimeRel`/`canopyTimeRel`
@@ -1200,7 +1280,7 @@ async function renderCurrentJump(showFull) {
     speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd,
     // Wind estimate (or null) plus the air-relative series it enables, so
     // compare.js and the overlay widgets can use them without recomputing.
-    wind, steepMarkers,
+    wind, steepMarkers, avgAccelExitToEnd, avgAccelBest3s,
     diveAnglesAir: airSeries.diveAngles, horzSpeedsAir: airSeries.hSpeeds, tracksAir: airSeries.tracks,
   };
 }
@@ -1245,7 +1325,7 @@ async function renderCurrentJump(showFull) {
       setItem.addEventListener('click', function() {
         hideMenu();
         setExitOverride(state.currentJumpName, targetRecTime);
-        renderCurrentJump(state.chartShowFull);
+        renderCurrentJump(state.chartView);
       });
       menu.appendChild(setItem);
 
@@ -1256,7 +1336,7 @@ async function renderCurrentJump(showFull) {
         resetItem.addEventListener('click', function() {
           hideMenu();
           clearExitOverride(state.currentJumpName);
-          renderCurrentJump(state.chartShowFull);
+          renderCurrentJump(state.chartView);
         });
         menu.appendChild(resetItem);
       }

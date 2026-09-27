@@ -182,8 +182,9 @@
         <button type="button" class="chart-info" data-tip="Dive Angle uses GPS ground speed, so it includes the wind. Dive Angle, air removes the wind estimated from the aircraft climb, so it is the angle you actually flew. Toggle either one in the legend. In strong upper wind the two can differ by several degrees." data-i18n-tip="tip.diveAngleAir" aria-label="About the dive angle series" data-i18n-aria="tip.diveAngleAirAria">i</button>
       </div>
       <div class="chart-controls">
-        <button class="trim-btn secondary" onclick="renderCurrentJump()" data-i18n="btn.jumpOnly">Jump only</button>
-        <button class="trim-btn secondary" onclick="renderCurrentJump(true)" data-i18n="btn.fullFlight">Full flight</button>
+        <button class="trim-btn secondary" onclick="renderCurrentJump('scoring')" data-i18n="btn.scoringWindow">Scoring window</button>
+        <button class="trim-btn secondary" onclick="renderCurrentJump('jump')" data-i18n="btn.jumpOnly">Jump only</button>
+        <button class="trim-btn secondary" onclick="renderCurrentJump('full')" data-i18n="btn.fullFlight">Full flight</button>
         <button class="trim-btn secondary icon-btn" onclick="zoomChart(1)" data-tip="Zoom in" data-i18n-tip="tip.zoomIn">+</button>
         <button class="trim-btn secondary icon-btn" onclick="zoomChart(-1)" data-tip="Zoom out" data-i18n-tip="tip.zoomOut">−</button>
       </div>
@@ -384,6 +385,7 @@
         <button type="button" class="compare-view-tab" data-view="view3d" data-i18n="compare.tab3dView">3D view</button>
         <button type="button" class="compare-view-tab" data-view="vertSpeedGraph" data-i18n="compare.tabVertSpeedGraph">Vert. speed graph</button>
         <button type="button" class="compare-view-tab" data-view="diveAngleGraph" data-i18n="compare.tabDiveAngleGraph">Dive angle graph</button>
+        <button type="button" class="compare-view-tab" data-view="accelDownGraph" data-i18n="compare.tabAccelDownGraph">Accel down graph</button>
         <button type="button" class="compare-view-tab" data-view="vertSpeedTable" data-i18n="compare.tabVertSpeedTable">Vert. speed table</button>
         <button type="button" class="compare-view-tab" data-view="diveAngleTable" data-i18n="compare.tabDiveAngleTable">Dive angle table</button>
       </div>
@@ -392,6 +394,13 @@
     <div class="modal-body">
       <div class="compare-grid">
         <div class="compare-left">
+          <div class="compare-select-all">
+            <input type="checkbox" id="compareSelectAll" data-i18n-tip="compare.selectAllTip" data-i18n-aria="compare.selectAllTip">
+            <label for="compareSelectAll" data-i18n="compare.selectAll">Select all</label>
+            <span class="compare-select-count" id="compareSelectCount"></span>
+            <!-- Sort toggle is mounted here by renderCompareJumpsList(). -->
+            <span class="compare-sort-slot" id="compareSortSlot"></span>
+          </div>
           <div class="compare-jumps-list" id="compareJumpsList"></div>
         </div>
         <div class="compare-right">
@@ -424,6 +433,9 @@
             </div>
             <div class="compare-view compare-graph-view" data-view="diveAngleGraph" hidden>
               <canvas id="compareDiveAngleGraph"></canvas>
+            </div>
+            <div class="compare-view compare-graph-view" data-view="accelDownGraph" hidden>
+              <canvas id="compareAccelDownGraph"></canvas>
             </div>
             <div class="compare-view compare-table-view" data-view="vertSpeedTable" hidden>
               <div class="compare-table-scroll"><table id="compareVertSpeedTable" class="compare-table"></table></div>

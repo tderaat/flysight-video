@@ -854,7 +854,7 @@ renderWidgetPreviews();
   });
   makeResizable({
     handleId: 'mapResizeHandle', targetId: 'map',
-    storeKey: 'flysight_map_height', minHeight: 350,
+    storeKey: 'flysight_map_height', minHeight: 500,
     onApply: function(t, px) {
       t.style.height = px + 'px';
       if (state.mapInstance) state.mapInstance.invalidateSize();

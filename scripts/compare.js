@@ -14,7 +14,11 @@ state.compareMapInstance = null;
 // on leave (a chart built into a display:none container mis-sizes).
 state.compareVertSpeedChart = null;
 state.compareDiveAngleChart = null;
+state.compareAccelDownChart = null;
 state.compareJumpColors = new Map(); // name -> hsl color, rebuilt on each list render
+// Every jump in the list whose data can actually be built, i.e. the set the
+// global select-all box toggles. Rebuilt on each list render.
+state.compareSelectableNames = [];
 // Jump names in the order the list renders them, so the tables' baseline row
 // and the graphs' dataset order follow the display order rather than the order
 // the user happened to tick things in.
@@ -22,7 +26,7 @@ state.compareJumpOrder = [];
 // Random hue offset, stable for the session so colors don't flicker between
 // re-opens but feel different each page load.
 state.compareHueOffset = Math.random() * 360;
-// topMap | view3d | vertSpeedGraph | diveAngleGraph | vertSpeedTable | diveAngleTable
+// topMap | view3d | vertSpeedGraph | diveAngleGraph | accelDownGraph | vertSpeedTable | diveAngleTable
 state.compareActiveView = 'topMap';
 state.compare3dCamera = { yaw: 35, pitch: 25, zoom: 1, panX: 0, panY: 0 };
 // Cached satellite texture for the 3D ground plane: { key, canvas, bounds }
@@ -106,6 +110,7 @@ function buildCompareJumpData(jump) {
   const alts = [];       // metres MSL
   const vertSpeeds = []; // km/h (positive down)
   const diveAngles = []; // degrees, null when horizontal speed is 0
+  const velDs = [];      // m/s, kept raw so acceleration can be differenced below
   for (let i = startIdx; i <= endIdx; i++) {
     const lat = parseFloat(data[i].lat);
     const lon = parseFloat(data[i].lon);
@@ -118,12 +123,32 @@ function buildCompareJumpData(jump) {
     const vE = parseFloat(data[i].velE) || 0;
     const vD = parseFloat(data[i].velD);
     const hSpd = Math.sqrt(vN * vN + vE * vE);
+    velDs.push(isFinite(vD) ? vD : null);
     vertSpeeds.push(isFinite(vD) ? vD * 3.6 : null);
     diveAngles.push(isFinite(vD) && hSpd > 0
       ? Math.atan2(vD, hSpd) * 180 / Math.PI
       : null);
   }
   if (path.length < 2) return null;
+
+  // Downward acceleration, central difference of velD, same as the main
+  // chart's Accel Down series. Endpoints use a one-sided difference. This is
+  // gravity minus drag, so a body movement shows as a notch — which is the
+  // whole reason the compare view carries it.
+  const accelDown = [];
+  for (let i = 0; i < velDs.length; i++) {
+    const dtPrev = i > 0 ? times[i] - times[i - 1] : null;
+    const dtNext = i < velDs.length - 1 ? times[i + 1] - times[i] : null;
+    let a = null;
+    if (i > 0 && i < velDs.length - 1 && velDs[i + 1] != null && velDs[i - 1] != null && (dtPrev + dtNext) > 0) {
+      a = (velDs[i + 1] - velDs[i - 1]) / (dtPrev + dtNext);
+    } else if (i > 0 && velDs[i] != null && velDs[i - 1] != null && dtPrev > 0) {
+      a = (velDs[i] - velDs[i - 1]) / dtPrev;
+    } else if (i === 0 && velDs.length > 1 && velDs[1] != null && velDs[0] != null && dtNext > 0) {
+      a = (velDs[1] - velDs[0]) / dtNext;
+    }
+    accelDown.push(a != null && isFinite(a) ? a : null);
+  }
 
   const exitLat = parseFloat(data[exitIdx].lat);
   const exitLon = parseFloat(data[exitIdx].lon);
@@ -156,7 +181,7 @@ function buildCompareJumpData(jump) {
 
   return {
     path, exitPos, canopyPos, headingLine,
-    times, alts, vertSpeeds, diveAngles,
+    times, alts, vertSpeeds, diveAngles, accelDown,
     canopyTimeRel: allTimes[canopyIdx] - exitTime,
     // Absolute wall-clock timestamp (ms since epoch) of the exit moment.
     // Used by the 3D scrubber, which represents true datetime across jumps.
@@ -197,13 +222,16 @@ function closeCompareModal() {
   if (state.compareClipRecording) abortCompareClip();
   destroyCompareChart('vertSpeedGraph');
   destroyCompareChart('diveAngleGraph');
+  destroyCompareChart('accelDownGraph');
 }
 
 // Tear down a graph view's Chart.js instance. Called when leaving the view and
 // when closing the modal, so a hidden or closed modal holds no chart (and no
 // resize observer) and the next entry rebuilds against a sized container.
 function destroyCompareChart(view) {
-  const key = view === 'vertSpeedGraph' ? 'compareVertSpeedChart' : 'compareDiveAngleChart';
+  const entry = Object.keys(COMPARE_GRAPHS).map(f => COMPARE_GRAPHS[f]).find(c => c.view === view);
+  const key = entry ? entry.stateKey : null;
+  if (!key) return;
   if (state[key]) {
     state[key].destroy();
     state[key] = null;
@@ -230,6 +258,7 @@ function setCompareView(view) {
   // return (renderCompareView() runs after the hidden flags are flipped).
   if (view !== 'vertSpeedGraph') destroyCompareChart('vertSpeedGraph');
   if (view !== 'diveAngleGraph') destroyCompareChart('diveAngleGraph');
+  if (view !== 'accelDownGraph') destroyCompareChart('accelDownGraph');
   if (view !== 'view3d') {
     state.compare3dHover = null;
     const tooltip = document.getElementById('compare3dTooltip');
@@ -260,6 +289,7 @@ function renderCompareView() {
     case 'view3d': renderCompare3d(); break;
     case 'vertSpeedGraph': renderCompareGraph('vertSpeeds'); break;
     case 'diveAngleGraph': renderCompareGraph('diveAngles'); break;
+    case 'accelDownGraph': renderCompareGraph('accelDown'); break;
     case 'vertSpeedTable': renderCompareTable('vertSpeeds', 'km/h', 1); break;
     case 'diveAngleTable': renderCompareTable('diveAngles', '°', 1); break;
     case 'topMap':
@@ -291,12 +321,17 @@ async function renderCompareJumpsList() {
   }
 
   listEl.innerHTML = '';
+  state.compareSelectableNames = jumps
+    .filter(j => getCompareData(j) !== null)
+    .map(j => j.name);
   if (jumps.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'compare-jump-row disabled';
     empty.innerHTML = '<span class="compare-jump-name"></span>';
     empty.querySelector('.compare-jump-name').textContent = t('compare.noJumps');
     listEl.appendChild(empty);
+    setCompareSortToggle(null);
+    syncCompareSelectAll();
     return;
   }
 
@@ -306,8 +341,9 @@ async function renderCompareJumpsList() {
   const { groups, undated } = buildJumpDayGroups(jumps, sortMode);
   const collapsed = getCollapsedDays(COMPARE_COLLAPSED_DAYS_KEY);
   state.compareJumpOrder = [];
+  setCompareSortToggle(sortMode);
 
-  groups.forEach((g, gi) => {
+  groups.forEach(g => {
     const { group, header, jumpsWrap } = makeJumpDayGroup({
       date: g.date,
       dayKey: g.dayKey,
@@ -315,10 +351,11 @@ async function renderCompareJumpsList() {
       collapsed: collapsed.has(g.dayKey),
       storageKey: COMPARE_COLLAPSED_DAYS_KEY
     });
-    // Select-all sits left of the date; the sort toggle only in the first header.
+    // Select-all sits left of the date. The sort toggle is in the select-all
+    // bar above the list, not in the first header — the direction applies to
+    // the whole list, so sitting inside one day read as that day's setting.
     const dayCb = makeCompareDaySelectAll(group, g.items);
     header.insertBefore(dayCb, header.firstChild);
-    if (gi === 0) header.appendChild(makeJumpSortToggle(sortMode));
     g.items.forEach(it => jumpsWrap.appendChild(makeCompareJumpRow(it.jump, scores)));
     listEl.appendChild(group);
     // indeterminate must be set after the node is live, and always after
@@ -327,6 +364,7 @@ async function renderCompareJumpsList() {
   });
   // Undated jumps (unreadable CSV and no addedAt) fall back to a flat list.
   undated.forEach(it => listEl.appendChild(makeCompareJumpRow(it.jump, scores)));
+  syncCompareSelectAll();
 }
 
 // One jump row: checkbox, color swatch, name (+ speed score when known).
@@ -446,8 +484,57 @@ function syncCompareDayCheckbox(groupEl) {
   cb.indeterminate = on > 0 && on < selectable.length;
 }
 
+// Mount (or clear, with a null mode) the date sort toggle in the select-all
+// bar. Rebuilt on every list render, so it picks up a language switch for free
+// — same as the sidebar's copy.
+function setCompareSortToggle(sortMode) {
+  const slot = document.getElementById('compareSortSlot');
+  if (!slot) return;
+  slot.innerHTML = '';
+  if (sortMode) slot.appendChild(makeJumpSortToggle(sortMode));
+}
+
+// Select or deselect every jump in the list, across all days. Same in-place
+// approach as the per-day box, for the same reasons.
+function setCompareAllSelection(on) {
+  const selectable = state.compareSelectableNames || [];
+  selectable.forEach(name => {
+    if (on) state.compareSelected.add(name);
+    else state.compareSelected.delete(name);
+  });
+  const listEl = document.getElementById('compareJumpsList');
+  if (listEl) {
+    listEl.querySelectorAll('.compare-jump-row').forEach(row => {
+      const name = row.dataset.jump;
+      if (selectable.indexOf(name) < 0) return;
+      const rowCb = row.querySelector('input[type="checkbox"]');
+      if (rowCb) rowCb.checked = on;
+      applyCompareRowVisual(row, name, on);
+    });
+    listEl.querySelectorAll('.jump-day').forEach(syncCompareDayCheckbox);
+  }
+  refreshCompareSelectionUi();
+}
+
+// Recompute the global select-all box (tri-state, like the per-day ones) and
+// its "selected / total" counter from the live selection.
+function syncCompareSelectAll() {
+  const cb = document.getElementById('compareSelectAll');
+  const countEl = document.getElementById('compareSelectCount');
+  const selectable = state.compareSelectableNames || [];
+  const on = selectable.filter(n => state.compareSelected.has(n)).length;
+  if (cb) {
+    cb.disabled = selectable.length === 0;
+    // .checked must be assigned first — it clears .indeterminate.
+    cb.checked = selectable.length > 0 && on === selectable.length;
+    cb.indeterminate = on > 0 && on < selectable.length;
+  }
+  if (countEl) countEl.textContent = selectable.length ? on + ' / ' + selectable.length : '';
+}
+
 // Shared exit path after any selection change.
 function refreshCompareSelectionUi() {
+  syncCompareSelectAll();
   if (state.compareActiveView === 'view3d') refreshCompare3dScrub();
   renderCompareView();
 }
@@ -638,26 +725,44 @@ function renderCompareTable(field, unit, decimals) {
 // datasets are {x, y} points on a linear x axis rather than a shared label
 // array. Styling mirrors the main chart in chart.js.
 
-function compareGraphConfig(field) {
-  if (field === 'vertSpeeds') {
-    return {
-      canvasId: 'compareVertSpeedGraph', stateKey: 'compareVertSpeedChart',
-      axisKey: 'axis.vertSpeed', unit: ' km/h', decimals: 1,
-      yMin: undefined, yMax: undefined
-    };
-  }
-  return {
+// One entry per graph view. A table rather than a chain of ifs, so a fourth
+// graph is a row here plus a tab in index.html and nothing else.
+var COMPARE_GRAPHS = {
+  vertSpeeds: {
+    view: 'vertSpeedGraph',
+    canvasId: 'compareVertSpeedGraph', stateKey: 'compareVertSpeedChart',
+    axisKey: 'axis.vertSpeed', unit: ' km/h', decimals: 1,
+    yMin: undefined, yMax: undefined
+  },
+  diveAngles: {
+    view: 'diveAngleGraph',
     canvasId: 'compareDiveAngleGraph', stateKey: 'compareDiveAngleChart',
     axisKey: 'axis.diveAngle', unit: '°', decimals: 1,
     yMin: 0, yMax: 90
-  };
+  },
+  accelDown: {
+    view: 'accelDownGraph',
+    canvasId: 'compareAccelDownGraph', stateKey: 'compareAccelDownChart',
+    axisKey: 'axis.accelDown', unit: ' m/s²', decimals: 2,
+    // Fixed, and the same range the main chart's yAccel axis uses, so a trace
+    // means the same thing in both places and two jumps are directly
+    // comparable. It clips on purpose: the compare slice runs to canopy + 5 s
+    // and the opening decelerates at 30-40 m/s², which on an auto axis would
+    // squash the whole freefall band — the part actually being compared — into
+    // a few pixels. Off the scale reads correctly as off the scale.
+    yMin: -2, yMax: 10
+  },
+};
+
+function compareGraphConfig(field) {
+  return COMPARE_GRAPHS[field] || COMPARE_GRAPHS.vertSpeeds;
 }
 
 function renderCompareGraph(field) {
   const cfg = compareGraphConfig(field);
   // Destroy before the early return: .compare-empty has no background, so a
   // stale chart would show through the placeholder.
-  destroyCompareChart(field === 'vertSpeeds' ? 'vertSpeedGraph' : 'diveAngleGraph');
+  destroyCompareChart(cfg.view);
 
   const canvas = document.getElementById(cfg.canvasId);
   if (!canvas) return;
@@ -745,7 +850,16 @@ function renderCompareGraph(field) {
           // dataset; keep one row per jump.
           filter: (item, i, items) =>
             items.findIndex(it => it.datasetIndex === item.datasetIndex) === i,
+          // Solid dot in the jump's colour, matching the main chart.
+          usePointStyle: true,
+          boxWidth: 11,
+          boxHeight: 11,
           callbacks: {
+            labelPointStyle: () => ({ pointStyle: 'circle', rotation: 0 }),
+            labelColor: function(ctx) {
+              const c = ctx.dataset.borderColor;
+              return { backgroundColor: c, borderColor: c, borderWidth: 0 };
+            },
             title: items => formatChartTooltipTime(items[0].parsed.x),
             label: function(ctx) {
               const y = ctx.parsed.y;
@@ -1021,13 +1135,17 @@ function renderCompare3d() {
   const panX = state.compare3dCamera.panX || 0;
   const panY = state.compare3dCamera.panY || 0;
   function project(x, y, z) {
-    // Yaw around Y, then pitch around X
+    // Yaw around Y, then pitch around X.
+    // World axes: +x east, +z north, +y up. The `+ zScaled * sp` term is what
+    // keeps north pointing away from the camera: with a minus there, a
+    // top-down camera renders east-right AND north-down, which is a mirror
+    // image of the top map rather than a rotation of it.
     const x1 = x * cy + z * sy;
     const z1 = -x * sy + z * cy;
     const yScaled = y * scaleY;
     const xScaled = x1 * scaleXZ;
     const zScaled = z1 * scaleXZ;
-    const y2 = yScaled * cp - zScaled * sp;
+    const y2 = yScaled * cp + zScaled * sp;
     return [W / 2 + xScaled + panX, H / 2 - y2 + panY];
   }
 
@@ -1348,7 +1466,12 @@ function showCompare3dHover(name, idx, mx, my) {
         state.compare3dCamera.panX += dx;
         state.compare3dCamera.panY += dy;
       } else {
-        state.compare3dCamera.yaw = (state.compare3dCamera.yaw + dx * 0.5) % 360;
+        // Dragging right must swing the near side of the scene right, and
+        // the near side is the one at -z (south) — so the yaw delta is
+        // negated. It was +dx while project() had north facing the camera;
+        // fixing that mirroring flipped which side is "near", and with it
+        // the sign this drag needs.
+        state.compare3dCamera.yaw = (state.compare3dCamera.yaw - dx * 0.5) % 360;
         // Clamp pitch to [0°, 89°] so the camera can never tilt below the
         // ground plane — anything < 0° would view the satellite imagery
         // from underneath, which doesn't make sense for the scene.
@@ -1741,6 +1864,13 @@ function showCompareClipMenu(open) {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !menu.hidden) showCompareClipMenu(false);
   });
+})();
+
+// The global select-all box is static markup, so it's wired once.
+(function initCompareSelectAll() {
+  const cb = document.getElementById('compareSelectAll');
+  if (!cb) return;
+  cb.addEventListener('change', () => setCompareAllSelection(cb.checked));
 })();
 
 // Backdrop clicks are ignored — only the X button (or Escape) closes the modal

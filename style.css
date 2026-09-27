@@ -23,6 +23,11 @@
   --accent-fill: rgba(56, 189, 248, 0.08);
   --accent-mid: rgba(56, 189, 248, 0.10);
   --accent-strong: rgba(56, 189, 248, 0.15);
+  /* Altitude line + its y-axis on the main chart. Follows the accent by
+     default; dark-green overrides it because a green accent would clash
+     with the (non-themeable) green Vertical Speed series. */
+  --chart-altitude: var(--accent);
+  --chart-altitude-fill: var(--accent-fill);
   --backdrop: rgba(0, 0, 0, 0.85);
   --page-drop-bg: rgba(15, 23, 42, 0.85);
   --tooltip-bg: rgba(15, 23, 42, 0.92);
@@ -75,6 +80,11 @@
   --accent-fill: rgba(34, 238, 94, 0.12);
   --accent-mid: rgba(34, 238, 94, 0.16);
   --accent-strong: rgba(34, 238, 94, 0.22);
+  /* The accent is neon green here, which is indistinguishable from the
+     green Vertical Speed series; the altitude line gets a grey-tinted
+     light blue of its own instead. */
+  --chart-altitude: #9ab4c4;
+  --chart-altitude-fill: rgba(154, 180, 196, 0.10);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -98,7 +108,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body
   top: 12px;
   min-width: 0;
 }
-.main-content { min-width: 0; padding-top: 28px; }
+.main-content { min-width: 0; padding-top: 34px; }
 
 /* ── Header ── */
 .header { display: flex; align-items: center; gap: 12px; margin-top: -5px; }
@@ -110,7 +120,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body
 /* ── Language + theme pickers (top-right) ── */
 .top-pickers {
   position: fixed;
-  top: 10px;
+  top: 7px;
   right: 24px;
   z-index: 50;
   display: flex;
@@ -377,6 +387,18 @@ body.has-jumps .dropzone p { display: none; }
   right: 0; left: auto; transform: none;
   text-align: left;
 }
+/* A whole stat card carrying its own tooltip (Avg Accel Down explains itself
+   in a couple of sentences). Same treatment as .stat-info: the base bubble is
+   nowrap, which sends a paragraph clean off the side of the viewport. The
+   raised z-index is what keeps it above Leaflet, whose panes sit at 400 and
+   would otherwise swallow a bubble hanging over the map. */
+.stat-card[data-tip]::after {
+  white-space: normal;
+  width: min(260px, 62vw);
+  right: 0; left: auto; transform: none;
+  text-align: left;
+  z-index: 900;
+}
 .chart-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 canvas { width: 100% !important; }
 .chart-canvas-wrap { position: relative; width: 100%; aspect-ratio: 2.5; min-height: 300px; }
@@ -520,6 +542,7 @@ canvas { width: 100% !important; }
 .stat-value.speed { color: #f472b6; }
 .stat-value.zone { color: #facc15; }
 .stat-detail { font-size: 0.95rem; font-weight: 600; margin-top: 4px; }
+.stat-detail.compact { font-size: 0.7rem; white-space: nowrap; }
 .stat-detail.alt { color: var(--accent); }
 .stat-detail.zone { color: #facc15; }
 .stat-detail.dim { opacity: 0.5; font-size: 0.8rem; font-weight: 400; margin-top: 2px; }
@@ -590,7 +613,7 @@ canvas { width: 100% !important; }
 
 /* ── Map ── */
 .map-container { background: var(--bg-card); border-radius: 12px; padding: 20px; position: relative; }
-#map { height: 500px; border-radius: 8px; }
+#map { height: 500px; min-height: 500px; border-radius: 8px; }
 /* "Offline: cached tiles only" badge — sits above Leaflet's panes/controls
    (which top out around z-index 800). Toggled by setMapTilesOffline(). */
 .map-offline-note {
@@ -728,25 +751,82 @@ canvas { width: 100% !important; }
 @media (max-width: 720px) {
   .compare-grid { grid-template-columns: 1fr; }
 }
+/* Global select-all/none, above the day cards. Tri-state, like the per-day box.
+   A row of siblings rather than one wrapping <label>, so the sort toggle at its
+   right edge can't double as a click on the checkbox. */
+.compare-select-all {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px 10px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-mid);
+  user-select: none;
+}
+.compare-select-all input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+}
+.compare-select-all input[type="checkbox"]:disabled { cursor: not-allowed; }
+.compare-select-all label { cursor: pointer; }
+.compare-select-count {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+/* The date sort toggle lives here rather than in the first day header, where it
+   read as a property of that one day. Same button, same styling as the sidebar's. */
+.compare-sort-slot { display: flex; align-items: center; margin-left: -4px; }
+.compare-select-all .jump-sort-toggle {
+  background: none; border: none; padding: 0 2px;
+  color: var(--text-dim); cursor: pointer;
+  font-family: inherit; font-size: 0.85rem; line-height: 1;
+}
+.compare-select-all .jump-sort-toggle:hover { color: var(--accent); }
 .compare-jumps-list {
   max-height: 60vh;
   overflow-y: auto;
+  /* Each day is its own card (below), so the list itself is just a gapped
+     column with no border or background of its own. */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* Day groups reuse the sidebar's .jump-day* markup, but here each day is a
+   self-contained card with flush border-separated rows, so it reads as one
+   block that collapses as a unit. */
+.compare-jumps-list .jump-day {
+  gap: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-inset);
 }
-/* Day groups reuse the sidebar's .jump-day* markup and styling, but this list
-   is flush border-separated rows rather than a gapped chip stack. */
-.compare-jumps-list .jump-day,
 .compare-jumps-list .jump-day-jumps { gap: 0; }
 .compare-jumps-list .jump-day-header {
-  padding: 6px 12px;
+  padding: 8px 12px;
   background: var(--bg-stronger);
   border-bottom: 1px solid var(--border);
+  /* The sidebar's dim grey is unreadable on this list's stronger header fill. */
+  color: var(--text-strong);
+  /* Rounded by hand rather than by overflow:hidden on the card: overflow
+     would make each card its own scroll container and kill the sticky below. */
+  border-radius: 7px 7px 0 0;
   /* Keeps the date visible while scrolling a long list. */
   position: sticky;
   top: 0;
   z-index: 1;
+}
+.compare-jumps-list .jump-day-header:hover { color: var(--text-strong); }
+.compare-jumps-list .jump-day.collapsed .jump-day-header {
+  border-bottom: none;
+  border-radius: 7px;
+}
+.compare-jumps-list .jump-day-jumps .compare-jump-row:last-child {
+  border-radius: 0 0 7px 7px;
 }
 .compare-jumps-list .compare-day-select {
   accent-color: var(--accent);
