@@ -751,19 +751,53 @@ function drawExportWidgets(ctx, contentRect, dataIdx) {
   }
 }
 
-// Seek a (paused) video to t and resolve once the frame is decoded, with a
-// timeout so a slow/broken decode can never hang the export indefinitely.
-function seekVideoTo(video, t) {
+// Seek a (paused) video to t and resolve once the frame is decoded. A slow CPU
+// can need many seconds per seek on long-GOP footage, so one slow frame must not
+// kill the export: each attempt gets SEEK_ATTEMPT_MS of *visible* time (a hidden
+// tab doesn't count), then the seek is re-issued, up to SEEK_ATTEMPTS times.
+// A poll runs alongside the 'seeked' listener in case the event is missed.
+// opts.onSlow fires once per call after SEEK_SLOW_MS; opts.isCancelled resolves
+// early so Cancel doesn't wait out a retry.
+const SEEK_ATTEMPT_MS = 10000;
+const SEEK_ATTEMPTS = 3;
+const SEEK_SLOW_MS = 3000;
+const SEEK_POLL_MS = 200;
+function seekVideoTo(video, t, opts) {
+  const onSlow = opts && opts.onSlow;
+  const isCancelled = opts && opts.isCancelled;
   return new Promise((resolve, reject) => {
     let done = false;
-    function cleanup() { clearTimeout(timer); video.removeEventListener('seeked', onSeeked); }
-    function onSeeked() { if (done) return; done = true; cleanup(); resolve(); }
-    const timer = setTimeout(() => {
-      if (done) return; done = true; cleanup();
-      reject(new Error('Timed out seeking the video (decode too slow or file unreadable).'));
-    }, 8000);
+    let attempt = 1;
+    let waited = 0;       // visible ms in the current attempt
+    let totalWaited = 0;  // visible ms across all attempts
+    let slowFired = false;
+    let lastTick = performance.now();
+    function cleanup() { clearInterval(poll); video.removeEventListener('seeked', onSeeked); }
+    function finish() { if (done) return; done = true; cleanup(); resolve(); }
+    function onSeeked() { finish(); }
+    function arrived() {
+      return !video.seeking && video.readyState >= 2 && Math.abs(video.currentTime - t) < 0.02;
+    }
+    const poll = setInterval(() => {
+      if (done) return;
+      const now = performance.now();
+      if (!document.hidden) { waited += now - lastTick; totalWaited += now - lastTick; }
+      lastTick = now;
+      if ((isCancelled && isCancelled()) || arrived()) { finish(); return; }
+      if (!slowFired && onSlow && totalWaited > SEEK_SLOW_MS) { slowFired = true; onSlow(); }
+      if (waited < SEEK_ATTEMPT_MS) return;
+      if (attempt >= SEEK_ATTEMPTS) {
+        done = true; cleanup();
+        reject(new Error('Timed out seeking the video (decode too slow or file unreadable).'));
+        return;
+      }
+      attempt++;
+      waited = 0;
+      // Nudge so the browser can't treat the re-issued seek as a no-op.
+      video.currentTime = t + (attempt % 2 === 0 ? 1e-3 : 0);
+    }, SEEK_POLL_MS);
     video.addEventListener('seeked', onSeeked);
-    if (Math.abs(video.currentTime - t) < 1e-4) { done = true; cleanup(); resolve(); return; }
+    if (Math.abs(video.currentTime - t) < 1e-4) { finish(); return; }
     video.currentTime = t;
   });
 }
@@ -1136,7 +1170,11 @@ async function exportWithWebCodecs(opts) {
       // landing + 5 s, so trimEnd was capped to video.duration).
       // Not named `t` — that's the global translation function, used below.
       const seekTime = Math.min(trimStart + i / FPS, trimEnd, Math.max(0, video.duration - 0.01));
-      await seekVideoTo(video, seekTime);
+      await seekVideoTo(video, seekTime, {
+        onSlow: () => setProgress((i / totalFrames) * 100, t('video.seekSlow')),
+        isCancelled: () => cancelled,
+      });
+      if (cancelled) break;
 
       ctx.drawImage(video, 0, 0, width, height);
       const dataIdx = videoTimeToDataIndex(video.currentTime);
