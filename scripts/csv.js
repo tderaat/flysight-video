@@ -116,8 +116,21 @@ function detectExitAndLanding(data, forcedExitIdx) {
   const veld = data.map(r => parseFloat(r.velD));
   const veln = data.map(r => parseFloat(r.velN));
   const vele = data.map(r => parseFloat(r.velE));
-  const maxAlt = Math.max(...alts);
-  const maxIdx = alts.indexOf(maxAlt);
+
+  // A poor GPS fix (few satellites) can log altitudes kilometres off, which
+  // would otherwise win the peak search and anchor exit inside the garbage.
+  // Samples whose vertical accuracy is worse than this are ignored for the
+  // peak and the exit onset. A missing vAcc column counts as a good fix.
+  const EXIT_MAX_VACC = 50; // metres
+  const goodFix = data.map(r => {
+    const v = parseFloat(r.vAcc);
+    return !(v > EXIT_MAX_VACC);
+  });
+  let maxIdx = -1;
+  for (let i = 0; i < alts.length; i++) {
+    if (goodFix[i] && (maxIdx < 0 || alts[i] > alts[maxIdx])) maxIdx = i;
+  }
+  if (maxIdx < 0) maxIdx = alts.indexOf(Math.max(...alts));
 
   // Sample counts for the time-based windows below, derived from the file's
   // own logging rate so the same thresholds hold for 10 Hz and 5 Hz data.
@@ -140,7 +153,7 @@ function detectExitAndLanding(data, forcedExitIdx) {
     for (let i = maxIdx; i < data.length - ONSET_SUSTAIN_SAMPLES; i++) {
       let sustained = true;
       for (let j = i; j < i + ONSET_SUSTAIN_SAMPLES && j < data.length; j++) {
-        if (veld[j] <= FREEFALL_ONSET_MPS) { sustained = false; break; }
+        if (veld[j] <= FREEFALL_ONSET_MPS || !goodFix[j]) { sustained = false; break; }
       }
       if (!sustained) continue;
 

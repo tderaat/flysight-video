@@ -460,6 +460,11 @@ async function renderCurrentJump(view) {
   const groundVertT = detectGroundVertical(
     chartTimes, chartDiveAngles, chartHorzSpeeds, perfWindowStartTime, perfWindowEndTime
   );
+  // The VERTICAL line is hidden when the turn-around falls more than 0.5 s
+  // after the performance window end. groundVertT itself is still published.
+  const VERTICAL_LINE_MAX_PAST_END_SEC = 0.5;
+  const showGroundVert = groundVertT !== null &&
+    groundVertT <= perfWindowEndTime + VERTICAL_LINE_MAX_PAST_END_SEC;
 
   // Speed score computation
   const TIME_DELTA = 0.005;
@@ -882,7 +887,7 @@ async function renderCurrentJump(view) {
             // `steepMarkers.pastVertT` and `overSteepT` are no longer drawn;
             // the detector still returns both, since the season-review skill
             // reports on them.
-            ...(groundVertT !== null ? {
+            ...(showGroundVert ? {
               groundVertLine: {
                 type: 'line',
                 xMin: groundVertT,
