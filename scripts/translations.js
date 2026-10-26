@@ -173,6 +173,7 @@ var I18N = {
     'widget.miniMap': 'Mini Map',
     'widget.gForce': 'G-Force',
     'widget.image': 'Image',
+    'widget.score': 'Score',
 
     // Video export progress / errors
     'video.preparing': 'Preparing...',
@@ -442,6 +443,7 @@ var I18N = {
     'widget.miniMap': 'Minikarte',
     'widget.gForce': 'G-Kraft',
     'widget.image': 'Bild',
+    'widget.score': 'Wertung',
 
     // Video export progress / errors
     'video.preparing': 'Wird vorbereitet...',
@@ -711,6 +713,7 @@ var I18N = {
     'widget.miniMap': 'Minikaart',
     'widget.gForce': 'G-kracht',
     'widget.image': 'Afbeelding',
+    'widget.score': 'Score',
 
     // Video export progress / errors
     'video.preparing': 'Voorbereiden...',
@@ -980,6 +983,7 @@ var I18N = {
     'widget.miniMap': 'Mini mappa',
     'widget.gForce': 'Forza G',
     'widget.image': 'Immagine',
+    'widget.score': 'Punteggio',
 
     // Video export progress / errors
     'video.preparing': 'Preparazione...',
@@ -1249,6 +1253,7 @@ var I18N = {
     'widget.miniMap': 'Minikarta',
     'widget.gForce': 'G-kraft',
     'widget.image': 'Bild',
+    'widget.score': 'Poäng',
 
     // Video export progress / errors
     'video.preparing': 'Förbereder...',
@@ -1518,6 +1523,7 @@ var I18N = {
     'widget.miniMap': 'Minimapa',
     'widget.gForce': 'Fuerza G',
     'widget.image': 'Imagen',
+    'widget.score': 'Puntuación',
 
     // Video export progress / errors
     'video.preparing': 'Preparando...',
@@ -1787,6 +1793,7 @@ var I18N = {
     'widget.miniMap': 'Minimapa',
     'widget.gForce': 'Przeciążenie',
     'widget.image': 'Obraz',
+    'widget.score': 'Wynik',
 
     // Video export progress / errors
     'video.preparing': 'Przygotowywanie...',

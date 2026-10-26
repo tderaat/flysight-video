@@ -170,8 +170,14 @@ function renderInfoWidget(ctx, contentRect, widget, dataIdx, units, scale, opaci
   const p = computeInfoBoxSize(ctx, contentRect, lines, effectiveScale, labels, widthLines);
   const cx = widget.x * contentRect.width;
   const cy = widget.y * contentRect.height;
+  // The box is centred on its full height, the one it has once the score row is shown, so
+  // the score appearing grows it downwards and the top-left corner stays put.
+  const fd = state.currentFlightData;
+  const scorePending = widthLines && config.showScore && fd.speedScore
+    && fd.perfWindowEndTime !== null && fd.times[dataIdx] <= fd.perfWindowEndTime;
+  const fullH = p.boxH + (scorePending ? p.itemHeight + p.itemGap : 0);
   const x = cx - p.boxW / 2;
-  const y = cy - p.boxH / 2;
+  const y = cy - fullH / 2;
 
   widget._bounds = { x: x, y: y, w: p.boxW, h: p.boxH };
 
@@ -203,7 +209,9 @@ function renderInfoWidget(ctx, contentRect, widget, dataIdx, units, scale, opaci
     }
     ctx.font = 'bold ' + p.fontSize + 'px "Segoe UI", system-ui, sans-serif';
     ctx.fillStyle = (colors && colors[i]) || '#f8fafc';
+    ctx.filter = scaffoldFilter(p.fontSize * 0.35);
     ctx.fillText(line, x + p.padding, itemY + p.labelHeight);
+    ctx.filter = 'none';
   });
 
   ctx.restore();

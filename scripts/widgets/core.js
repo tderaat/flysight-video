@@ -33,6 +33,15 @@ function buildUnitsConfig(widget, options) {
   return group;
 }
 
+// ── Pre-exit scaffold blur ──
+// Until exit is marked the widgets can only show sample values, not this jump's data, so
+// each widget blurs just its dynamic parts (numbers, needles, graph lines) with this filter
+// and leaves boxes, dials and labels sharp. `px` is sized by the caller to its own scale.
+// The export never sees it, since it requires an exit.
+function scaffoldFilter(px) {
+  return state.videoExitTime === null ? 'blur(' + Math.max(1.5, px) + 'px) opacity(0.3)' : 'none';
+}
+
 // ── Shared graph helper: current-value label beside the moving dot ──
 // Always directly right of the dot, vertically centred on it, so it travels with the dot
 // without ever jumping sides.
@@ -58,6 +67,13 @@ const WIDGET_TYPES = {
     render: renderInfoWidget,
     renderPreview: renderInfoPreviewCard,
     configUI: (widget) => buildInfoConfigPanel(widget, drawOverlayPreview, buildUnitsConfig),
+  },
+  score: {
+    label: 'Score',
+    defaultConfig: { showLabel: true, showBackground: true, units: 'both', fadeIn: false },
+    render: renderScoreWidget,
+    renderPreview: renderScorePreviewCard,
+    configUI: (widget) => buildScoreConfigPanel(widget, drawOverlayPreview, buildUnitsConfig),
   },
   vertSpeed: {
     label: 'Vert. Speed',
@@ -289,7 +305,9 @@ function drawOverlayPreview() {
 
   ctx.save();
   ctx.translate(rect.offX, rect.offY);
-  const contentRect = { width: rect.contentW, height: rect.contentH };
+  // isPreview marks editor-only drawing (the hidden Score widget's dashed placeholder);
+  // the export builds its own contentRect without it.
+  const contentRect = { width: rect.contentW, height: rect.contentH, isPreview: true };
 
   for (const widget of state.widgets) {
     const typeDef = WIDGET_TYPES[widget.type];
