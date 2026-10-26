@@ -735,6 +735,7 @@ function buildExtendedFlightData(maxTimeRel) {
     best3sEnd: full.best3sEnd,
     canopyTimeRel: full.canopyTimeRel,
     landingTimeRel: full.landingTimeRel,
+    groundAlt: full.groundAlt,
   };
 }
 

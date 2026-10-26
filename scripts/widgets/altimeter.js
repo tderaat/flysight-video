@@ -129,7 +129,9 @@ function renderAltimeterWidget(ctx, contentRect, widget, dataIdx, units, scale, 
   let altM = 0, groundAlt = 0;
   if (dataIdx >= 0 && fd && fd.altitudes && dataIdx < fd.altitudes.length) {
     altM = fd.altitudes[dataIdx];
-    groundAlt = Math.min(...fd.altitudes);
+    // The detected ground level (landing altitude). The lowest point of the
+    // slice is not the ground: the default slice ends at canopy + 5 s.
+    groundAlt = isFinite(fd.groundAlt) ? fd.groundAlt : Math.min(...fd.altitudes);
   } else {
     altM = 3200; groundAlt = 0;
   }

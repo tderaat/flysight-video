@@ -1,7 +1,9 @@
 
 function getInfoLines(dataIdx, units, config) {
   const fd = state.currentFlightData;
-  const alt = fd.altitudes[dataIdx];
+  // AGL, like the stat cards: the same ground level the app subtracts
+  // everywhere else (the landing altitude), not the raw GPS MSL figure.
+  const alt = fd.altitudes[dataIdx] - (fd.groundAlt || 0);
   const vSpeed = fd.vertSpeeds[dataIdx];
   const t = fd.times[dataIdx];
   const lines = [], colors = [], labels = [];

@@ -1290,7 +1290,7 @@ async function renderCurrentJump(view) {
   // Expose flight data for video overlay sync. `landingTimeRel`/`canopyTimeRel`
   // (seconds relative to exit) let the export decide how far to run.
   const landingTimeRel = chartTimes[landingIdx];
-  state.currentFlightData = { times, altitudes, vertSpeeds, horzSpeeds, diveAngles, lats: sliceLats, lons: sliceLons, velNs, velEs, exitIdx: exitIdx - startIdx, canopyIdx: canopyIdx - startIdx, speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd, canopyTimeRel, landingTimeRel, wind, steepMarkers };
+  state.currentFlightData = { times, altitudes, vertSpeeds, horzSpeeds, diveAngles, lats: sliceLats, lons: sliceLons, velNs, velEs, exitIdx: exitIdx - startIdx, canopyIdx: canopyIdx - startIdx, speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd, canopyTimeRel, landingTimeRel, groundAlt, wind, steepMarkers };
 
   // Full-recording dataset (relative to exit), used by the video export's
   // "full descent" option to build an overlay-data slice that reaches landing.
@@ -1298,7 +1298,7 @@ async function renderCurrentJump(view) {
   state.currentFlightDataFull = {
     times: chartTimes, altitudes: chartAlts, vertSpeeds: chartVertSpeeds, horzSpeeds: chartHorzSpeeds,
     diveAngles: chartDiveAngles, lats: chartLats, lons: chartLons, velNs: chartVelNs, velEs: chartVelEs,
-    exitIdx, canopyIdx, landingIdx, canopyTimeRel, landingTimeRel,
+    exitIdx, canopyIdx, landingIdx, canopyTimeRel, landingTimeRel, groundAlt,
     speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd,
     // Wind estimate (or null) plus the air-relative series it enables, so
     // compare.js and the overlay widgets can use them without recomputing.
