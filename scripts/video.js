@@ -218,6 +218,174 @@ function readMp4DurationSec(file) {
   });
 }
 
+// ── Containers the <video> element does not open ──
+// AVI and MPEG-TS (AVCHD's .mts/.m2ts) are not played by any browser, whatever
+// codec they carry, so those files go straight to the ffmpeg.wasm converter
+// without a load attempt. Matroska support varies by browser, so an .mkv is
+// tried natively first and only sniffed here once that fails.
+//
+// Detected by magic bytes rather than extension, so a renamed file still lands
+// on the right path. Every codec below is mapped onto the same keys as
+// VIDEO_CODEC_NAMES, so the converter and its messages need no second table.
+var CONTAINER_NAMES = { avi: 'AVI', mpegts: 'MPEG-TS', mkv: 'Matroska (MKV)' };
+var CONTAINER_SNIFF_BYTES = 1024 * 1024;
+
+Object.assign(VIDEO_CODEC_NAMES, {
+  mp2v: 'MPEG-2', mjpg: 'Motion JPEG', div3: 'MS MPEG-4 v3',
+});
+
+// AVI BITMAPINFOHEADER biCompression values, upper-cased.
+var AVI_FOURCC_MAP = {
+  H264: 'avc1', X264: 'avc1', AVC1: 'avc1',
+  HEVC: 'hev1', H265: 'hev1', HEV1: 'hev1', HVC1: 'hev1',
+  XVID: 'mp4v', DIVX: 'mp4v', DX50: 'mp4v', FMP4: 'mp4v', MP4V: 'mp4v',
+  DIV3: 'div3', MP43: 'div3',
+  MJPG: 'mjpg', AVRN: 'mjpg',
+};
+
+// MPEG-TS PMT stream_type values for video.
+var TS_STREAM_TYPES = { 0x01: 'mp2v', 0x02: 'mp2v', 0x10: 'mp4v', 0x1B: 'avc1', 0x24: 'hev1' };
+
+// Matroska CodecID prefixes.
+var MKV_CODEC_IDS = [
+  ['V_MPEG4/ISO/AVC', 'avc1'], ['V_MPEGH/ISO/HEVC', 'hev1'], ['V_MPEG4/ISO/', 'mp4v'],
+  ['V_MPEG2', 'mp2v'], ['V_MJPEG', 'mjpg'], ['V_VP9', 'vp09'], ['V_VP8', 'vp08'], ['V_AV1', 'av01'],
+];
+
+function asciiAt(bytes, idx, len) {
+  var s = '';
+  for (var i = idx; i < idx + len && i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return s;
+}
+
+// RIFF chunks are little-endian and padded to an even length. hdrl holds the
+// main header and one strl per stream; only the first video stream matters.
+function sniffAvi(bytes) {
+  var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  var info = { container: 'avi', fourcc: null, durationSec: null };
+  var avihSecs = null;
+
+  function walk(start, end) {
+    var p = start;
+    while (p + 8 <= end && p + 8 <= bytes.length) {
+      var id = asciiAt(bytes, p, 4);
+      var size = dv.getUint32(p + 4, true);
+      var body = p + 8;
+      if (id === 'LIST' || id === 'RIFF') {
+        var type = asciiAt(bytes, body, 4);
+        if (type === 'hdrl' || type === 'strl') {
+          if (walk(body + 4, Math.min(body + size, bytes.length))) return true;
+        }
+        if (type === 'movi') return false; // stream data follows; headers are done
+      } else if (id === 'avih' && body + 20 <= bytes.length) {
+        var usPerFrame = dv.getUint32(body, true);
+        var frames = dv.getUint32(body + 16, true);
+        if (usPerFrame && frames) avihSecs = frames * usPerFrame / 1e6;
+      } else if (id === 'strh' && body + 36 <= bytes.length) {
+        if (asciiAt(bytes, body, 4) !== 'vids') return false; // not video: next strl
+        var scale = dv.getUint32(body + 20, true);
+        var rate = dv.getUint32(body + 24, true);
+        var length = dv.getUint32(body + 32, true);
+        // strh's length covers the whole stream, unlike avih's frame count, which
+        // an OpenDML (>1 GB) file limits to its first RIFF segment.
+        if (scale && rate && length) info.durationSec = length * scale / rate;
+        info.handler = asciiAt(bytes, body + 4, 4);
+      } else if (id === 'strf' && info.handler != null && body + 20 <= bytes.length) {
+        var comp = asciiAt(bytes, body + 16, 4).toUpperCase();
+        var handler = info.handler.toUpperCase();
+        info.fourcc = AVI_FOURCC_MAP[comp] || AVI_FOURCC_MAP[handler] || comp.trim().toLowerCase() || null;
+        return true;
+      }
+      p = body + size + (size & 1);
+    }
+    return false;
+  }
+
+  walk(12, bytes.length);
+  delete info.handler;
+  if (!info.durationSec) info.durationSec = avihSecs;
+  return info;
+}
+
+// PAT (PID 0) names the PMT's PID, and the PMT lists each stream's type. Both
+// tables fit in a single packet in practice, so sections are not reassembled.
+function sniffMpegTs(bytes, packetSize, syncOffset) {
+  var info = { container: 'mpegts', fourcc: null, durationSec: null };
+  var pmtPid = null;
+  for (var p = syncOffset; p + 188 <= bytes.length; p += packetSize) {
+    if (bytes[p] !== 0x47) break;
+    var pusi = bytes[p + 1] & 0x40;
+    var pid = ((bytes[p + 1] & 0x1F) << 8) | bytes[p + 2];
+    var afc = (bytes[p + 3] >> 4) & 3;
+    if (!pusi || !(afc & 1)) continue;
+    var q = p + 4;
+    if (afc & 2) q += 1 + bytes[q];
+    q += 1 + bytes[q]; // pointer_field
+    if (q + 3 > p + 188) continue;
+    var sectionLen = ((bytes[q + 1] & 0x0F) << 8) | bytes[q + 2];
+    var sectionEnd = Math.min(q + 3 + sectionLen - 4, p + 188); // minus CRC
+    if (pid === 0 && bytes[q] === 0x00) {
+      for (var r = q + 8; r + 4 <= sectionEnd; r += 4) {
+        var program = (bytes[r] << 8) | bytes[r + 1];
+        if (program !== 0) { pmtPid = ((bytes[r + 2] & 0x1F) << 8) | bytes[r + 3]; break; }
+      }
+    } else if (pmtPid != null && pid === pmtPid && bytes[q] === 0x02) {
+      var progInfoLen = ((bytes[q + 10] & 0x0F) << 8) | bytes[q + 11];
+      for (var e = q + 12 + progInfoLen; e + 5 <= sectionEnd;) {
+        var codec = TS_STREAM_TYPES[bytes[e]];
+        if (codec) { info.fourcc = codec; return info; }
+        e += 5 + (((bytes[e + 3] & 0x0F) << 8) | bytes[e + 4]);
+      }
+      return info;
+    }
+  }
+  return info;
+}
+
+// EBML is a tree of variable-length elements, but the two values needed here
+// are short strings with one-byte IDs and sizes, so a byte scan is exact
+// enough: DocType (0x4282) separates WebM from Matroska, and the first video
+// CodecID (0x86) names the codec.
+function sniffMatroska(bytes) {
+  var info = { container: 'mkv', fourcc: null, durationSec: null };
+  for (var i = 0; i + 3 < bytes.length; i++) {
+    if (bytes[i] === 0x42 && bytes[i + 1] === 0x82 && (bytes[i + 2] & 0x80)) {
+      if (asciiAt(bytes, i + 3, bytes[i + 2] & 0x7F) === 'webm') return null;
+      break;
+    }
+  }
+  for (var j = 0; j + 2 < bytes.length; j++) {
+    if (bytes[j] !== 0x86 || !(bytes[j + 1] & 0x80)) continue;
+    var id = asciiAt(bytes, j + 2, bytes[j + 1] & 0x7F);
+    if (id.indexOf('V_') !== 0) continue;
+    for (var k = 0; k < MKV_CODEC_IDS.length; k++) {
+      if (id.indexOf(MKV_CODEC_IDS[k][0]) === 0) { info.fourcc = MKV_CODEC_IDS[k][1]; break; }
+    }
+    break;
+  }
+  return info;
+}
+
+// { container, fourcc, codecName, durationSec } for AVI, MPEG-TS and Matroska,
+// or null for anything else (MP4/MOV/WebM, or unreadable). fourcc and
+// durationSec are null when the header does not say.
+function sniffContainer(file) {
+  return readFileBytes(file, 0, CONTAINER_SNIFF_BYTES).then(function(b) {
+    var info = null;
+    if (asciiAt(b, 0, 4) === 'RIFF' && asciiAt(b, 8, 4) === 'AVI ') {
+      info = sniffAvi(b);
+    } else if (b[0] === 0x47 && b[188] === 0x47 && b[376] === 0x47) {
+      info = sniffMpegTs(b, 188, 0);
+    } else if (b[4] === 0x47 && b[196] === 0x47 && b[388] === 0x47) {
+      info = sniffMpegTs(b, 192, 4); // .m2ts: 4-byte timestamp before each packet
+    } else if (b[0] === 0x1A && b[1] === 0x45 && b[2] === 0xDF && b[3] === 0xA3) {
+      info = sniffMatroska(b);
+    }
+    if (info) info.codecName = info.fourcc ? (VIDEO_CODEC_NAMES[info.fourcc] || info.fourcc.toUpperCase()) : null;
+    return info;
+  }).catch(function() { return null; });
+}
+
 // A successful metadata load is NOT proof the browser can show the footage.
 // Given an H.265 file it has no decoder for, Chrome fires loadedmetadata AND
 // loadeddata, reports the right dimensions and duration and a readyState of 4,
@@ -289,17 +457,30 @@ function reportVideoLoadError(file, mediaError) {
   var detail = mediaError && mediaError.message ? String(mediaError.message).trim() : '';
   if (detail) reason += ': ' + detail;
 
-  sniffVideoTrackFourcc(file).catch(function() { return null; }).then(function(fourcc) {
+  Promise.all([
+    sniffVideoTrackFourcc(file).catch(function() { return null; }),
+    sniffContainer(file),
+  ]).then(function(r) {
+    var fourcc = r[0];
+    var container = r[1];
     console.warn('[FlySight] video load failed', {
       file: file.name, type: file.type, size: file.size, fourcc: fourcc,
+      container: container,
       mediaError: mediaError ? { code: mediaError.code, message: mediaError.message } : null,
     });
+
+    // An .mkv the browser would not play: the container is the problem, so
+    // the same path as AVI and MPEG-TS.
+    if (container) {
+      offerContainerConvert(file, container);
+      return;
+    }
 
     // ffmpeg.wasm can decode what the browser cannot, so offer an in-place
     // conversion rather than an alert the user has to act on elsewhere.
     // See scripts/convert.js (not available on file:// origins).
     if (typeof canOfferVideoConvert === 'function' && canOfferVideoConvert(fourcc)) {
-      showVideoConvertOffer(file, fourcc, VIDEO_CODEC_NAMES[fourcc]);
+      showVideoConvertOffer(file, { fourcc: fourcc, codecName: VIDEO_CODEC_NAMES[fourcc] });
       return;
     }
 
@@ -315,15 +496,50 @@ function reportVideoLoadError(file, mediaError) {
   });
 }
 
+// Offers the converter for a container no browser opens, or, where it cannot
+// run (file://), explains how to convert the file by hand.
+function offerContainerConvert(file, info) {
+  if (typeof canOfferVideoConvert === 'function' && canOfferVideoConvert(info.fourcc, info.container)) {
+    showVideoConvertOffer(file, info);
+    return;
+  }
+  alert(t('video.errLoadContainer', {
+    container: CONTAINER_NAMES[info.container],
+    codec: info.codecName || '?',
+    name: file.name,
+  }));
+}
+
+// .lrv (GoPro) and .lrf (DJI) are low-resolution MP4 proxies under another name.
+var VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|lrv|lrf|avi|mts|m2ts|ts|mkv)$/i;
+// Bumped per drop, so a sniff that finishes after a newer drop is ignored.
+var videoDropSeq = 0;
+
 function handleVideoFile(file) {
   const isVideoMime = (file.type || '').toLowerCase().startsWith('video/');
-  const isVideoExt = /\.(mp4|webm|mov|m4v)$/i.test(file.name);
+  const isVideoExt = VIDEO_EXT_RE.test(file.name);
   if (!isVideoMime && !isVideoExt) {
     alert(t('video.errDropVideo'));
     return;
   }
   // A previous drop may have left the codec-conversion offer up.
   if (typeof hideVideoConvertOffer === 'function') hideVideoConvertOffer();
+
+  // AVI and MPEG-TS never play in a <video> element, so do not make the user
+  // wait for a load that is certain to fail. Matroska is tried natively.
+  const seq = ++videoDropSeq;
+  sniffContainer(file).then(function(container) {
+    if (seq !== videoDropSeq) return;
+    if (!document.getElementById('videoModal').classList.contains('open')) return;
+    if (container && container.container !== 'mkv') {
+      offerContainerConvert(file, container);
+      return;
+    }
+    loadVideoIntoPreview(file);
+  });
+}
+
+function loadVideoIntoPreview(file) {
   if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
   state.videoObjectURL = URL.createObjectURL(file);
   const video = document.getElementById('videoPreview');
@@ -356,8 +572,13 @@ function handleVideoFile(file) {
   })();
 
   // Attach listeners BEFORE setting src so we never miss the metadata event.
+  const objectURL = state.videoObjectURL;
   video.addEventListener('loadedmetadata', function onMeta() {
     video.removeEventListener('loadedmetadata', onMeta);
+    // A load that failed outright never reached this listener, so it is still
+    // attached when the next file loads. Without this guard it would probe
+    // that file too and report a failure under the old file's name.
+    if (state.videoObjectURL !== objectURL) return;
     // probeFirstFrame() owns error handling from here, so there is exactly one
     // path into reportVideoLoadError().
     video.removeEventListener('error', onLoadError);

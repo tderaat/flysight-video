@@ -861,6 +861,26 @@ renderWidgetPreviews();
     },
   });
 
+  // The map can't be shorter than the stats column beside it, or the grid row
+  // stretches the map card and leaves an empty strip under the map. An inline
+  // min-height beats the inline height the drag sets, so the drag stops there.
+  (function() {
+    var map = document.getElementById('map');
+    var stats = document.getElementById('stats');
+    if (!map || !stats) return;
+    var mq = window.matchMedia('(max-width: 900px)');
+    function syncMapMinHeight() {
+      // Stacked layout: the stats sit above the map, so there is nothing to match.
+      var px = mq.matches ? '' : Math.max(500, stats.offsetHeight) + 'px';
+      if (map.style.minHeight === px) return;
+      map.style.minHeight = px;
+      if (state.mapInstance) state.mapInstance.invalidateSize();
+    }
+    if (window.ResizeObserver) new ResizeObserver(syncMapMinHeight).observe(stats);
+    mq.addEventListener('change', syncMapMinHeight);
+    syncMapMinHeight();
+  })();
+
   // Horizontal splitter on the map's right edge: drags the map/stats column ratio.
   // Stored as the map's fraction of the row (0.45–0.85) in a cookie (default 0.8 = "4fr 1fr").
   (function() {

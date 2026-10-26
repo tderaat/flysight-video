@@ -242,8 +242,8 @@
       <div id="videoStep1">
         <div class="video-dropzone" id="videoDropzone">
           <h3 data-i18n="video.dropTitle">Drop a video file here, or click to browse</h3>
-          <p data-i18n="video.dropSubtitle">MP4, WebM, or MOV supported</p>
-          <input type="file" id="videoFileInput" accept="video/*">
+          <p data-i18n="video.dropSubtitle">MP4, MOV, WebM, AVI, MTS/M2TS or MKV supported</p>
+          <input type="file" id="videoFileInput" accept="video/*,.avi,.mts,.m2ts,.ts,.mkv,.lrv,.lrf">
         </div>
 
         <!-- Shown only when the dropped file uses a codec this browser cannot
@@ -253,7 +253,7 @@
           <p class="video-convert-msg" id="videoConvertMsg"></p>
           <p class="video-convert-eta" id="videoConvertEta" style="display:none;"></p>
           <p class="video-convert-note" data-i18n="convert.note">The conversion runs entirely on your computer, nothing is uploaded.</p>
-          <p class="video-convert-note" data-i18n="convert.tipH264">Tip: most cameras can record H.264 instead of H.265, which avoids this step entirely.</p>
+          <p class="video-convert-note" id="videoConvertTip" data-i18n="convert.tipH264">Tip: most cameras can record H.264 instead of H.265, which avoids this step entirely.</p>
           <div class="video-convert-actions" id="videoConvertActions">
             <button class="trim-btn" id="videoConvertBtn" onclick="startVideoConvert()" data-i18n="convert.btn">Convert to H.264</button>
             <button class="export-cancel-btn" id="videoConvertDismissBtn" onclick="hideVideoConvertOffer()" data-i18n="convert.dismiss">Dismiss</button>

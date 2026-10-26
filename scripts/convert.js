@@ -1,10 +1,11 @@
-// ── In-browser H.265/HEVC to H.264 conversion (ffmpeg.wasm) ──
+// ── In-browser conversion to H.264 MP4 (ffmpeg.wasm) ──
 //
 // The overlay pipeline's only decoder is the <video> element, so footage the
 // browser cannot decode has to become H.264 before anything downstream can
 // touch it. In practice that means H.265/HEVC, which only Chrome and Edge play
-// (see "Video codec support" in CLAUDE.md). ffmpeg.wasm re-encodes it locally,
-// so the footage never leaves the machine.
+// (see "Video codec support" in CLAUDE.md), and containers no browser opens
+// (AVI, MPEG-TS, sometimes Matroska), where H.264 is only copied into MP4.
+// ffmpeg.wasm does it locally, so the footage never leaves the machine.
 //
 // The scripts are vendored like every other library, but the 30.7 MB core
 // binary is the one exception to the "no CDN" rule in CLAUDE.md: committing it
@@ -44,12 +45,35 @@ var FFMPEG_CONVERT_ARGS = [
   '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
 ];
 
+// H.264 that is only in the wrong container (AVI, MPEG-TS, Matroska) is copied
+// into MP4 as-is: seconds rather than minutes, and no quality loss. genpts
+// because AVI carries no timestamps of its own. Falls back to the re-encode if
+// ffmpeg refuses the copy.
+var FFMPEG_REMUX_ARGS = [
+  '-map', '0:v:0', '-c:v', 'copy', '-an', '-movflags', '+faststart',
+];
+
 // Observed throughput, in wall-clock seconds per second of video, persisted in
 // the `settings` object store. ffmpeg.wasm is single-threaded, so this tracks
 // single-core clock speed and varies several-fold between machines: measured
 // ~6x on the dev desktop, and a throttling laptop can be 2-3x worse. Hence a
 // stored per-machine figure rather than a constant.
+//
+// Kept per source codec, because decode cost is most of the work and differs
+// several-fold between codecs (HEVC against MJPEG or MPEG-4 Part 2). HEVC keeps
+// its original key so calibrations made before this split survive.
 var CONVERT_RATE_KEY = 'hevcConvertRate';
+var HEVC_FOURCC = ['hev1', 'hvc1', 'dvh1', 'dvhe'];
+
+function convertRateKey(fourcc) {
+  if (HEVC_FOURCC.indexOf(fourcc) >= 0) return CONVERT_RATE_KEY;
+  return fourcc ? 'convertRate:' + fourcc : null;
+}
+
+// Only H.264 in a foreign container can be copied rather than re-encoded.
+function convertModeFor(codec) {
+  return codec && codec.container && codec.fourcc === 'avc1' ? 'remux' : 'encode';
+}
 
 // Throughput range used only for the first-run estimate, before this machine
 // has measured itself. The low end is the dev desktop (~4.2x measured); the
@@ -62,7 +86,7 @@ var CONVERT_RATE_HIGH = 15;
 var ffmpegInstance = null;
 var ffmpegLoading = null;
 var convertPendingFile = null;
-var convertPendingCodec = null;    // { fourcc, codecName }, kept for re-rendering
+var convertPendingCodec = null;    // { fourcc, codecName, container? }, kept for re-rendering
 var convertPendingDuration = null; // seconds from mvhd, null when unreadable
 var convertPendingRate = null;     // seconds of work per second of video
 var convertEtaSmoothed = null;
@@ -73,8 +97,10 @@ var convertCancelled = false;
 // downstream "FS error" from reading an output file that was never written.
 var ffmpegLogTail = [];
 
-function canOfferVideoConvert(fourcc) {
-  return CONVERTIBLE_FOURCC.indexOf(fourcc) >= 0 &&
+// A container no browser opens is worth converting whatever its codec, since
+// ffmpeg reads far more than the browser does.
+function canOfferVideoConvert(fourcc, container) {
+  return (!!container || CONVERTIBLE_FOURCC.indexOf(fourcc) >= 0) &&
     location.protocol !== 'file:' &&
     typeof Worker !== 'undefined' &&
     typeof WebAssembly !== 'undefined';
@@ -198,7 +224,7 @@ function convertErrorMessage(e) {
   return msg;
 }
 
-async function convertVideoToH264(file, hooks) {
+async function convertVideoToH264(file, hooks, mode) {
   var stage = function(name) { if (hooks && hooks.onStage) hooks.onStage(name); };
   stage('loading');
   var ff = await ensureFfmpeg();
@@ -213,6 +239,17 @@ async function convertVideoToH264(file, hooks) {
   try {
     stage('reading');
     await ff.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+    if (mode === 'remux') {
+      stage('remuxing');
+      ffmpegLogTail = [];
+      var remuxCode = await ff.exec(['-fflags', '+genpts', '-i', inName].concat(FFMPEG_REMUX_ARGS, [outName]));
+      var remuxed = remuxCode === 0 ? await ff.readFile(outName).catch(function() { return null; }) : null;
+      if (remuxed && remuxed.length) {
+        return new File([remuxed], convertedFileName(file.name), { type: 'video/mp4' });
+      }
+      console.warn('[FlySight] remux failed, re-encoding instead', ffmpegFailureReason(''));
+      try { await ff.deleteFile(outName); } catch (e) {}
+    }
     stage('encoding');
     ffmpegLogTail = [];
     // exec() resolves with ffmpeg's exit code instead of rejecting, so a
@@ -234,15 +271,22 @@ async function convertVideoToH264(file, hooks) {
 
 // ── Panel UI (inside video modal step 1) ──
 
-function showVideoConvertOffer(file, fourcc, codecName) {
+// `info` is { fourcc, codecName } for an MP4/MOV track, plus `container` and
+// `durationSec` when it came from sniffContainer() in video.js.
+function showVideoConvertOffer(file, info) {
   var panel = document.getElementById('videoConvertPanel');
   if (!panel) return;
   convertPendingFile = file;
-  convertPendingCodec = { fourcc: fourcc, codecName: codecName };
+  convertPendingCodec = {
+    fourcc: info.fourcc, codecName: info.codecName, container: info.container || null,
+  };
   convertPendingDuration = null;
   convertPendingRate = null;
   renderConvertOfferText();
   document.getElementById('videoConvertCmd').textContent = ffmpegManualCommand(file.name);
+  // The record-in-H.264 tip is about HEVC; a wrong container has other causes.
+  var tip = document.getElementById('videoConvertTip');
+  if (tip) tip.style.display = info.container ? 'none' : '';
   document.getElementById('videoConvertActions').style.display = '';
   document.getElementById('videoConvertProgress').style.display = 'none';
   document.getElementById('videoConvertBtn').disabled = false;
@@ -250,9 +294,12 @@ function showVideoConvertOffer(file, fourcc, codecName) {
 
   // Deliberately not awaited: the codec message is the urgent part, and neither
   // read must delay the panel. The estimate line fills in when they land.
+  // mvhd only exists in MP4/MOV; the other containers' sniff brought its own.
+  var rateKey = convertRateKey(info.fourcc);
   Promise.all([
-    typeof readMp4DurationSec === 'function' ? readMp4DurationSec(file) : null,
-    typeof getSetting === 'function' ? getSetting(CONVERT_RATE_KEY) : null,
+    info.container ? info.durationSec || null
+      : typeof readMp4DurationSec === 'function' ? readMp4DurationSec(file) : null,
+    rateKey && typeof getSetting === 'function' ? getSetting(rateKey) : null,
   ]).then(function(r) {
     // Dismissed, or a different file arrived while we were reading.
     if (convertPendingFile !== file) return;
@@ -268,13 +315,30 @@ function renderConvertOfferText() {
   var msg = document.getElementById('videoConvertMsg');
   var eta = document.getElementById('videoConvertEta');
   if (!msg || !convertPendingCodec) return;
-  msg.textContent = t('convert.offer', {
-    codec: convertPendingCodec.codecName || convertPendingCodec.fourcc,
-    fourcc: convertPendingCodec.fourcc,
-    mb: FFMPEG_CORE_MB,
-  });
+  var c = convertPendingCodec;
+  msg.textContent = c.container
+    ? t('convert.offerContainer', {
+        container: CONTAINER_NAMES[c.container],
+        codec: c.codecName || '?',
+        mb: FFMPEG_CORE_MB,
+      })
+    : t('convert.offer', {
+        codec: c.codecName || c.fourcc,
+        fourcc: c.fourcc,
+        mb: FFMPEG_CORE_MB,
+      });
   if (!eta) return;
-  if (!convertPendingDuration) {
+  if (convertModeFor(c) === 'remux') {
+    // Copying is bounded by reading the file, so no per-clip figure is needed.
+    eta.textContent = t('convert.etaRemux');
+    eta.style.display = '';
+    return;
+  }
+  // The first-run range was measured on HEVC; for other codecs it would be
+  // wrong by a wide margin, so they wait for their own calibration and rely on
+  // the live countdown until then.
+  if (!convertPendingDuration ||
+      (!convertPendingRate && convertRateKey(c.fourcc) !== CONVERT_RATE_KEY)) {
     // No duration means no honest estimate, so say nothing rather than guess.
     eta.textContent = '';
     eta.style.display = 'none';
@@ -347,6 +411,8 @@ async function startVideoConvert() {
   var encodeStartedAt = null;
   // Captured now: hideVideoConvertOffer() clears the pending state on success.
   var durationSec = convertPendingDuration;
+  var mode = convertModeFor(convertPendingCodec);
+  var rateKey = convertRateKey(convertPendingCodec && convertPendingCodec.fourcc);
   convertEtaSmoothed = null;
 
   try {
@@ -354,6 +420,7 @@ async function startVideoConvert() {
       onStage: function(name) {
         if (name === 'loading') setConvertStatus(t('convert.loading', { mb: FFMPEG_CORE_MB }), 0);
         else if (name === 'reading') setConvertStatus(t('convert.reading'), 0);
+        else if (name === 'remuxing') setConvertStatus(t('convert.remuxing'), 0);
         else {
           encodeStartedAt = Date.now();
           setConvertStatus(t('convert.encoding', { pct: 0, elapsed: convertElapsed(startedAt) }), 0);
@@ -361,6 +428,8 @@ async function startVideoConvert() {
       },
       onProgress: function(p) {
         var pct = Math.round((p || 0) * 100);
+        // A remux is over in seconds; the bar is enough, no countdown.
+        if (!encodeStartedAt) { setConvertStatus(t('convert.remuxing'), pct); return; }
         var elapsed = (Date.now() - (encodeStartedAt || startedAt)) / 1000;
         var left = null;
         // Extrapolating from the first samples gives a wildly wrong number, so
@@ -381,21 +450,22 @@ async function startVideoConvert() {
               left: formatConvertDuration(left),
             }), pct);
       },
-    });
+    }, mode);
     if (convertCancelled) return;
 
     // Record throughput for the next offer's up-front estimate. Measured over
     // the encode phase only: the core download and the file read are roughly
     // constant rather than proportional to clip length, so leaving them out
     // makes the per-second-of-video figure more accurate. Overwritten rather
-    // than averaged, so it tracks the machine's current state.
-    if (encodeStartedAt && durationSec > 0 && typeof setSetting === 'function') {
+    // than averaged, so it tracks the machine's current state. A remux never
+    // reaches the encode stage, so it is never recorded.
+    if (encodeStartedAt && rateKey && durationSec > 0 && typeof setSetting === 'function') {
       var rate = ((Date.now() - encodeStartedAt) / 1000) / durationSec;
-      if (rate > 0 && rate < 600) setSetting(CONVERT_RATE_KEY, rate);
+      if (rate > 0 && rate < 600) setSetting(rateKey, rate);
     }
 
     console.info('[FlySight] converted to H.264', {
-      from: file.name, fromSize: file.size, toSize: out.size,
+      from: file.name, fromSize: file.size, toSize: out.size, mode: encodeStartedAt ? 'encode' : 'remux',
       clipSeconds: durationSec && Math.round(durationSec),
       seconds: Math.round((Date.now() - startedAt) / 1000),
     });
