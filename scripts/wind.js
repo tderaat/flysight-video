@@ -54,6 +54,17 @@ var PASTVERT_ROTATION_DEG = 120;
 var PASTVERT_ROTATION_SEC = 3;
 var PASTVERT_WINDOW_SLACK_SEC = 3;   // allow onset just past the window end
 
+// The same event as the GPS sees it, NOT wind-corrected: the moment the ground
+// horizontal speed bottoms out and starts rising again while the dive angle is
+// near vertical, i.e. the peak of the default Dive Angle line. In wind this is
+// earlier or later than the air-relative crossing above, since ground speed
+// bottoms out where the flier's own airspeed partly cancels the wind.
+var GROUND_VERT_DIVE_MIN_DEG = 87;
+var GROUND_VERT_RISE = 1;             // m/s the ground speed must regain afterwards
+var GROUND_VERT_RISE_SEC = 3;         // ... within this many seconds
+var GROUND_VERT_HSPEED_MAX = 15 / 3.6; // m/s, ground speed at the turn-around
+var GROUND_VERT_LOCAL_SEC = 1;        // the minimum must be the lowest within +-1 s
+
 // Kasa least-squares circle fit. Returns the centre, the mean radius and the
 // RMS radial residual, or null when the normal matrix is degenerate (which is
 // what a straight line of points produces).
@@ -239,4 +250,47 @@ function detectSteepMarkers(times, diveAir, hSpeedAir, trackAir, pStartT, pEndT,
   }
 
   return { overSteepT: overSteepT, pastVertT: pastVertT };
+}
+
+// Ground-relative past-vertical moment (see GROUND_VERT_*). Needs no wind
+// estimate. `diveGround` / `hSpeedGround` must be unmasked. Returns the time of
+// the lowest smoothed ground speed in the window among samples steeper than
+// GROUND_VERT_DIVE_MIN_DEG, or null when there is none or the speed does not
+// recover afterwards (a minimum at the edge of the search is not a turn-around).
+function detectGroundVertical(times, diveGround, hSpeedGround, pStartT, pEndT) {
+  if (pStartT === null || pEndT === null || !isFinite(pStartT) || !isFinite(pEndT)) return null;
+  const dive = smoothOverSeconds(times, diveGround, STEEP_SMOOTH_HALF_SEC);
+  const hs = smoothOverSeconds(times, hSpeedGround, STEEP_SMOOTH_HALF_SEC);
+  const n = times.length;
+
+  for (let i = 0; i < n; i++) {
+    if (times[i] < pStartT || times[i] > pEndT + PASTVERT_WINDOW_SLACK_SEC) continue;
+    if (dive[i] == null || hs[i] == null) continue;
+    if (dive[i] < GROUND_VERT_DIVE_MIN_DEG || hs[i] >= GROUND_VERT_HSPEED_MAX) continue;
+    // Lowest point within +-GROUND_VERT_LOCAL_SEC, so the first turn-around
+    // wins rather than a deeper dip later in the window.
+    let isMin = true;
+    for (let j = i - 1; j >= 0 && times[i] - times[j] <= GROUND_VERT_LOCAL_SEC && isMin; j--) {
+      if (hs[j] != null && hs[j] < hs[i]) isMin = false;
+    }
+    for (let j = i + 1; j < n && times[j] - times[i] <= GROUND_VERT_LOCAL_SEC && isMin; j++) {
+      if (hs[j] != null && hs[j] < hs[i]) isMin = false;
+    }
+    if (!isMin) continue;
+    let rises = false;
+    for (let j = i + 1; j < n && times[j] - times[i] <= GROUND_VERT_RISE_SEC; j++) {
+      if (hs[j] != null && hs[j] - hs[i] >= GROUND_VERT_RISE) { rises = true; break; }
+    }
+    if (!rises) continue;
+    // Detected on the smoothed series, placed on the raw one: snap to the
+    // lowest unsmoothed sample within the smoothing span, which is the point
+    // the Ground Speed line visibly bottoms out.
+    let k = i;
+    for (let j = 0; j < n; j++) {
+      if (Math.abs(times[j] - times[i]) > STEEP_SMOOTH_HALF_SEC) continue;
+      if (hSpeedGround[j] != null && isFinite(hSpeedGround[j]) && hSpeedGround[j] < hSpeedGround[k]) k = j;
+    }
+    return times[k];
+  }
+  return null;
 }

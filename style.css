@@ -349,36 +349,23 @@ body.has-jumps .dropzone p { display: none; }
 .chart-container { background: var(--bg-card); border-radius: 12px; padding: 20px; position: relative; }
 .chart-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
 .chart-title { font-size: 1rem; color: var(--text-muted); }
-/* Title plus its info button form one flex child, so .chart-header's
-   space-between still puts the controls hard right. */
+/* Title wrapper: one flex child, so .chart-header's space-between still puts
+   the controls hard right. */
 .chart-titlebar { display: flex; align-items: center; gap: 8px; min-width: 0; }
-/* Shared circled-"i" affordance. .stat-info is the same control inside a
-   .stat-label, which is uppercased — hence text-transform: none. */
-.chart-info, .stat-info {
+/* Circled-"i" info button inside a .stat-label, which is uppercased — hence
+   text-transform: none. */
+.stat-info {
   flex: none;
-  width: 18px; height: 18px; padding: 0;
+  width: 15px; height: 15px; padding: 0;
   border: 1px solid var(--border-strong); border-radius: 50%;
   background: transparent; color: var(--text-muted);
-  font-family: inherit; font-size: 0.7rem; font-weight: 700; line-height: 1;
+  font-family: inherit; font-size: 0.62rem; font-weight: 700; line-height: 1;
   font-style: italic; text-transform: none;
+  vertical-align: middle; margin-left: 5px;
   cursor: help;
 }
-.chart-info:hover, .chart-info:focus-visible,
 .stat-info:hover, .stat-info:focus-visible { color: var(--accent); border-color: var(--accent); }
-.chart-info:focus-visible, .stat-info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.stat-info { width: 15px; height: 15px; font-size: 0.62rem; vertical-align: middle; margin-left: 5px; }
-/* The shared [data-tip] bubble is nowrap and opens upward, which for a
-   paragraph on a control this close to the top of the page means it runs off
-   the screen and gets clipped. This one wraps, opens DOWNWARD into the chart
-   panel, and is left-anchored so it cannot overflow either side.
-   Class+attribute out-specifies the base rule. */
-.chart-info[data-tip]::after {
-  white-space: normal;
-  width: min(340px, 70vw);
-  top: calc(100% + 6px); bottom: auto;
-  left: 0; transform: none;
-  text-align: left;
-}
+.stat-info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* The stats column sits hard against the right edge of the viewport, so a
    centred bubble would overflow it. Right-anchored and wrapped instead. */
 .stat-info[data-tip]::after {
@@ -386,6 +373,10 @@ body.has-jumps .dropzone p { display: none; }
   width: min(240px, 60vw);
   right: 0; left: auto; transform: none;
   text-align: left;
+  /* Above Leaflet's panes (400) and its attribution/zoom controls (1000),
+     which the bubble can hang over. */
+  z-index: 1001;
+  font-style: normal;
 }
 /* A whole stat card carrying its own tooltip (Avg Accel Down explains itself
    in a couple of sentences). Same treatment as .stat-info: the base bubble is
@@ -397,7 +388,13 @@ body.has-jumps .dropzone p { display: none; }
   width: min(260px, 62vw);
   right: 0; left: auto; transform: none;
   text-align: left;
-  z-index: 900;
+  z-index: 1001;
+}
+/* One-line tooltips on a single figure (AGL/MSL altitudes): right-anchored for
+   the same reason, and above the map's controls. */
+.stat-value[data-tip]::after, .stat-detail[data-tip]::after {
+  right: 0; left: auto; transform: none;
+  z-index: 1001;
 }
 .chart-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 canvas { width: 100% !important; }
@@ -537,14 +534,30 @@ canvas { width: 100% !important; }
   .header h1 { font-size: 1.15rem; }
 }
 .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.stat-value { font-size: 1.2rem; font-weight: 700; margin-top: 4px; }
+/* Same size and weight as .stat-detail, so every figure but the speed score reads alike. */
+.stat-value { font-size: 0.95rem; font-weight: 600; margin-top: 4px; }
 .stat-value.alt { color: var(--accent); }
+/* The speed score is the headline figure, so it is drawn larger than the rest;
+   the unit is drawn small so the number fits the narrow stats column on one line. */
+.stat-value.hero { font-size: 1.9rem; font-weight: 700; line-height: 1.15; white-space: nowrap; }
+.stat-value.hero .stat-unit { font-size: 0.85rem; font-weight: 600; margin-left: 3px; }
 .stat-value.speed { color: #f472b6; }
 .stat-value.zone { color: #facc15; }
 .stat-detail { font-size: 0.95rem; font-weight: 600; margin-top: 4px; }
 .stat-detail.compact { font-size: 0.7rem; white-space: nowrap; }
 .stat-detail.alt { color: var(--accent); }
 .stat-detail.zone { color: #facc15; }
+/* GPS speed-accuracy row in the Avg Accel Down card: the exit check's green
+   badge sits inline after the value when it passes, the value turns red when
+   it doesn't. */
+.stat-detail.acc-bad { color: #ef4444; }
+.acc-row .stat-info { margin-left: 0; margin-right: 5px; }
+.exit-badge.badge-inline {
+  position: relative; top: auto; right: auto;
+  display: inline-flex; vertical-align: middle;
+  width: 22px; height: 22px; margin-left: 4px;
+}
+.exit-badge.badge-inline .exit-tooltip { top: 28px; }
 .stat-detail.dim { opacity: 0.5; font-size: 0.8rem; font-weight: 400; margin-top: 2px; }
 .stat-detail-label { font-size: 0.7rem; font-weight: 400; opacity: 0.6; margin-right: 4px; text-transform: uppercase; }
 

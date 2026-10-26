@@ -68,15 +68,15 @@ function formatUtcTimestamp(iso) {
   };
 }
 
-// Convert a FlySight ISO 8601 timestamp to Amsterdam local time, DST-aware via
-// Intl (Europe/Amsterdam → CET/CEST). Returns "2025-09-14 14:15:08 CEST", or
-// '' if the timestamp can't be parsed.
-function formatAmsterdamTimestamp(iso) {
+// Convert a FlySight ISO 8601 timestamp to the browser's own time zone, DST-aware
+// via Intl. Same layout as formatUtcTimestamp so the two read side by side:
+// "2025-09-14 14:15:08 GMT+2" (zone name as the browser abbreviates it), or ''
+// if the timestamp can't be parsed.
+function formatLocalTimestamp(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   try {
     const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Amsterdam',
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false, timeZoneName: 'short'
@@ -373,18 +373,6 @@ async function renderCurrentJump(view) {
   const wind = estimateWind(chartAlts, chartVelNs, chartVelEs, exitIdx, groundAlt);
   const airSeries = windRelativeSeries(chartVelNs, chartVelEs, chartVertSpeeds, wind);
 
-  // Dataset copy of the air-relative dive angle, carrying the SAME null mask as
-  // chartDiveAngles so the two lines start and stop together and read as a
-  // pair. All-null without a wind estimate, which hides the line rather than
-  // silently falling back to the ground-relative values windRelativeSeries
-  // returns in that case. The chart header's info button explains the pair.
-  const chartDiveAnglesAir = [];
-  for (let i = 0; i < data.length; i++) {
-    const tRel = chartTimes[i];
-    if (!wind || tRel < -5 || tRel > canopyTimeRel + 5) chartDiveAnglesAir.push(null);
-    else chartDiveAnglesAir.push(airSeries.diveAngles[i]);
-  }
-
   // ── Jump-run wind and aircraft airspeed at exit ──
   // Until the moment of exit the jumper is still travelling with the plane, so
   // the GPS horizontal velocity just before exit *is* the aircraft's ground
@@ -466,6 +454,12 @@ async function renderCurrentJump(view) {
     chartTimes, airSeries.diveAngles, airSeries.hSpeeds, airSeries.tracks,
     perfWindowStartTime, perfWindowEndTime, wind
   );
+  // The same event without wind correction: where the Ground Speed line
+  // bottoms out at the peak of the default Dive Angle line. Drawn alongside
+  // the air-relative marker, since in wind the two can be seconds apart.
+  const groundVertT = detectGroundVertical(
+    chartTimes, chartDiveAngles, chartHorzSpeeds, perfWindowStartTime, perfWindowEndTime
+  );
 
   // Speed score computation
   const TIME_DELTA = 0.005;
@@ -532,25 +526,57 @@ async function renderCurrentJump(view) {
     ? t('exit.valid', { max: EXIT_MAX_AGL })
     : (exitTooHigh ? t('exit.tooHigh', { max: EXIT_MAX_AGL }) : t('exit.tooLow', { min: EXIT_MIN_AGL }));
 
-  const exitBadgeHtml = exitValid
-    ? `<span class="exit-badge badge-valid">
+  // warningBlock is shared with the GPS accuracy check below, so both read alike.
+  const validBadge = (message, extraClass = '') => `<span class="exit-badge badge-valid ${extraClass}">
         <span class="exit-badge-icon">&#10003;</span>
-        <span class="exit-tooltip">${exitMessage.replace('\n', '<br>')}</span>
-      </span>`
-    : '';
+        <span class="exit-tooltip">${message.replace('\n', '<br>')}</span>
+      </span>`;
   // Every language writes the message as "<verdict> — <limit>", so split on that
   // separator to put the verdict on its own bold line above the limit. A string
   // without the separator falls back to a single unbolded line.
-  const exitParts = exitMessage.split(/\s*—\s*/);
-  const exitWarningText = exitParts.length > 1
-    ? `<strong>${exitParts[0]}</strong><br>${exitParts.slice(1).join(' — ')}`
-    : exitMessage.replace('\n', '<br>');
-  const exitWarningHtml = exitValid
-    ? ''
-    : `<div class="exit-warning">
+  const warningBlock = message => {
+    const parts = message.split(/\s*—\s*/);
+    const text = parts.length > 1
+      ? `<strong>${parts[0]}</strong><br>${parts.slice(1).join(' — ')}`
+      : message.replace('\n', '<br>');
+    return `<div class="exit-warning">
         <span class="exit-warning-icon">&#9888;</span>
-        <span class="exit-warning-text">${exitWarningText}</span>
+        <span class="exit-warning-text">${text}</span>
       </div>`;
+  };
+  const exitBadgeHtml = exitValid ? validBadge(exitMessage) : '';
+  const exitWarningHtml = exitValid ? '' : warningBlock(exitMessage);
+
+  // ── GPS accuracy in the validation window ──
+  // FAI rules (2026, sections 2.6 and 4.1): the validation window is the 1006 m
+  // (3,300 ft) above the end of the performance window, and every sample in it
+  // must have a speed accuracy (sAcc) below 3 m/s, or a re-jump is given. The
+  // rules set no limit on vertical accuracy (vAcc). Null when the file has no
+  // sAcc column or the window end wasn't found, in which case nothing is shown.
+  const VALIDATION_WINDOW_HEIGHT = 3300 * 0.3048;
+  const SACC_MAX = 3;
+  let maxSAcc = null;
+  if (perfWindowEndTime !== null && isFinite(perfWindowEndTime)) {
+    const validationTopAlt = perfWindowEndAlt + VALIDATION_WINDOW_HEIGHT;
+    for (let i = 0; i < data.length; i++) {
+      if (chartTimes[i] < 0 || chartTimes[i] > perfWindowEndTime) continue;
+      if (chartAlts[i] > validationTopAlt) continue;
+      const s = parseFloat(data[i].sAcc);
+      if (!isFinite(s)) continue;
+      if (maxSAcc === null || s > maxSAcc) maxSAcc = s;
+    }
+  }
+  // Shown as a row of the Avg Accel Down card: the exit check's green badge
+  // (inline, with its hover tooltip) when it passes, the value in red plus the
+  // permanent warning block when it doesn't. The label carries an info button
+  // with the FAI rule either way.
+  const accValid = maxSAcc !== null && maxSAcc < SACC_MAX;
+  const accLabel = `<span class="stat-detail-label">${t('stat.maxSpeedAcc')}</span>` +
+    `<button type="button" class="stat-info" data-tip="${t('stat.maxSpeedAccInfo')}" aria-label="${t('stat.maxSpeedAccInfoAria')}">i</button>`;
+  const accRowHtml = maxSAcc === null ? '' : accValid
+    ? `<div class="stat-detail alt acc-row">${accLabel} ${maxSAcc.toFixed(2)} m/s ${validBadge(t('acc.valid', { worst: maxSAcc.toFixed(2), max: SACC_MAX }), 'badge-inline')}</div>`
+    : `<div class="stat-detail acc-bad acc-row">${accLabel} ${maxSAcc.toFixed(2)} m/s</div>
+      ${warningBlock(t('acc.invalid', { worst: maxSAcc.toFixed(2), max: SACC_MAX }))}`;
 
   // Accel Down is plotted ONLY between exit and the end of the scoring
   // window. Outside it the series is dominated by the exit transient and by
@@ -588,18 +614,21 @@ async function renderCurrentJump(view) {
   const avgAccelBest3s = meanAccelBetween(best3sStart, best3sEnd);
   const accelRow = (labelKey, v) => v === null ? '' :
     `<div class="stat-detail alt"><span class="stat-detail-label">${t(labelKey)}</span> ${v.toFixed(2)} m/s²</div>`;
-  const avgAccelHtml = (avgAccelExitToEnd !== null || avgAccelBest3s !== null)
-    ? `<div class="stat-card" data-tip="${t('stat.avgAccelDownTip')}">
-        <div class="stat-label">${t('stat.avgAccelDown')}</div>
+  const avgAccelHtml = (avgAccelExitToEnd !== null || avgAccelBest3s !== null || accRowHtml)
+    // The card's explanation sits on an info button rather than on the card,
+    // so it can't pop up alongside the accuracy row's own tooltips.
+    ? `<div class="stat-card">
+        <div class="stat-label">${t('stat.avgAccelDown')}<button type="button" class="stat-info" data-tip="${t('stat.avgAccelDownTip')}" aria-label="${t('stat.avgAccelDownInfoAria')}">i</button></div>
         ${accelRow('stat.accelExitToEnd', avgAccelExitToEnd)}
         ${accelRow('stat.accelBest3s', avgAccelBest3s)}
+        ${accRowHtml}
       </div>`
     : '';
 
   const speedScoreHtml = speedScore !== null
     ? `<div class="stat-card">
         <div class="stat-label">${t('stat.speedScore3s')}</div>
-        <div class="stat-value alt">${speedScore.toFixed(2)} km/h</div>
+        <div class="stat-value alt hero">${speedScore.toFixed(2)}<span class="stat-unit">km/h</span></div>
       </div>`
     : '';
 
@@ -614,30 +643,44 @@ async function renderCurrentJump(view) {
     : '';
 
   const utcStart = formatUtcTimestamp(data[0].time);
+  const localStart = formatLocalTimestamp(data[0].time);
+
+  // Altitudes on the stat cards are shown AGL, the reference the FAI rules
+  // use, with the MSL figure in the tooltip. Both take an MSL altitude.
+  const aglText = msl => `${(msl - groundAlt).toFixed(0)} m / ${((msl - groundAlt) * 3.28084).toFixed(0)} ft`;
+  const altTip = msl => t('tip.altAglMsl', {
+    aglM: (msl - groundAlt).toFixed(0), aglFt: ((msl - groundAlt) * 3.28084).toFixed(0),
+    mslM: msl.toFixed(0), mslFt: (msl * 3.28084).toFixed(0) });
 
   document.getElementById('stats').innerHTML = `
     ${speedScoreHtml}
+    <div class="stat-card">
+      ${exitBadgeHtml}
+      <div class="stat-label">${t('stat.exitAltitude')}</div>
+      ${exitWarningHtml}
+      <div class="stat-value alt" data-tip="${altTip(exitAlt)}">${aglText(exitAlt)}</div>
+    </div>
     <div class="stat-card">
       <div class="stat-label">${t('stat.maxVertSpeed')}</div>
       <div class="stat-value alt">${maxSpeedKmh} km/h / ${(maxFallSpeed * 2.23694).toFixed(0)} mph</div>
     </div>
     <div class="stat-card">
-      ${exitBadgeHtml}
-      <div class="stat-label">${t('stat.exitAltitude')}</div>
-      ${exitWarningHtml}
-      <div class="stat-value alt">${exitAlt.toFixed(0)} m / ${(exitAlt * 3.28084).toFixed(0)} ft</div>
-    </div>
-    ${exitWindAirHtml}
-    <div class="stat-card">
       <div class="stat-label">${t('stat.speedWindow')}</div>
-      <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.start')}</span> ${perfWindowStartAlt !== null ? perfWindowStartAlt.toFixed(0) + ' m / ' + (perfWindowStartAlt * 3.28084).toFixed(0) + ' ft' : '—'}</div>
-      <div class="stat-detail alt"><span class="stat-detail-label">${t('stat.end')}</span> ${perfWindowEndAlt.toFixed(0)} m / ${(perfWindowEndAlt * 3.28084).toFixed(0)} ft</div>
+      ${perfWindowStartAlt !== null
+        ? `<div class="stat-detail alt" data-tip="${altTip(perfWindowStartAlt)}"><span class="stat-detail-label">${t('stat.start')}</span> ${aglText(perfWindowStartAlt)}</div>`
+        : `<div class="stat-detail alt"><span class="stat-detail-label">${t('stat.start')}</span> —</div>`}
+      <div class="stat-detail alt" data-tip="${altTip(perfWindowEndAlt)}"><span class="stat-detail-label">${t('stat.end')}</span> ${aglText(perfWindowEndAlt)}</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-tip="${t('tip.groundElevation')}">
+      <div class="stat-label">${t('stat.groundElevation')}</div>
+      <div class="stat-value alt">${groundAlt.toFixed(0)} m / ${(groundAlt * 3.28084).toFixed(0)} ft</div>
+    </div>
+    ${avgAccelHtml}
+    <div class="stat-card"${localStart ? ` data-tip="${t('tip.localStart', { time: localStart })}"` : ''}>
       <div class="stat-label">${t('stat.utcStart')}</div>
       <div class="stat-detail alt compact">${utcStart.date} ${utcStart.time}</div>
     </div>
-    ${avgAccelHtml}
+    ${exitWindAirHtml}
   `;
 
   // ── Theme-aware colors (read fresh each render so theme switches take effect) ──
@@ -714,26 +757,6 @@ async function renderCurrentJump(view) {
           pointRadius: 0,
           borderWidth: 1.5,
           tension: 0.2,
-          order: 0
-        },
-        {
-          // The same quantity as the series above with the wind removed, so it
-          // wears the same pink family, dashed, on the same yAngle axis. Hidden
-          // by default like the other opt-in series; the visibility-restore
-          // loop's hasOwnProperty guard keeps that default until the user
-          // toggles it. Only dataset in this file using borderDash.
-          label: t('chart.diveAngleAir'),
-          seriesKey: 'diveAngleAir',
-          data: chartDiveAnglesAir,
-          borderColor: '#f9a8d4',
-          backgroundColor: 'rgba(249,168,212,0.08)',
-          fill: false,
-          yAxisID: 'yAngle',
-          pointRadius: 0,
-          borderWidth: 1.5,
-          borderDash: [5, 3],
-          tension: 0.2,
-          hidden: true,
           order: 0
         },
         {
@@ -854,25 +877,22 @@ async function renderCurrentJump(view) {
             } : {}),
             // The past-vertical marker is the only YELLOW annotation —
             // exitLine and windowEndLine above are slate — and it is drawn
-            // translucent so it reads as a note rather than a warning. There
-            // used to be a second yellow "STEEP" line at
-            // `steepMarkers.overSteepT`; it was removed because crossing 86°
-            // turned out not to predict a worse score (see CLAUDE.md), so it
-            // was noise on the chart. The detector still returns it, since
-            // the season-review skill reports on it.
-            ...(steepMarkers.pastVertT !== null ? {
-              pastVertLine: {
+            // translucent so it reads as a note rather than a warning. It is
+            // ground-relative (no wind correction). The air-relative
+            // `steepMarkers.pastVertT` and `overSteepT` are no longer drawn;
+            // the detector still returns both, since the season-review skill
+            // reports on them.
+            ...(groundVertT !== null ? {
+              groundVertLine: {
                 type: 'line',
-                xMin: steepMarkers.pastVertT,
-                xMax: steepMarkers.pastVertT,
+                xMin: groundVertT,
+                xMax: groundVertT,
                 borderColor: 'rgba(250,204,21,0.45)',
                 borderWidth: 1.5,
                 borderDash: [4, 3],
                 label: {
                   display: true,
                   content: t('annot.pastVert'),
-                  // Vertically centred on the plot. It can sit anywhere now
-                  // that the STEEP line is gone and there is nothing to clear.
                   position: 'center',
                   backgroundColor: 'rgba(250,204,21,0.12)',
                   color: 'rgba(250,204,21,0.9)',
@@ -945,9 +965,6 @@ async function renderCurrentJump(view) {
                 case 'diveAngle':
                   if (y == null || isNaN(y)) return null;
                   return ' ' + t('tt.diveAngle') + ': ' + y.toFixed(1) + '°';
-                case 'diveAngleAir':
-                  if (y == null || isNaN(y)) return null;
-                  return ' ' + t('tt.diveAngleAir') + ': ' + y.toFixed(1) + '°';
                 case 'accelDown':
                   if (y == null || isNaN(y)) return null;
                   return ' ' + t('tt.accelDown') + ': ' + y.toFixed(1) + ' m/s²';
@@ -1280,7 +1297,7 @@ async function renderCurrentJump(view) {
     speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd,
     // Wind estimate (or null) plus the air-relative series it enables, so
     // compare.js and the overlay widgets can use them without recomputing.
-    wind, steepMarkers, avgAccelExitToEnd, avgAccelBest3s,
+    wind, steepMarkers, groundVertT, avgAccelExitToEnd, avgAccelBest3s,
     diveAnglesAir: airSeries.diveAngles, horzSpeedsAir: airSeries.hSpeeds, tracksAir: airSeries.tracks,
   };
 }
