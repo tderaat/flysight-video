@@ -33,6 +33,22 @@ function buildUnitsConfig(widget, options) {
   return group;
 }
 
+// ── Shared graph helper: current-value label beside the moving dot ──
+// Always directly right of the dot, vertically centred on it, so it travels with the dot
+// without ever jumping sides.
+function drawGraphValueLabel(ctx, text, mx, my, h, effectiveScale) {
+  const fontSize = h * 0.0975;
+  ctx.save();
+  ctx.font = '700 ' + fontSize + 'px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+  ctx.shadowBlur = fontSize * 0.3;
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillText(text, mx + 6 * effectiveScale, my);
+  ctx.restore();
+}
+
 // ── Widget type registry ──
 // configUI wrappers pass drawOverlayPreview and buildUnitsConfig to each widget's config builder
 const WIDGET_TYPES = {
@@ -59,10 +75,10 @@ const WIDGET_TYPES = {
   },
   altGraph: {
     label: 'Alt. Graph',
-    defaultConfig: { showMeasuringZone: true, showScoringZone: true, showLabel: false, showBackground: false, fadeIn: true },
+    defaultConfig: { showMeasuringZone: true, showScoringZone: true, showLabel: false, showValue: false, units: 'metric', showBackground: false, fadeIn: true },
     render: renderAltGraphWidget,
     renderPreview: renderAltGraphPreviewCard,
-    configUI: (widget) => buildAltGraphConfigPanel(widget, drawOverlayPreview),
+    configUI: (widget) => buildAltGraphConfigPanel(widget, drawOverlayPreview, buildUnitsConfig),
   },
   altimeter: {
     label: 'Altimeter',
@@ -73,10 +89,10 @@ const WIDGET_TYPES = {
   },
   speedGraph: {
     label: 'Speed Graph',
-    defaultConfig: { showMeasuringZone: true, showScoringZone: true, showLabel: false, showBackground: false, fadeIn: true },
+    defaultConfig: { showMeasuringZone: true, showScoringZone: true, showLabel: false, showValue: false, units: 'metric', showBackground: false, fadeIn: true },
     render: renderSpeedGraphWidget,
     renderPreview: renderSpeedGraphPreviewCard,
-    configUI: (widget) => buildSpeedGraphConfigPanel(widget, drawOverlayPreview),
+    configUI: (widget) => buildSpeedGraphConfigPanel(widget, drawOverlayPreview, buildUnitsConfig),
   },
   miniMap: {
     label: 'Mini Map',

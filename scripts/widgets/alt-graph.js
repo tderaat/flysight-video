@@ -49,6 +49,14 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
   function tx(t) { return x + pad + (t - minT) / tRange * (w - pad * 2); }
   function ty(a) { return y + h - pad - (a - minAlt) / altRange * (h - pad * 2); }
 
+  // Only reveal the graph up to the current position; the scale stays fixed
+  // to the whole slice so the curve doesn't rescale as it grows.
+  const revealX = (dataIdx >= 0 && dataIdx < times.length) ? tx(times[dataIdx]) : x + w;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, revealX - x, h);
+  ctx.clip();
+
   if (config.showMeasuringZone && fd.perfWindowStartTime !== null && fd.perfWindowEndTime !== null) {
     const zx1 = tx(fd.perfWindowStartTime);
     const zx2 = tx(fd.perfWindowEndTime);
@@ -93,6 +101,7 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
   ctx.closePath();
   ctx.fillStyle = 'rgba(56, 189, 248, 0.1)';
   ctx.fill();
+  ctx.restore();
 
   if (dataIdx >= 0 && dataIdx < times.length) {
     const mx = tx(times[dataIdx]);
@@ -108,6 +117,15 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
     ctx.moveTo(mx, y);
     ctx.lineTo(mx, y + h);
     ctx.stroke();
+
+    if (config.showValue) {
+      // AGL, the same figure as the Info widget and the Exit Altitude card.
+      const agl = alts[dataIdx] - (fd.groundAlt || 0);
+      const text = config.units === 'imperial'
+        ? (agl * 3.28084).toFixed(0) + ' ft'
+        : agl.toFixed(0) + ' m';
+      drawGraphValueLabel(ctx, text, mx, my, h, effectiveScale);
+    }
   }
 
   if (config.showLabel) {
@@ -153,12 +171,15 @@ function renderAltGraphPreviewCard(ctx, canvas) {
   ctx.fillRect(x + w * 0.25, y, w * 0.45, h);
 }
 
-function buildAltGraphConfigPanel(widget, drawOverlayPreview) {
+function buildAltGraphConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
+  // Layouts saved before the value label existed have no units key.
+  if (!widget.config.units) widget.config.units = 'metric';
   const wrap = document.createElement('div');
   const checks = document.createElement('div');
   checks.className = 'widget-config-checks';
   [
     { key: 'showLabel', label: t('cfg.showLabel') },
+    { key: 'showValue', label: t('cfg.showValue') },
     { key: 'showBackground', label: t('cfg.showBackground') },
     { key: 'showMeasuringZone', label: t('cfg.showMeasuringZone') },
     { key: 'showScoringZone', label: t('cfg.showScoringZone') },
@@ -178,5 +199,11 @@ function buildAltGraphConfigPanel(widget, drawOverlayPreview) {
     checks.appendChild(lbl);
   });
   wrap.appendChild(checks);
+
+  wrap.appendChild(buildUnitsConfig(widget, [
+    { value: 'metric', label: t('cfg.metric') },
+    { value: 'imperial', label: t('cfg.imperial') },
+  ]));
+
   return wrap;
 }
