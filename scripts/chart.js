@@ -632,7 +632,7 @@ async function renderCurrentJump(view) {
 
   const speedScoreHtml = speedScore !== null
     ? `<div class="stat-card">
-        <div class="stat-label">${t('stat.speedScore3s')}</div>
+        <div class="stat-label">${t('stat.speedScore')}<button type="button" class="stat-info" data-tip="${t('stat.speedScoreInfo')}" aria-label="${t('stat.speedScoreInfoAria')}">i</button></div>
         <div class="stat-value alt hero">${speedScore.toFixed(2)}<span class="stat-unit">km/h</span></div>
       </div>`
     : '';

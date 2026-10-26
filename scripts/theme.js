@@ -7,7 +7,7 @@
 // lives inline in index.html's <head>. This file wires up the dropdown
 // and triggers a chart/map re-render when the user switches themes.
 
-var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green'];
+var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green', 'dark-pink'];
 var DEFAULT_THEME = 'dark-blue';
 
 function setThemeCookie(value) {
@@ -148,6 +148,7 @@ var THEME_META = [
   { value: 'light',      swatch: '#0284c7', dot: '#94a3b8', key: 'theme.light' },
   { value: 'dark-red',   swatch: '#b91c1c', key: 'theme.darkRed' },
   { value: 'dark-green', swatch: '#22ee5e', key: 'theme.darkGreen' },
+  { value: 'dark-pink',  swatch: '#ec4899', key: 'theme.darkPink' },
 ];
 
 // (Re)build the theme dropdown — called on load and on language switch so the

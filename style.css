@@ -24,8 +24,9 @@
   --accent-mid: rgba(56, 189, 248, 0.10);
   --accent-strong: rgba(56, 189, 248, 0.15);
   /* Altitude line + its y-axis on the main chart. Follows the accent by
-     default; dark-green overrides it because a green accent would clash
-     with the (non-themeable) green Vertical Speed series. */
+     default; dark-green and dark-pink override it because their accents
+     would clash with the (non-themeable) green Vertical Speed and pink
+     Dive Angle series. */
   --chart-altitude: var(--accent);
   --chart-altitude-fill: var(--accent-fill);
   --backdrop: rgba(0, 0, 0, 0.85);
@@ -83,6 +84,20 @@
   /* The accent is neon green here, which is indistinguishable from the
      green Vertical Speed series; the altitude line gets a grey-tinted
      light blue of its own instead. */
+  --chart-altitude: #9ab4c4;
+  --chart-altitude-fill: rgba(154, 180, 196, 0.10);
+}
+
+[data-theme="dark-pink"] {
+  --accent: #ec4899;
+  --accent-hover: #f472b6;
+  --accent-on: #500724;
+  --accent-weak: rgba(236, 72, 153, 0.08);
+  --accent-fill: rgba(236, 72, 153, 0.12);
+  --accent-mid: rgba(236, 72, 153, 0.16);
+  --accent-strong: rgba(236, 72, 153, 0.22);
+  /* A pink accent would merge with the pink Dive Angle series, so the
+     altitude line takes the same grey-tinted light blue as dark-green. */
   --chart-altitude: #9ab4c4;
   --chart-altitude-fill: rgba(154, 180, 196, 0.10);
 }

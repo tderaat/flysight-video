@@ -25,6 +25,7 @@ var I18N = {
     'theme.light': 'Light · Gray',
     'theme.darkRed': 'Dark · Red',
     'theme.darkGreen': 'Dark · Green',
+    'theme.darkPink': 'Dark · Pink',
     'lang.label': 'Language',
     'lang.aria': 'Select language',
 
@@ -60,7 +61,9 @@ var I18N = {
     'tip.remove': 'Remove',
 
     // Stats panel
-    'stat.speedScore3s': 'Speed Score (3s)',
+    'stat.speedScore': 'Speed Score',
+    'stat.speedScoreInfo': 'FAI rule: the score is the fastest average vertical speed over any 3 seconds within the performance window.',
+    'stat.speedScoreInfoAria': 'About the speed score',
     'stat.maxVertSpeed': 'Max Vertical Speed',
     'stat.exitAltitude': 'Exit Altitude (AGL)',
     'stat.groundElevation': 'Ground Elevation',
@@ -295,6 +298,7 @@ var I18N = {
     'theme.light': 'Hell · Grau',
     'theme.darkRed': 'Dunkel · Rot',
     'theme.darkGreen': 'Dunkel · Grün',
+    'theme.darkPink': 'Dunkel · Pink',
     'lang.label': 'Sprache',
     'lang.aria': 'Sprache auswählen',
 
@@ -330,7 +334,9 @@ var I18N = {
     'tip.remove': 'Entfernen',
 
     // Stats panel
-    'stat.speedScore3s': 'Speed-Wertung (3s)',
+    'stat.speedScore': 'Speed-Wertung',
+    'stat.speedScoreInfo': 'FAI-Regel: Gewertet wird die schnellste durchschnittliche Vertikalgeschwindigkeit über beliebige 3 Sekunden im Leistungsfenster.',
+    'stat.speedScoreInfoAria': 'Zur Speed-Wertung',
     'stat.maxVertSpeed': 'Max. Vertikalgeschwindigkeit',
     'stat.exitAltitude': 'Absprunghöhe (AGL)',
     'stat.groundElevation': 'Geländehöhe',
@@ -565,6 +571,7 @@ var I18N = {
     'theme.light': 'Licht · Grijs',
     'theme.darkRed': 'Donker · Rood',
     'theme.darkGreen': 'Donker · Groen',
+    'theme.darkPink': 'Donker · Roze',
     'lang.label': 'Taal',
     'lang.aria': 'Taal kiezen',
 
@@ -600,7 +607,9 @@ var I18N = {
     'tip.remove': 'Verwijderen',
 
     // Stats panel
-    'stat.speedScore3s': 'Speedscore (3s)',
+    'stat.speedScore': 'Speedscore',
+    'stat.speedScoreInfo': 'FAI-regel: de score is de snelste gemiddelde verticale snelheid over 3 seconden binnen het prestatievenster.',
+    'stat.speedScoreInfoAria': 'Over de speedscore',
     'stat.maxVertSpeed': 'Max. verticale snelheid',
     'stat.exitAltitude': 'Exithoogte (AGL)',
     'stat.groundElevation': 'Terreinhoogte',
@@ -835,6 +844,7 @@ var I18N = {
     'theme.light': 'Chiaro · Grigio',
     'theme.darkRed': 'Scuro · Rosso',
     'theme.darkGreen': 'Scuro · Verde',
+    'theme.darkPink': 'Scuro · Rosa',
     'lang.label': 'Lingua',
     'lang.aria': 'Seleziona la lingua',
 
@@ -870,7 +880,9 @@ var I18N = {
     'tip.remove': 'Rimuovi',
 
     // Stats panel
-    'stat.speedScore3s': 'Punteggio velocità (3s)',
+    'stat.speedScore': 'Punteggio velocità',
+    'stat.speedScoreInfo': 'Regola FAI: il punteggio è la velocità verticale media più alta su 3 secondi qualsiasi all’interno della finestra di prestazione.',
+    'stat.speedScoreInfoAria': 'Informazioni sul punteggio',
     'stat.maxVertSpeed': 'Velocità verticale max',
     'stat.exitAltitude': 'Quota di uscita (AGL)',
     'stat.groundElevation': 'Quota del terreno',
@@ -1105,6 +1117,7 @@ var I18N = {
     'theme.light': 'Ljus · Grå',
     'theme.darkRed': 'Mörk · Röd',
     'theme.darkGreen': 'Mörk · Grön',
+    'theme.darkPink': 'Mörk · Rosa',
     'lang.label': 'Språk',
     'lang.aria': 'Välj språk',
 
@@ -1140,7 +1153,9 @@ var I18N = {
     'tip.remove': 'Ta bort',
 
     // Stats panel
-    'stat.speedScore3s': 'Hastighetspoäng (3 s)',
+    'stat.speedScore': 'Hastighetspoäng',
+    'stat.speedScoreInfo': 'FAI-regel: poängen är den snabbaste genomsnittliga vertikalhastigheten under valfria 3 sekunder inom prestationsfönstret.',
+    'stat.speedScoreInfoAria': 'Om hastighetspoängen',
     'stat.maxVertSpeed': 'Max vertikalhastighet',
     'stat.exitAltitude': 'Utsprångshöjd (AGL)',
     'stat.groundElevation': 'Markhöjd',
@@ -1375,6 +1390,7 @@ var I18N = {
     'theme.light': 'Claro · Gris',
     'theme.darkRed': 'Oscuro · Rojo',
     'theme.darkGreen': 'Oscuro · Verde',
+    'theme.darkPink': 'Oscuro · Rosa',
     'lang.label': 'Idioma',
     'lang.aria': 'Seleccionar idioma',
 
@@ -1410,7 +1426,9 @@ var I18N = {
     'tip.remove': 'Eliminar',
 
     // Stats panel
-    'stat.speedScore3s': 'Puntuación de velocidad (3 s)',
+    'stat.speedScore': 'Puntuación de velocidad',
+    'stat.speedScoreInfo': 'Regla FAI: la puntuación es la velocidad vertical media más alta en 3 segundos cualesquiera dentro de la ventana de rendimiento.',
+    'stat.speedScoreInfoAria': 'Sobre la puntuación de velocidad',
     'stat.maxVertSpeed': 'Velocidad vertical máxima',
     'stat.exitAltitude': 'Altitud de salida (AGL)',
     'stat.groundElevation': 'Elevación del terreno',
@@ -1645,6 +1663,7 @@ var I18N = {
     'theme.light': 'Jasny · Szary',
     'theme.darkRed': 'Ciemny · Czerwony',
     'theme.darkGreen': 'Ciemny · Zielony',
+    'theme.darkPink': 'Ciemny · Różowy',
     'lang.label': 'Język',
     'lang.aria': 'Wybierz język',
 
@@ -1680,7 +1699,9 @@ var I18N = {
     'tip.remove': 'Usuń',
 
     // Stats panel
-    'stat.speedScore3s': 'Wynik prędkości (3 s)',
+    'stat.speedScore': 'Wynik prędkości',
+    'stat.speedScoreInfo': 'Zasada FAI: wynikiem jest najwyższa średnia prędkość pionowa z dowolnych 3 sekund w oknie pomiarowym.',
+    'stat.speedScoreInfoAria': 'O wyniku prędkości',
     'stat.maxVertSpeed': 'Maks. prędkość pionowa',
     'stat.exitAltitude': 'Wysokość wyjścia (AGL)',
     'stat.groundElevation': 'Wysokość terenu',
