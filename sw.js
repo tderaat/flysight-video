@@ -5,16 +5,19 @@
 // service worker's own location, so this file works unchanged whatever
 // subpath GitHub Pages serves the repo from (e.g. /flysight-insights/).
 //
-// > **Bump CACHE_VERSION whenever any precached file changes**, and add new
-// > app scripts to PRECACHE. There's no build step to do it automatically.
-// > Old caches are deleted on activate.
+// > **Bump CACHE_VERSION whenever any precached file changes**, to the same
+// > value as APP_BUILD in scripts/state.js and the app-build meta tag in
+// > index.html, and add new app scripts to PRECACHE. There's no build step to
+// > do it automatically. Old caches are deleted on activate.
 //
 // Strategies:
-//   - navigations / HTML  -> network-first, falling back to the cached shell
-//     (so an online visit always gets the latest app, and an offline one
-//     still boots)
-//   - other same-origin GETs -> cache-first with a background refresh
-//     (stale-while-revalidate): instant offline, updates land next load
+//   - same-origin GETs (the page and every script, style and image) ->
+//     network-first, revalidated past the HTTP cache, falling back to the
+//     cache when offline or when the network takes longer than
+//     NETWORK_TIMEOUT_MS. Online, the page and its scripts therefore always
+//     come from the same release. (Scripts used to be served cache-first,
+//     which after a deploy paired the new index.html with the old scripts
+//     and broke the page until a hard refresh.)
 //   - cross-origin (map tiles) -> not intercepted at all; scripts/tiles.js
 //     already caches those as Blobs in IndexedDB
 //
@@ -23,7 +26,11 @@
 // SRI hash. Being cross-origin it is not intercepted here either, and the CDN
 // serves it immutable, so the browser cache keeps it between sessions.
 
-const CACHE_VERSION = 'flysight-v50';
+const CACHE_VERSION = 'flysight-v51';
+
+// A connection that is up but barely working (a weak signal at the drop zone)
+// would otherwise keep the app waiting; after this long the cache answers.
+const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [
   './',
@@ -119,45 +126,45 @@ self.addEventListener('fetch', event => {
   // Anything outside this deployment's scope isn't ours to serve.
   if (!url.href.startsWith(new URL('./', self.registration.scope).href)) return;
 
-  // Navigations: network-first so an online load always gets the latest
-  // index.html, with the cached shell as the offline fallback.
-  if (req.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const fresh = await fetch(req);
-        const cache = await caches.open(CACHE_VERSION);
-        cache.put(req, fresh.clone());
-        return fresh;
-      } catch {
-        const cache = await caches.open(CACHE_VERSION);
-        return (await cache.match(req)) ||
-               (await cache.match(new URL('index.html', self.registration.scope).href)) ||
-               (await cache.match(new URL('./', self.registration.scope).href)) ||
-               new Response('Offline and this page was never cached.', {
-                 status: 503,
-                 headers: { 'Content-Type': 'text/plain' },
-               });
-      }
-    })());
-    return;
-  }
-
-  // Everything else: serve from cache immediately, refresh in the background.
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE_VERSION);
-    const hit = await cache.match(req);
-    const network = fetch(req)
-      .then(res => {
-        if (res && res.ok) cache.put(req, res.clone());
-        return res;
-      })
-      .catch(() => null);
-
-    if (hit) {
-      event.waitUntil(network);   // revalidate without blocking the response
-      return hit;
-    }
-    const fresh = await network;
-    return fresh || new Response('', { status: 504, statusText: 'Offline' });
-  })());
+  event.respondWith(networkFirst(req));
 });
+
+// Network first, revalidating past the HTTP cache (GitHub Pages lets the
+// browser keep files for 10 minutes, long enough to pair a fresh page with
+// stale scripts). The cache answers when the network fails or is too slow.
+async function networkFirst(req) {
+  const cache = await caches.open(CACHE_VERSION);
+  // A navigation request can't carry a RequestInit, so refetch it by URL.
+  // redirect: 'manual' hands a redirect back to the browser to follow, as a
+  // navigation does natively; a followed one can't answer a navigation.
+  const netReq = req.mode === 'navigate'
+    ? new Request(req.url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'manual' })
+    : new Request(req, { cache: 'no-cache' });
+  const network = fetch(netReq).then(res => {
+    if (res && res.ok && res.status === 200) cache.put(req, res.clone()).catch(() => {});
+    return res;
+  });
+  network.catch(() => {}); // may settle after the cache has answered
+  let timer;
+  const timeout = new Promise(resolve => { timer = setTimeout(resolve, NETWORK_TIMEOUT_MS, null); });
+  try {
+    const res = await Promise.race([network, timeout]);
+    if (res) return res;
+  } catch {
+    // offline: fall through to the cache
+  } finally {
+    clearTimeout(timer);
+  }
+  const hit = (await cache.match(req)) ||
+    (req.mode === 'navigate' && ((await cache.match(new URL('index.html', self.registration.scope).href)) ||
+                                 (await cache.match(new URL('./', self.registration.scope).href))));
+  if (hit) return hit;
+  // Nothing cached: keep waiting on a slow network rather than give up.
+  try {
+    const res = await network;
+    if (res) return res;
+  } catch {}
+  return req.mode === 'navigate'
+    ? new Response('Offline and this page was never cached.', { status: 503, headers: { 'Content-Type': 'text/plain' } })
+    : new Response('', { status: 504, statusText: 'Offline' });
+}

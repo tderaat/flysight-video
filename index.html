@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
+<meta name="app-build" content="flysight-v51">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -560,6 +562,40 @@
 <script src="scripts/compare.js"></script>
 <script src="scripts/main.js"></script>
 <script src="scripts/whats-new.js"></script>
+
+<script>
+  // ── Mixed-release guard ──
+  // If the scripts above came from a different release than this page (a
+  // service worker or HTTP cache still holding the old ones), the app breaks
+  // with null-element errors until a hard refresh. Detect it by comparing the
+  // page's build id with the one state.js defines, then drop the service
+  // worker's caches, refetch every script and stylesheet past the HTTP cache
+  // (GitHub Pages lets the browser keep them for 10 minutes, and a plain
+  // reload would reuse those) and reload once. The sessionStorage flag stops
+  // a loop.
+  (function () {
+    var meta = document.querySelector('meta[name="app-build"]');
+    var want = meta && meta.content;
+    var have = typeof APP_BUILD === 'string' ? APP_BUILD : null;
+    var KEY = 'flysight_build_reload';
+    try {
+      if (!want || have === want) { sessionStorage.removeItem(KEY); return; }
+      if (sessionStorage.getItem(KEY) === want) return;
+      sessionStorage.setItem(KEY, want);
+    } catch (e) { return; }
+    console.warn('[build] page is ' + want + ' but scripts are ' + have + '; clearing caches and reloading');
+    var assets = Array.prototype.map.call(
+      document.querySelectorAll('script[src], link[rel="stylesheet"][href]'),
+      function (el) { return el.src || el.href; }
+    ).filter(function (u) { return u.indexOf(location.origin + '/') === 0; });
+    var clear = window.caches
+      ? caches.keys().then(function (names) { return Promise.all(names.map(function (n) { return caches.delete(n); })); })
+      : Promise.resolve();
+    clear.catch(function () {})
+      .then(function () { return Promise.all(assets.map(function (u) { return fetch(u, { cache: 'reload' }).catch(function () {}); })); })
+      .then(function () { location.reload(); });
+  })();
+</script>
 
 <script>
   // ── Offline support for the hosted app ──
