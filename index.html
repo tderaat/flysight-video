@@ -132,7 +132,7 @@
 <aside class="sidebar">
 <div class="header">
   <div class="logo">
-    <svg viewBox="0 0 30 80" width="16" height="36" fill="#38bdf8" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 30 80" width="13" height="30" fill="#38bdf8" xmlns="http://www.w3.org/2000/svg">
       <!-- Speed skydiver head-down silhouette -->
       <path d="
         M15 0
@@ -233,7 +233,7 @@
      not under the jump list), and always visible, with or without a jump. -->
 <footer class="page-footer">
   <hr>
-  <p><strong data-i18n="footer.label">Disclaimer</strong>: <span data-i18n="footer.privacy">Your jump files, notes and settings never leave this device: nothing is uploaded to a server. Everything is kept in your browser's local storage (IndexedDB and localStorage). Only the satellite map imagery is downloaded from the internet.</span> <span data-i18n="footer.persistence">Browser storage is not meant for long-term keeping. Clearing site data or browsing history, a private window, switching browser or device, or the browser freeing up space can delete it without warning. Keep your original CSV files as your backup.</span></p>
+  <p><strong data-i18n="footer.label">Disclaimer</strong>: <span data-i18n="footer.privacy">Your jump files, notes and settings never leave this device: nothing is uploaded to a server. Everything is kept in your browser's local storage (IndexedDB and localStorage). Only the satellite map imagery is downloaded from the internet.</span> <span data-i18n="footer.persistence">Browser storage is not meant for long-term keeping. Clearing site data or browsing history, a private window, switching browser or device, or the browser freeing up space can delete it without warning. Keep your original CSV files as your backup.</span> <button type="button" id="downloadAllBtn" class="footer-link" onclick="downloadAllJumps()"></button></p>
 </footer>
 </main>
 </div>
@@ -505,6 +505,7 @@
 <script src="scripts/wind.js"></script>
 <script src="scripts/tiles.js"></script>
 <script src="scripts/notes.js"></script>
+<script src="scripts/zip.js"></script>
 <script src="scripts/widgets/info.js"></script>
 <script src="scripts/widgets/score.js"></script>
 <script src="scripts/widgets/speed.js"></script>

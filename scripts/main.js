@@ -457,6 +457,7 @@ async function renderJumpList() {
   document.body.classList.toggle('has-jumps', jumps.length > 0 || hasLoading);
   // Read back by the inline script after <body> to pick the dropzone size before paint.
   try { localStorage.setItem('flysight_has_jumps', jumps.length > 0 ? '1' : '0'); } catch (e) {}
+  updateDownloadAllLabel(jumps.length);
   list.innerHTML = '';
   const storedNames = new Set(jumps.map(j => j.name));
 
@@ -564,19 +565,97 @@ async function selectJump(name) {
   }
 }
 
+// Save a Blob through a temporary Object URL. The revoke is deferred because
+// some browsers cancel a large download whose URL is revoked during click().
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function jumpCsvFilename(name) {
+  return name.toLowerCase().endsWith('.csv') ? name : name + '.csv';
+}
+
 async function downloadJump(name) {
   const jumps = await getStoredJumps();
   const jump = jumps.find(j => j.name === name);
   if (!jump) return;
-  const blob = new Blob([jump.csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name.toLowerCase().endsWith('.csv') ? name : name + '.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  saveBlob(new Blob([jump.csv], { type: 'text/csv' }), jumpCsvFilename(name));
+}
+
+// ── Download all jumps ──
+// The footer's "Download all jump files" link: every stored CSV in one ZIP
+// (scripts/zip.js), one folder per UTC flight day ("2026-09-05/10-25-52.csv"),
+// the same day the jump list groups it under. Undated jumps go at the root.
+const ZIP_UNSAFE_CHARS = /[\\/:*?"<>|\x00-\x1f]/g;
+
+function zipEntryPath(jump, taken) {
+  const d = jumpFlightDate(jump.csv);
+  const p = n => String(n).padStart(2, '0');
+  const folder = d ? d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) + '/' : '';
+  // A renamed jump can hold any character, so make the name safe on Windows.
+  const file = jumpCsvFilename(jump.name.replace(ZIP_UNSAFE_CHARS, '_').trim() || 'jump');
+  // Windows and macOS compare paths case-insensitively, so dedupe that way.
+  let path = folder + file;
+  for (let n = 2; taken.has(path.toLowerCase()); n++) {
+    path = folder + file.replace(/(\.csv)$/i, ' (' + n + ')$1');
+  }
+  taken.add(path.toLowerCase());
+  return { path, date: d || (jump.addedAt ? new Date(jump.addedAt) : null) };
+}
+
+// The label carries the jump count, so it is set from renderJumpList() (which
+// applyLanguage() re-runs) rather than through data-i18n.
+function updateDownloadAllLabel(count) {
+  const btn = document.getElementById('downloadAllBtn');
+  if (!btn) return;
+  btn.dataset.count = count;
+  // "Download all 1 jump files" reads badly, so a single jump gets its own line.
+  if (!btn.disabled) btn.textContent = Number(count) === 1 ? t('footer.downloadOne') : t('footer.downloadAll', { count });
+}
+
+async function downloadAllJumps() {
+  const btn = document.getElementById('downloadAllBtn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = t('footer.downloadAllBusy');
+  try {
+    const jumps = await getStoredJumps();
+    if (!jumps.length) return;
+    // A single jump without a note is saved as the CSV itself; a ZIP of one
+    // file is just an extra step.
+    if (jumps.length === 1 && !getJumpNote(jumps[0].name).trim()) {
+      saveBlob(new Blob([jumps[0].csv], { type: 'text/csv' }), jumpCsvFilename(jumps[0].name));
+      return;
+    }
+    // No nextPaint() here: rAF never fires in a background tab, so it would
+    // stall the download, and every step below is async and lets the label paint.
+    const taken = new Set();
+    const entries = [];
+    for (const j of jumps) {
+      const { path, date } = zipEntryPath(j, taken);
+      entries.push({ path, date, data: j.csv });
+      // The jump's note, if it has one, sits beside its CSV: "10-25-52 - note.txt".
+      const note = getJumpNote(j.name);
+      if (note.trim()) entries.push({ path: path.replace(/\.csv$/i, '') + ' - note.txt', date, data: note });
+    }
+    const blob = await buildZip(entries);
+    const now = new Date();
+    const p = n => String(n).padStart(2, '0');
+    saveBlob(blob, 'flysight-jumps-' + now.getFullYear() + '-' + p(now.getMonth() + 1) + '-' + p(now.getDate()) + '.zip');
+  } catch (e) {
+    console.error('Download all failed', e);
+    alert(t('alert.zipFailed', { error: e && e.message ? e.message : String(e) }));
+  } finally {
+    btn.disabled = false;
+    updateDownloadAllLabel(btn.dataset.count || 0);
+  }
 }
 
 // ── Rename jump ──

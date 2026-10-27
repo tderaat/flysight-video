@@ -154,6 +154,9 @@ var I18N = {
     'footer.privacy': 'Your jump files, notes and settings never leave this device: nothing is uploaded to a server. Everything is kept in your browser\'s local storage (IndexedDB and localStorage). Only the satellite map imagery is downloaded from the internet.',
     'footer.persistence': 'Browser storage is not meant for long-term keeping. Clearing site data or browsing history, a private window, switching browser or device, or the browser freeing up space can delete it without warning. Keep your original CSV files as your backup.',
     'footer.label': 'Disclaimer',
+    'footer.downloadAll': 'Download all {count} jump files',
+    'footer.downloadOne': 'Download your jump file',
+    'footer.downloadAllBusy': 'Preparing download...',
     'overlay.scoreHidden': 'Hidden until score',
 
     // Chart right-click context menu
@@ -272,6 +275,7 @@ var I18N = {
     'alert.jumpExists': 'A jump named "{name}" already exists. Choose a different name.',
     'alert.storageFull': 'Storage is full. Remove some jumps to free space before adding new ones.',
     'alert.dbBlocked': 'FlySight Insights is open in another tab. Close the other tabs and reload this page to finish upgrading local storage.',
+    'alert.zipFailed': 'Could not create the ZIP file: {error}',
 
     // Widget config panels
     'cfg.units': 'Units',
@@ -438,6 +442,9 @@ var I18N = {
     'footer.privacy': 'Ihre Sprungdateien, Notizen und Einstellungen verlassen dieses Gerät nie: Es wird nichts auf einen Server hochgeladen. Alles wird im lokalen Speicher Ihres Browsers abgelegt (IndexedDB und localStorage). Nur die Satellitenkartenbilder werden aus dem Internet geladen.',
     'footer.persistence': 'Browserspeicher ist nicht für die langfristige Aufbewahrung gedacht. Das Löschen von Websitedaten oder des Browserverlaufs, ein privates Fenster, ein Wechsel von Browser oder Gerät oder ein Browser, der Speicherplatz freigibt, kann ihn ohne Vorwarnung löschen. Bewahren Sie Ihre originalen CSV-Dateien als Sicherung auf.',
     'footer.label': 'Hinweis',
+    'footer.downloadAll': 'Alle {count} Sprungdateien herunterladen',
+    'footer.downloadOne': 'Ihre Sprungdatei herunterladen',
+    'footer.downloadAllBusy': 'Download wird vorbereitet...',
     'overlay.scoreHidden': 'Bis zur Wertung ausgeblendet',
 
     // Chart right-click context menu
@@ -556,6 +563,7 @@ var I18N = {
     'alert.jumpExists': 'Ein Sprung mit dem Namen "{name}" existiert bereits. Wählen Sie einen anderen Namen.',
     'alert.storageFull': 'Der Speicher ist voll. Entfernen Sie einige Sprünge, um Platz zu schaffen, bevor Sie neue hinzufügen.',
     'alert.dbBlocked': 'FlySight Insights ist in einem anderen Tab geöffnet. Schließen Sie die anderen Tabs und laden Sie diese Seite neu, um die Aktualisierung des lokalen Speichers abzuschließen.',
+    'alert.zipFailed': 'Die ZIP-Datei konnte nicht erstellt werden: {error}',
 
     // Widget config panels
     'cfg.units': 'Einheiten',
@@ -722,6 +730,9 @@ var I18N = {
     'footer.privacy': 'Je sprongbestanden, notities en instellingen verlaten dit apparaat nooit: er wordt niets naar een server geüpload. Alles staat in de lokale opslag van je browser (IndexedDB en localStorage). Alleen de satellietbeelden van de kaart worden van internet gedownload.',
     'footer.persistence': 'Browseropslag is niet bedoeld om lang te bewaren. Sitegegevens of browsegeschiedenis wissen, een privévenster, een andere browser of een ander apparaat, of de browser die ruimte vrijmaakt, kan alles zonder waarschuwing verwijderen. Bewaar je originele CSV-bestanden als back-up.',
     'footer.label': 'Disclaimer',
+    'footer.downloadAll': 'Alle {count} sprongbestanden downloaden',
+    'footer.downloadOne': 'Je sprongbestand downloaden',
+    'footer.downloadAllBusy': 'Download wordt voorbereid...',
     'overlay.scoreHidden': 'Verborgen tot de score',
 
     // Chart right-click context menu
@@ -840,6 +851,7 @@ var I18N = {
     'alert.jumpExists': 'Er bestaat al een sprong met de naam "{name}". Kies een andere naam.',
     'alert.storageFull': 'De opslag is vol. Verwijder enkele sprongen om ruimte vrij te maken voordat je nieuwe toevoegt.',
     'alert.dbBlocked': 'FlySight Insights is in een ander tabblad geopend. Sluit de andere tabbladen en herlaad deze pagina om de upgrade van de lokale opslag te voltooien.',
+    'alert.zipFailed': 'Het ZIP-bestand kon niet worden gemaakt: {error}',
 
     // Widget config panels
     'cfg.units': 'Eenheden',
@@ -1006,6 +1018,9 @@ var I18N = {
     'footer.privacy': 'I tuoi file dei lanci, le note e le impostazioni non lasciano mai questo dispositivo: nulla viene caricato su un server. Tutto è salvato nella memoria locale del browser (IndexedDB e localStorage). Solo le immagini satellitari della mappa vengono scaricate da internet.',
     'footer.persistence': 'La memoria del browser non è pensata per la conservazione a lungo termine. Cancellare i dati del sito o la cronologia, una finestra privata, cambiare browser o dispositivo, o il browser che libera spazio possono eliminarla senza preavviso. Conserva i file CSV originali come backup.',
     'footer.label': 'Avvertenza',
+    'footer.downloadAll': 'Scarica tutti i {count} file dei lanci',
+    'footer.downloadOne': 'Scarica il file del lancio',
+    'footer.downloadAllBusy': 'Preparazione del download...',
     'overlay.scoreHidden': 'Nascosto fino al punteggio',
 
     // Chart right-click context menu
@@ -1124,6 +1139,7 @@ var I18N = {
     'alert.jumpExists': 'Esiste già un lancio chiamato "{name}". Scegli un altro nome.',
     'alert.storageFull': 'Spazio di archiviazione pieno. Rimuovi alcuni lanci per liberare spazio prima di aggiungerne di nuovi.',
     'alert.dbBlocked': "FlySight Insights è aperto in un'altra scheda. Chiudi le altre schede e ricarica questa pagina per completare l'aggiornamento dell'archiviazione locale.",
+    'alert.zipFailed': 'Impossibile creare il file ZIP: {error}',
 
     // Widget config panels
     'cfg.units': 'Unità',
@@ -1290,6 +1306,9 @@ var I18N = {
     'footer.privacy': 'Dina hoppfiler, anteckningar och inställningar lämnar aldrig den här enheten: inget laddas upp till en server. Allt sparas i webbläsarens lokala lagring (IndexedDB och localStorage). Endast satellitbilderna till kartan hämtas från internet.',
     'footer.persistence': 'Webbläsarens lagring är inte avsedd för långsiktig förvaring. Att rensa webbplatsdata eller historik, ett privat fönster, byte av webbläsare eller enhet, eller att webbläsaren frigör utrymme kan radera den utan förvarning. Spara dina ursprungliga CSV-filer som säkerhetskopia.',
     'footer.label': 'Friskrivning',
+    'footer.downloadAll': 'Ladda ner alla {count} hoppfiler',
+    'footer.downloadOne': 'Ladda ner din hoppfil',
+    'footer.downloadAllBusy': 'Förbereder nedladdning...',
     'overlay.scoreHidden': 'Dold tills poängen visas',
 
     // Chart right-click context menu
@@ -1408,6 +1427,7 @@ var I18N = {
     'alert.jumpExists': 'Ett hopp med namnet "{name}" finns redan. Välj ett annat namn.',
     'alert.storageFull': 'Lagringen är full. Ta bort några hopp för att frigöra plats innan du lägger till nya.',
     'alert.dbBlocked': 'FlySight Insights är öppet i en annan flik. Stäng de andra flikarna och ladda om den här sidan för att slutföra uppgraderingen av den lokala lagringen.',
+    'alert.zipFailed': 'Det gick inte att skapa ZIP-filen: {error}',
 
     // Widget config panels
     'cfg.units': 'Enheter',
@@ -1574,6 +1594,9 @@ var I18N = {
     'footer.privacy': 'Tus archivos de saltos, notas y ajustes nunca salen de este dispositivo: no se sube nada a ningún servidor. Todo se guarda en el almacenamiento local de tu navegador (IndexedDB y localStorage). Solo las imágenes de satélite del mapa se descargan de internet.',
     'footer.persistence': 'El almacenamiento del navegador no está pensado para guardar datos a largo plazo. Borrar los datos del sitio o el historial, una ventana privada, cambiar de navegador o de dispositivo, o que el navegador libere espacio puede eliminarlo sin aviso. Guarda tus archivos CSV originales como copia de seguridad.',
     'footer.label': 'Aviso legal',
+    'footer.downloadAll': 'Descargar los {count} archivos de saltos',
+    'footer.downloadOne': 'Descargar tu archivo de salto',
+    'footer.downloadAllBusy': 'Preparando la descarga...',
     'overlay.scoreHidden': 'Oculto hasta la puntuación',
 
     // Chart right-click context menu
@@ -1692,6 +1715,7 @@ var I18N = {
     'alert.jumpExists': 'Ya existe un salto llamado "{name}". Elige otro nombre.',
     'alert.storageFull': 'El almacenamiento está lleno. Elimina algunos saltos para liberar espacio antes de añadir nuevos.',
     'alert.dbBlocked': 'FlySight Insights está abierto en otra pestaña. Cierra las demás pestañas y recarga esta página para terminar de actualizar el almacenamiento local.',
+    'alert.zipFailed': 'No se pudo crear el archivo ZIP: {error}',
 
     // Widget config panels
     'cfg.units': 'Unidades',
@@ -1858,6 +1882,9 @@ var I18N = {
     'footer.privacy': 'Twoje pliki skoków, notatki i ustawienia nigdy nie opuszczają tego urządzenia: nic nie jest wysyłane na serwer. Wszystko jest przechowywane w lokalnej pamięci przeglądarki (IndexedDB i localStorage). Z internetu pobierane są tylko zdjęcia satelitarne mapy.',
     'footer.persistence': 'Pamięć przeglądarki nie służy do długoterminowego przechowywania. Wyczyszczenie danych witryny lub historii, okno prywatne, zmiana przeglądarki lub urządzenia albo zwolnienie miejsca przez przeglądarkę mogą ją usunąć bez ostrzeżenia. Zachowaj oryginalne pliki CSV jako kopię zapasową.',
     'footer.label': 'Zastrzeżenie',
+    'footer.downloadAll': 'Pobierz pliki skoków: {count}',
+    'footer.downloadOne': 'Pobierz plik skoku',
+    'footer.downloadAllBusy': 'Przygotowywanie pobierania...',
     'overlay.scoreHidden': 'Ukryte do czasu wyniku',
 
     // Chart right-click context menu
@@ -1976,6 +2003,7 @@ var I18N = {
     'alert.jumpExists': 'Skok o nazwie "{name}" już istnieje. Wybierz inną nazwę.',
     'alert.storageFull': 'Pamięć jest pełna. Usuń kilka skoków, aby zwolnić miejsce przed dodaniem nowych.',
     'alert.dbBlocked': 'FlySight Insights jest otwarty w innej karcie. Zamknij pozostałe karty i odśwież tę stronę, aby zakończyć aktualizację pamięci lokalnej.',
+    'alert.zipFailed': 'Nie udało się utworzyć pliku ZIP: {error}',
 
     // Widget config panels
     'cfg.units': 'Jednostki',

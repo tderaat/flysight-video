@@ -23,7 +23,7 @@
 // SRI hash. Being cross-origin it is not intercepted here either, and the CDN
 // serves it immutable, so the browser cache keeps it between sessions.
 
-const CACHE_VERSION = 'flysight-v46';
+const CACHE_VERSION = 'flysight-v47';
 
 const PRECACHE = [
   './',
@@ -61,6 +61,7 @@ const PRECACHE = [
   'scripts/wind.js',
   'scripts/tiles.js',
   'scripts/notes.js',
+  'scripts/zip.js',
   'scripts/widgets/info.js',
   'scripts/widgets/score.js',
   'scripts/widgets/speed.js',
