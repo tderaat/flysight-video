@@ -140,6 +140,10 @@ function applyLanguage(lang) {
   if (typeof refreshWhatsNewLang === 'function') {
     try { refreshWhatsNewLang(); } catch (e) {}
   }
+  // A showing undo toast ("Deleted ...", text set from JS).
+  if (typeof refreshUndoToastLang === 'function') {
+    try { refreshUndoToastLang(); } catch (e) {}
+  }
   // Selected widget's config panel (rebuilt from scratch in the new language).
   if (typeof updateWidgetSettingsPanel === 'function') {
     try { updateWidgetSettingsPanel(); } catch (e) {}

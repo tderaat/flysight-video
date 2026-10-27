@@ -3,12 +3,12 @@
 // The overlay pipeline's only decoder is the <video> element, so footage the
 // browser cannot decode has to become H.264 before anything downstream can
 // touch it. In practice that means H.265/HEVC, which only Chrome and Edge play
-// (see "Video codec support" in CLAUDE.md), and containers no browser opens
+// (see "Video codec support" in docs/video-overlay.md), and containers no browser opens
 // (AVI, MPEG-TS, sometimes Matroska), where H.264 is only copied into MP4.
 // ffmpeg.wasm does it locally, so the footage never leaves the machine.
 //
 // The scripts are vendored like every other library, but the 30.7 MB core
-// binary is the one exception to the "no CDN" rule in CLAUDE.md: committing it
+// binary is the one exception to the "no CDN" rule in CLAUDE.md (docs/offline-and-storage.md): committing it
 // would triple the size of the repo for a feature most users never touch. It
 // comes from jsDelivr instead, pinned by version AND by Subresource-Integrity
 // hash, so a compromised CDN cannot swap it for something else.

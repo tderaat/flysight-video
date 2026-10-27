@@ -113,13 +113,42 @@ async function storeJump(name, csvText) {
   });
 }
 
-async function removeJump(name) {
+// Delete several jumps in one transaction and resolve with the rows that were
+// actually removed ({ name, csv, addedAt }), so the caller can offer an undo.
+async function removeJumps(names) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_JUMPS, 'readwrite');
-    tx.objectStore(STORE_JUMPS).delete(name);
-    tx.oncomplete = () => resolve();
+    const store = tx.objectStore(STORE_JUMPS);
+    const removed = [];
+    names.forEach(name => {
+      const getReq = store.get(name);
+      getReq.onsuccess = () => {
+        if (!getReq.result) return;
+        removed.push(getReq.result);
+        store.delete(name);
+      };
+    });
+    tx.oncomplete = () => resolve(removed);
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+// Put rows removed by removeJumps() back exactly as they were, addedAt included,
+// so an undone delete lands in the same place in the list.
+async function restoreJumps(rows) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_JUMPS, 'readwrite');
+    const store = tx.objectStore(STORE_JUMPS);
+    rows.forEach(row => store.put({ name: row.name, csv: row.csv, addedAt: row.addedAt || Date.now() }));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => {
+      alert(t('alert.storageFull'));
+      reject(tx.error);
+    };
+    tx.onabort = () => reject(tx.error);
   });
 }
 

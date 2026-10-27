@@ -500,12 +500,25 @@ async function renderJumpList() {
   }
 
   groups.forEach(g => {
-    const { group, jumpsWrap } = makeJumpDayGroup({
+    const { group, header, jumpsWrap } = makeJumpDayGroup({
       date: g.date,
       dayKey: g.dayKey,
       count: g.items.length,
       collapsed: collapsed.has(g.dayKey)
     });
+    // Trash button before the caret: deletes the whole day, with one undo.
+    const dayNames = g.items.map(it => it.jump.name);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'jump-day-delete';
+    del.innerHTML = TRASH_ICON_SVG;
+    del.setAttribute('data-tip', t('tip.deleteDay'));
+    del.setAttribute('aria-label', t('tip.deleteDay'));
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      deleteJumpDay(dayNames, g.date);
+    });
+    header.insertBefore(del, header.querySelector('.jump-day-toggle'));
     g.items.forEach(it => appendJump(jumpsWrap, it.jump));
     list.appendChild(group);
   });
@@ -736,19 +749,120 @@ function migrateLocalStorageKey(storeKey, oldName, newName) {
   } catch (e) { /* ignore */ }
 }
 
-async function deleteJump(name) {
-  await removeJump(name);
-  if (state.compareDataCache) state.compareDataCache.delete(name);
-  if (state.compareSelected) state.compareSelected.delete(name);
-  if (typeof clearExitOverride === 'function') clearExitOverride(name);
-  if (typeof clearJumpNote === 'function') clearJumpNote(name);
-  if (state.currentJumpName === name) {
+// ── Delete with undo ──
+// Deleting is immediate, with no confirm dialog: a toast offers to put it back
+// for UNDO_TIMEOUT_MS instead (paused while hovered). The removed rows and their
+// name-keyed side state are held in memory only, so a reload ends the chance to
+// undo, and a new delete replaces the pending one.
+const UNDO_TIMEOUT_MS = 10000;
+let pendingUndo = null;   // { rows, overrides, notes, wasCurrent, describe }
+let undoTimer = null;
+
+function deleteJump(name) {
+  return deleteJumps([name], () => t('toast.deletedOne', { name }));
+}
+
+// The trash button on a day header: every jump that day, in one undo. A whole
+// day is a lot to lose to a stray click, so it asks first; the undo stays too.
+function deleteJumpDay(names, date) {
+  if (!confirm(t('confirm.deleteDay', { count: names.length, date: formatJumpDayHeader(date) }))) return;
+  if (names.length === 1) return deleteJump(names[0]);
+  return deleteJumps(names, () => t('toast.deletedDay', { count: names.length, date: formatJumpDayHeader(date) }));
+}
+
+// `describe` builds the toast text, so it can be re-run on a language switch.
+async function deleteJumps(names, describe) {
+  // A file still being read would be written back by handleFiles() anyway.
+  names = names.filter(n => !state.loadingJumps.has(n));
+  if (!names.length) return;
+  const rows = await removeJumps(names);
+  const overrides = {};
+  const notes = {};
+  let wasCurrent = null;
+  rows.forEach(row => {
+    const name = row.name;
+    const override = getExitOverride(name);
+    if (override !== null) overrides[name] = override;
+    const note = getJumpNote(name);
+    if (note) notes[name] = note;
+    if (state.compareDataCache) state.compareDataCache.delete(name);
+    if (state.compareSelected) state.compareSelected.delete(name);
+    clearExitOverride(name);
+    clearJumpNote(name);
+    if (state.currentJumpName === name) wasCurrent = name;
+  });
+  if (wasCurrent) {
     state.currentJumpName = null;
     document.getElementById('chartSection').style.display = 'none';
     document.body.classList.remove('has-jump-loaded');
   }
   await renderJumpList();
+  if (rows.length) showUndoToast({ rows, overrides, notes, wasCurrent, describe });
 }
+
+async function undoDelete() {
+  const u = pendingUndo;
+  if (!u) return;
+  hideUndoToast();
+  // A file uploaded under the same name since the delete wins over the old copy.
+  const stored = new Set((await getStoredJumps()).map(j => j.name));
+  const rows = u.rows.filter(r => !stored.has(r.name));
+  if (!rows.length) return;
+  await restoreJumps(rows);
+  rows.forEach(r => {
+    if (Object.prototype.hasOwnProperty.call(u.overrides, r.name)) setExitOverride(r.name, u.overrides[r.name]);
+    if (u.notes[r.name]) setJumpNote(r.name, u.notes[r.name]);
+  });
+  // Reopen the jump that was on screen, unless another one has been opened since.
+  if (u.wasCurrent && !state.currentJumpName && rows.some(r => r.name === u.wasCurrent)) {
+    await selectJump(u.wasCurrent);
+  } else {
+    await renderJumpList();
+  }
+}
+
+function startUndoTimer() {
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(hideUndoToast, UNDO_TIMEOUT_MS);
+}
+
+function showUndoToast(undo) {
+  pendingUndo = undo;
+  refreshUndoToastLang();
+  document.getElementById('undoToast').hidden = false;
+  startUndoTimer();
+}
+
+function hideUndoToast() {
+  clearTimeout(undoTimer);
+  undoTimer = null;
+  pendingUndo = null;
+  document.getElementById('undoToast').hidden = true;
+}
+
+// Called from applyLanguage(); the Undo button itself is translated by data-i18n.
+function refreshUndoToastLang() {
+  if (pendingUndo) document.getElementById('undoToastText').textContent = pendingUndo.describe();
+}
+
+(function initUndoToast() {
+  const toast = document.getElementById('undoToast');
+  document.getElementById('undoToastBtn').addEventListener('click', undoDelete);
+  document.getElementById('undoToastClose').addEventListener('click', hideUndoToast);
+  // Hovering holds the toast, so reading it never races the timer.
+  toast.addEventListener('mouseenter', () => clearTimeout(undoTimer));
+  toast.addEventListener('mouseleave', () => { if (pendingUndo) startUndoTimer(); });
+  // Ctrl+Z / Cmd+Z while the toast shows, unless a text field or a modal has
+  // its own claim on the shortcut (the notes box has native undo).
+  document.addEventListener('keydown', e => {
+    if (!pendingUndo || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+    const el = e.target;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+    if (document.querySelector('.modal-backdrop.open')) return;
+    e.preventDefault();
+    undoDelete();
+  });
+})();
 
 // ── Canvas interaction: drag-from-picker & widget move/resize ──
 (function() {

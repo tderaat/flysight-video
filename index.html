@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v51">
+<meta name="app-build" content="flysight-v52">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -533,6 +533,13 @@
       </form>
     </div>
   </div>
+</div>
+
+<!-- Shown after a jump or a whole day is deleted, with an Undo for 10 s. Text set from main.js. -->
+<div class="undo-toast" id="undoToast" role="status" aria-live="polite" hidden>
+  <span class="undo-toast-text" id="undoToastText"></span>
+  <button type="button" class="undo-toast-btn" id="undoToastBtn" data-i18n="toast.undo">Undo</button>
+  <button type="button" class="undo-toast-close" id="undoToastClose" data-i18n-aria="toast.dismiss" aria-label="Dismiss">&times;</button>
 </div>
 
 <!-- App scripts — loaded in dependency order (leaf modules first) -->

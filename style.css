@@ -239,6 +239,49 @@ body.has-jump-loaded .top-action { display: inline-flex; }
    Absolute in the page, so it scrolls away with the top bar it points into.
    z-index 49 keeps it just under .top-pickers (50), so an opened picker menu
    still draws over it; left/top and the arrow's left are set from JS. */
+/* Undo toast after a delete, bottom centre. Above the page and the jump list,
+   below the modals (which hide the sidebar's delete buttons anyway). */
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 10px 10px 10px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px var(--shadow-modal);
+  color: var(--text);
+  font-size: 0.85rem;
+  animation: undo-toast-in 0.18s ease-out;
+}
+.undo-toast[hidden] { display: none; }
+@keyframes undo-toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.undo-toast-text { min-width: 0; overflow-wrap: anywhere; }
+.undo-toast-btn {
+  flex-shrink: 0;
+  background: var(--accent); color: var(--accent-on);
+  border: none; border-radius: 6px;
+  padding: 5px 12px;
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.undo-toast-btn:hover { background: var(--accent-hover); }
+.undo-toast-close {
+  flex-shrink: 0;
+  background: none; border: none; padding: 0 4px;
+  color: var(--text-dim); font-size: 1.2rem; line-height: 1; cursor: pointer;
+}
+.undo-toast-close:hover { color: var(--text-strong); }
+
 .whats-new {
   position: absolute;
   z-index: 49;
@@ -438,6 +481,22 @@ body.has-jumps .dropzone p { display: none; }
   transform: translate(-50%, calc(-50% - 1px)) rotate(45deg);
 }
 .jump-day-header:hover .jump-day-toggle { color: var(--accent); }
+/* Delete-day trash button, before the caret. Shown on header hover or focus
+   (always on touch screens), so a column of day headers isn't a column of bins. */
+.jump-day-delete {
+  margin-left: auto;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: transparent; border: none; padding: 0;
+  color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.jump-day-header:hover .jump-day-delete,
+.jump-day-delete:focus-visible { opacity: 1; }
+@media (hover: none) { .jump-day-delete { opacity: 1; } }
+.jump-day-delete:hover { background: #ef4444; color: #fff; }
+.jump-day-delete + .jump-day-toggle { margin-left: 0; }
 .jump-day-count { color: var(--text-dim); display: none; }
 .jump-day.collapsed .jump-day-count { display: inline; }
 /* Date sort direction toggle — in its own bar above the day cards, right-aligned,

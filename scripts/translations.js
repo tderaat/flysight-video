@@ -65,6 +65,12 @@ var I18N = {
     'tip.rename': 'Rename',
     'tip.downloadCsv': 'Download CSV',
     'tip.remove': 'Remove',
+    'tip.deleteDay': 'Delete this day',
+    'confirm.deleteDay': 'Delete all jumps from {date} ({count})?',
+    'toast.deletedOne': 'Deleted {name}',
+    'toast.deletedDay': 'Deleted {count} jumps from {date}',
+    'toast.undo': 'Undo',
+    'toast.dismiss': 'Dismiss',
 
     // Stats panel
     'stat.speedScore': 'Speed Score',
@@ -365,6 +371,12 @@ var I18N = {
     'tip.rename': 'Umbenennen',
     'tip.downloadCsv': 'CSV herunterladen',
     'tip.remove': 'Entfernen',
+    'tip.deleteDay': 'Diesen Tag löschen',
+    'confirm.deleteDay': 'Alle Sprünge vom {date} löschen ({count})?',
+    'toast.deletedOne': '{name} gelöscht',
+    'toast.deletedDay': '{count} Sprünge vom {date} gelöscht',
+    'toast.undo': 'Rückgängig',
+    'toast.dismiss': 'Schließen',
 
     // Stats panel
     'stat.speedScore': 'Speed-Wertung',
@@ -665,6 +677,12 @@ var I18N = {
     'tip.rename': 'Hernoemen',
     'tip.downloadCsv': 'CSV downloaden',
     'tip.remove': 'Verwijderen',
+    'tip.deleteDay': 'Deze dag verwijderen',
+    'confirm.deleteDay': 'Alle sprongen van {date} verwijderen ({count})?',
+    'toast.deletedOne': '{name} verwijderd',
+    'toast.deletedDay': '{count} sprongen van {date} verwijderd',
+    'toast.undo': 'Ongedaan maken',
+    'toast.dismiss': 'Sluiten',
 
     // Stats panel
     'stat.speedScore': 'Speedscore',
@@ -965,6 +983,12 @@ var I18N = {
     'tip.rename': 'Rinomina',
     'tip.downloadCsv': 'Scarica CSV',
     'tip.remove': 'Rimuovi',
+    'tip.deleteDay': 'Elimina questo giorno',
+    'confirm.deleteDay': 'Eliminare tutti i lanci del {date} ({count})?',
+    'toast.deletedOne': '{name} eliminato',
+    'toast.deletedDay': '{count} lanci del {date} eliminati',
+    'toast.undo': 'Annulla',
+    'toast.dismiss': 'Chiudi',
 
     // Stats panel
     'stat.speedScore': 'Punteggio velocità',
@@ -1265,6 +1289,12 @@ var I18N = {
     'tip.rename': 'Byt namn',
     'tip.downloadCsv': 'Ladda ner CSV',
     'tip.remove': 'Ta bort',
+    'tip.deleteDay': 'Ta bort den här dagen',
+    'confirm.deleteDay': 'Ta bort alla hopp från {date} ({count})?',
+    'toast.deletedOne': '{name} borttagen',
+    'toast.deletedDay': '{count} hopp från {date} borttagna',
+    'toast.undo': 'Ångra',
+    'toast.dismiss': 'Stäng',
 
     // Stats panel
     'stat.speedScore': 'Hastighetspoäng',
@@ -1565,6 +1595,12 @@ var I18N = {
     'tip.rename': 'Renombrar',
     'tip.downloadCsv': 'Descargar CSV',
     'tip.remove': 'Eliminar',
+    'tip.deleteDay': 'Eliminar este día',
+    'confirm.deleteDay': '¿Eliminar todos los saltos del {date} ({count})?',
+    'toast.deletedOne': '{name} eliminado',
+    'toast.deletedDay': '{count} saltos del {date} eliminados',
+    'toast.undo': 'Deshacer',
+    'toast.dismiss': 'Cerrar',
 
     // Stats panel
     'stat.speedScore': 'Puntuación de velocidad',
@@ -1865,6 +1901,12 @@ var I18N = {
     'tip.rename': 'Zmień nazwę',
     'tip.downloadCsv': 'Pobierz CSV',
     'tip.remove': 'Usuń',
+    'tip.deleteDay': 'Usuń ten dzień',
+    'confirm.deleteDay': 'Usunąć wszystkie skoki z dnia {date} ({count})?',
+    'toast.deletedOne': 'Usunięto {name}',
+    'toast.deletedDay': 'Usunięto skoki z dnia {date}: {count}',
+    'toast.undo': 'Cofnij',
+    'toast.dismiss': 'Zamknij',
 
     // Stats panel
     'stat.speedScore': 'Wynik prędkości',
