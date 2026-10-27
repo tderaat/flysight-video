@@ -39,6 +39,12 @@ var I18N = {
 
     // Trim / chart controls
     'btn.compareJumps': 'Compare jumps',
+    'btn.feedback': 'Feedback',
+    'btn.feedbackTip': 'Send feedback (opens a form in a new tab)',
+    'new.label': 'New',
+    'new.gotIt': 'Got it',
+    'new.dismiss': 'Dismiss',
+    'new.feedback': 'Missing something, or found a bug? Send feedback straight from here.',
     'btn.createVideoOverlay': 'Create video overlay',
     'btn.scoringWindow': 'Scoring window',
     'btn.jumpOnly': 'Jump only',
@@ -317,6 +323,12 @@ var I18N = {
 
     // Trim / chart controls
     'btn.compareJumps': 'Sprünge vergleichen',
+    'btn.feedback': 'Feedback',
+    'btn.feedbackTip': 'Feedback senden (öffnet ein Formular in einem neuen Tab)',
+    'new.label': 'Neu',
+    'new.gotIt': 'Verstanden',
+    'new.dismiss': 'Schließen',
+    'new.feedback': 'Fehlt etwas oder einen Fehler gefunden? Sende dein Feedback direkt von hier.',
     'btn.createVideoOverlay': 'Video-Overlay erstellen',
     'btn.scoringWindow': 'Wertungsfenster',
     'btn.jumpOnly': 'Nur Sprung',
@@ -595,6 +607,12 @@ var I18N = {
 
     // Trim / chart controls
     'btn.compareJumps': 'Sprongen vergelijken',
+    'btn.feedback': 'Feedback',
+    'btn.feedbackTip': 'Feedback geven (opent een formulier in een nieuw tabblad)',
+    'new.label': 'Nieuw',
+    'new.gotIt': 'Begrepen',
+    'new.dismiss': 'Sluiten',
+    'new.feedback': 'Mis je iets of een bug gevonden? Geef hier direct feedback.',
     'btn.createVideoOverlay': 'Video-overlay maken',
     'btn.scoringWindow': 'Scorevenster',
     'btn.jumpOnly': 'Alleen sprong',
@@ -873,6 +891,12 @@ var I18N = {
 
     // Trim / chart controls
     'btn.compareJumps': 'Confronta lanci',
+    'btn.feedback': 'Feedback',
+    'btn.feedbackTip': 'Invia feedback (apre un modulo in una nuova scheda)',
+    'new.label': 'Novità',
+    'new.gotIt': 'Ho capito',
+    'new.dismiss': 'Chiudi',
+    'new.feedback': 'Manca qualcosa o hai trovato un bug? Invia un feedback direttamente da qui.',
     'btn.createVideoOverlay': 'Crea overlay video',
     'btn.scoringWindow': 'Finestra di punteggio',
     'btn.jumpOnly': 'Solo lancio',
@@ -1151,6 +1175,12 @@ var I18N = {
 
     // Trim / chart controls
     'btn.compareJumps': 'Jämför hopp',
+    'btn.feedback': 'Feedback',
+    'btn.feedbackTip': 'Skicka feedback (öppnar ett formulär i en ny flik)',
+    'new.label': 'Nytt',
+    'new.gotIt': 'Uppfattat',
+    'new.dismiss': 'Stäng',
+    'new.feedback': 'Saknar du något eller har du hittat en bugg? Skicka feedback direkt härifrån.',
     'btn.createVideoOverlay': 'Skapa videooverlay',
     'btn.scoringWindow': 'Poängfönster',
     'btn.jumpOnly': 'Bara hoppet',
@@ -1429,6 +1459,12 @@ var I18N = {
 
     // Trim / chart controls
     'btn.compareJumps': 'Comparar saltos',
+    'btn.feedback': 'Comentarios',
+    'btn.feedbackTip': 'Enviar comentarios (abre un formulario en una pestaña nueva)',
+    'new.label': 'Nuevo',
+    'new.gotIt': 'Entendido',
+    'new.dismiss': 'Cerrar',
+    'new.feedback': '¿Echas algo en falta o has encontrado un error? Envía tus comentarios desde aquí.',
     'btn.createVideoOverlay': 'Crear superposición de vídeo',
     'btn.scoringWindow': 'Ventana de puntuación',
     'btn.jumpOnly': 'Solo el salto',
@@ -1707,6 +1743,12 @@ var I18N = {
 
     // Trim / chart controls
     'btn.compareJumps': 'Porównaj skoki',
+    'btn.feedback': 'Opinia',
+    'btn.feedbackTip': 'Wyślij opinię (otwiera formularz w nowej karcie)',
+    'new.label': 'Nowość',
+    'new.gotIt': 'Rozumiem',
+    'new.dismiss': 'Zamknij',
+    'new.feedback': 'Czegoś brakuje albo trafił się błąd? Wyślij opinię prosto stąd.',
     'btn.createVideoOverlay': 'Utwórz nakładkę wideo',
     'btn.scoringWindow': 'Okno punktacji',
     'btn.jumpOnly': 'Tylko skok',

@@ -455,6 +455,8 @@ async function renderJumpList() {
   try { scores = JSON.parse(localStorage.getItem('flysight_scores') || '{}'); } catch (e) {}
   const hasLoading = state.loadingJumps.size > 0;
   document.body.classList.toggle('has-jumps', jumps.length > 0 || hasLoading);
+  // Read back by the inline script after <body> to pick the dropzone size before paint.
+  try { localStorage.setItem('flysight_has_jumps', jumps.length > 0 ? '1' : '0'); } catch (e) {}
   list.innerHTML = '';
   const storedNames = new Set(jumps.map(j => j.name));
 
@@ -519,10 +521,47 @@ async function renderJumpList() {
   });
 }
 
-function selectJump(name) {
+// Bumped per selectJump() so only the latest of several quick clicks clears
+// the loading scaffold.
+let jumpSwitchSeq = 0;
+
+// The jump open when the page was last used, reopened by the init code below.
+const LAST_JUMP_KEY = 'flysight_last_jump';
+
+async function selectJump(name) {
   state.currentJumpName = name;
+  try { localStorage.setItem(LAST_JUMP_KEY, name); } catch (e) {}
   renderJumpList();
-  renderCurrentJump();
+  // With a jump already on screen, swap it for a same-sized scaffold first:
+  // rendering takes most of a second, and until then the old jump's data stayed
+  // up. The first jump of a session has nothing to keep the place of, so it
+  // just appears.
+  const section = document.getElementById('chartSection');
+  if (section.style.display !== 'block') { await renderCurrentJump(); return; }
+  const seq = ++jumpSwitchSeq;
+  section.classList.add('is-loading');
+  // The map isn't scaffolded (its imagery stays up), but the old jump's track
+  // and markers go now rather than when the new ones are drawn.
+  if (state.mapOverlay) state.mapOverlay.clearLayers();
+  if (state.hoverMarker) { state.mapInstance.removeLayer(state.hoverMarker); state.hoverMarker = null; }
+  if (state.mapHoverTooltip) state.mapInstance.closeTooltip(state.mapHoverTooltip);
+  // Its hover handlers still point at the old track; renderMap() adds new ones.
+  if (state.mapHandlers) state.mapInstance.off(state.mapHandlers);
+  // Read (and reset) by renderMap(), so only this redraw fades in, not the
+  // ones that follow the chart's zoom and pan.
+  state.mapFadeIn = true;
+  // rAF runs before the frame is painted; the timeout lands after it, so the
+  // scaffold is on screen before the synchronous render starts. A hidden tab
+  // fires no frames at all, hence the 100 ms fallback.
+  await new Promise(resolve => {
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+    setTimeout(resolve, 100);
+  });
+  try {
+    await renderCurrentJump();
+  } finally {
+    if (seq === jumpSwitchSeq) section.classList.remove('is-loading');
+  }
 }
 
 async function downloadJump(name) {
@@ -596,7 +635,10 @@ async function confirmRename() {
     state.compareSelected.delete(oldName);
     state.compareSelected.add(newName);
   }
-  if (state.currentJumpName === oldName) state.currentJumpName = newName;
+  if (state.currentJumpName === oldName) {
+    state.currentJumpName = newName;
+    try { localStorage.setItem(LAST_JUMP_KEY, newName); } catch (e) {}
+  }
 
   closeRenameModal();
   await renderJumpList();
@@ -990,5 +1032,10 @@ renderWidgetPreviews();
   initJumpNotes();
   await renderJumpList();
   const jumps = await getStoredJumps();
-  if (jumps.length > 0) selectJump(jumps[jumps.length - 1].name);
+  if (jumps.length === 0) return;
+  // Reopen the jump from last time; fall back to the most recently added one
+  // when it has since been deleted (or nothing was stored yet).
+  let last = null;
+  try { last = localStorage.getItem(LAST_JUMP_KEY); } catch (e) {}
+  selectJump(jumps.some(j => j.name === last) ? last : jumps[jumps.length - 1].name);
 })();

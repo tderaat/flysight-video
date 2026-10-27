@@ -23,7 +23,7 @@
 // SRI hash. Being cross-origin it is not intercepted here either, and the CDN
 // serves it immutable, so the browser cache keeps it between sessions.
 
-const CACHE_VERSION = 'flysight-v44';
+const CACHE_VERSION = 'flysight-v45';
 
 const PRECACHE = [
   './',
@@ -76,6 +76,7 @@ const PRECACHE = [
   'scripts/video.js',
   'scripts/compare.js',
   'scripts/main.js',
+  'scripts/whats-new.js',
 ];
 
 self.addEventListener('install', event => {

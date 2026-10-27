@@ -16,6 +16,9 @@ var state = {
   currentJumpName: null,
   chartInstance: null,
   mapInstance: null,
+  mapOverlay: null,    // L.layerGroup holding the track + markers, swapped per render
+  mapHandlers: null,   // the map's current mousemove/mouseout pair, for .off()
+  mapFadeIn: false,    // set by selectJump(): fade the next track in
   hoverMarker: null,
   mapHoverTooltip: null,
   lastRenderMap: null,

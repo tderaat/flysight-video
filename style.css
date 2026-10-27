@@ -103,6 +103,9 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+/* Always reserve the scrollbar's width, so the centred layout doesn't shift
+   sideways when a page grows (or shrinks) past the viewport height. */
+html { scrollbar-gutter: stable; }
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body); color: var(--text); min-height: 100vh; }
 
 /* ── Page layout (sidebar + main) ── */
@@ -158,9 +161,11 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body
 .header .logo { width: 32px; height: 44px; display: flex; align-items: center; justify-content: center; }
 .header .logo svg { fill: var(--accent); }
 
-/* ── Language + theme pickers (top-right) ── */
+/* ── Language + theme pickers (top-right) ──
+   Absolute, not fixed: the bar belongs to the top of the page and scrolls away
+   with the chart/map/stats column rather than floating over it. */
 .top-pickers {
-  position: fixed;
+  position: absolute;
   top: 7px;
   right: 24px;
   z-index: 50;
@@ -205,9 +210,74 @@ body.has-jump-loaded .top-action { display: inline-flex; }
   font-weight: 500;
   white-space: nowrap;
 }
+/* Feedback is a link (<a>), and is shown with or without a loaded jump. */
+.top-action.top-feedback { display: inline-flex; text-decoration: none; box-sizing: border-box; }
 /* The label makes the tooltip redundant on wide screens; it comes back below
    when the button collapses to icon-only (see the 900px media query). */
 .top-action[data-tip]:hover::after { display: none; }
+
+/* ── What's new callout (scripts/whats-new.js) ──
+   Absolute in the page, so it scrolls away with the top bar it points into.
+   z-index 49 keeps it just under .top-pickers (50), so an opened picker menu
+   still draws over it; left/top and the arrow's left are set from JS. */
+.whats-new {
+  position: absolute;
+  z-index: 49;
+  width: 250px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  box-shadow: 0 8px 24px var(--shadow-modal);
+}
+.whats-new[hidden] { display: none; }
+.whats-new-arrow {
+  position: absolute;
+  top: -6px;
+  width: 10px;
+  height: 10px;
+  margin-left: -6px;
+  background: var(--bg-card);
+  border-left: 1px solid var(--accent);
+  border-top: 1px solid var(--accent);
+  transform: rotate(45deg);
+}
+.whats-new-head { display: flex; align-items: center; justify-content: space-between; }
+.whats-new-label {
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.whats-new-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.whats-new-close:hover { color: var(--text-strong); }
+.whats-new-text { margin: 4px 0 10px; }
+.whats-new-ok {
+  background: var(--accent);
+  color: var(--accent-on);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.whats-new-ok:hover { background: var(--accent-hover); }
 .picker-menu {
   display: none;
   position: absolute;
@@ -419,8 +489,12 @@ body.has-jumps .dropzone p { display: none; }
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-card);
-  overflow: hidden;
 }
+/* Corners rounded by hand (header on top, last chip at the bottom) rather than
+   with overflow: hidden on the card, which clipped the chip buttons' tooltips. */
+.jump-list .jump-day-header { border-radius: 7px 7px 0 0; }
+.jump-list .jump-day.collapsed .jump-day-header { border-radius: 7px; }
+.jump-list .jump-day-jumps .jump-chip:last-child { border-radius: 0 0 7px 7px; }
 .jump-list .jump-day-jumps { gap: 0; }
 .jump-list .jump-day-header,
 .jump-list > .jump-day:first-child .jump-day-header {
@@ -586,6 +660,42 @@ canvas { width: 100% !important; }
 .stat-card:last-child { border-bottom: none; padding-bottom: 0; }
 .stat-card:first-child { padding-top: 0; }
 
+/* ── Jump-switch scaffold ──
+   selectJump() sets .is-loading on #chartSection while the next jump renders.
+   The old chart, stats and note are hidden rather than removed, so every
+   panel keeps its height and nothing below it moves; skeleton blocks stand in
+   for the content. Opacity is the only animated property, so the pulse stays
+   on the compositor while the main thread is busy rendering. The map is left
+   as it is: its satellite view barely changes between jumps of one drop zone. */
+@keyframes skeleton-pulse {
+  from { opacity: 1; }
+  to { opacity: 0.45; }
+}
+.chart-section.is-loading .chart-canvas-wrap,
+.chart-section.is-loading .stats,
+.chart-section.is-loading .notes-input { pointer-events: none; }
+.chart-section.is-loading .chart-title,
+.chart-section.is-loading .stat-card > *,
+.chart-section.is-loading .notes-input {
+  color: transparent;
+  background: var(--bg-stronger);
+  border-color: transparent;
+  border-radius: 6px;
+  animation: skeleton-pulse 0.8s ease-in-out infinite alternate;
+}
+.chart-section.is-loading .chart-title { min-width: 180px; }
+.chart-section.is-loading .stat-card > * { width: fit-content; min-width: 60%; max-width: 100%; }
+.chart-section.is-loading .stat-card > * > *,
+.chart-section.is-loading #chart { visibility: hidden; }
+.chart-section.is-loading .chart-canvas-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg-stronger);
+  border-radius: 8px;
+  animation: skeleton-pulse 0.8s ease-in-out infinite alternate;
+}
+
 /* ── Per-jump notes ── */
 .notes-panel {
   background: var(--bg-card);
@@ -637,7 +747,7 @@ canvas { width: 100% !important; }
   .top-action { width: 34px; padding: 0; border-radius: 50%; gap: 0; }
   .top-action .top-action-label { display: none; }
   .top-action[data-tip]:hover::after { display: block; bottom: auto; top: calc(100% + 8px); }
-  .header { padding-right: 180px; }
+  .header { padding-right: 220px; }
   .header h1 { font-size: 1.15rem; }
 }
 .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -734,6 +844,15 @@ canvas { width: 100% !important; }
 /* ── Map ── */
 .map-container { background: var(--bg-card); border-radius: 12px; padding: 10px; position: relative; }
 #map { height: 500px; min-height: 500px; border-radius: 8px; }
+/* New track + marker labels fading in after a jump switch (renderMap()). The
+   panes are animated rather than each path, so it is one animation however
+   many segments the track has. */
+@keyframes map-track-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+#map.track-fade .leaflet-overlay-pane,
+#map.track-fade .leaflet-tooltip-pane { animation: map-track-fade 0.5s ease-out; }
 /* "Offline: cached tiles only" badge — sits above Leaflet's panes/controls
    (which top out around z-index 800). Toggled by setMapTilesOffline(). */
 .map-offline-note {

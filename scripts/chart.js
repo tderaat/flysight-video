@@ -150,6 +150,10 @@ function clearChartActive() {
 // 'full'; `true` is still accepted for 'full' so an older call site can't break.
 const CHART_VIEWS = ['scoring', 'jump', 'full'];
 
+// How far (m) the map glides to a new track instead of jumping there; roughly
+// "same drop zone". See the fitBounds call in renderMap().
+const MAP_GLIDE_MAX_M = 20000;
+
 async function renderCurrentJump(view) {
   if (view === true) view = 'full';
   if (CHART_VIEWS.indexOf(view) < 0) view = 'scoring';
@@ -1097,16 +1101,32 @@ async function renderCurrentJump(view) {
       }
     }
 
-    if (state.mapInstance) { state.mapInstance.remove(); state.mapInstance = null; }
+    // The Leaflet map and its tile layer are created once and kept, so switching
+    // jumps or zooming the chart never blanks the imagery (a fresh layer starts
+    // empty and refills tile by tile, even from the cache). Only the overlay
+    // group, the hover state and the hover handlers are swapped per render.
+    const map = state.mapInstance;
+    if (map) {
+      state.mapOverlay.clearLayers();
+      if (state.hoverMarker) map.removeLayer(state.hoverMarker);
+      if (state.mapHoverTooltip) map.closeTooltip(state.mapHoverTooltip);
+      if (state.mapHandlers) map.off(state.mapHandlers);
+      // The section may have been hidden (active jump deleted) since the last render.
+      map.invalidateSize();
+    }
     state.hoverMarker = null;
     state.mapHoverTooltip = null;
 
     setMapTilesOffline(false); // re-evaluated as tiles load
-    state.mapInstance = L.map('map', { attributionControl: true });
-    cachedTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: '&copy; Esri, Maxar, Earthstar Geographics',
-      maxZoom: 19
-    }).addTo(state.mapInstance);
+    if (!map) {
+      state.mapInstance = L.map('map', { attributionControl: true });
+      cachedTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+        maxZoom: 19
+      }).addTo(state.mapInstance);
+      state.mapOverlay = L.layerGroup().addTo(state.mapInstance);
+    }
+    const overlay = state.mapOverlay;
 
     // Color-coded polyline using time-based phase boundaries. Pre-exit
     // segments use the active theme accent so the airplane track matches
@@ -1118,7 +1138,7 @@ async function renderCurrentJump(view) {
       else color = '#1e1e1e';
       L.polyline([pathCoords[i], pathCoords[i + 1]], {
         color, weight: 3, opacity: 0.9
-      }).addTo(state.mapInstance);
+      }).addTo(overlay);
     }
 
     // Airplane heading line — only when exit (t=0) is in the visible window
@@ -1140,7 +1160,7 @@ async function renderCurrentJump(view) {
         const lineEnd = [exitLat + dLat * extendFactor, exitLon + dLon * extendFactor];
         L.polyline([lineStart, lineEnd], {
           color: '#94a3b8', weight: 3, dashArray: '8, 8', opacity: 0.7
-        }).addTo(state.mapInstance);
+        }).addTo(overlay);
       }
     }
 
@@ -1152,7 +1172,7 @@ async function renderCurrentJump(view) {
       if (!isNaN(startLat) && !isNaN(startLon)) {
         L.circleMarker([startLat, startLon], {
           radius: 8, fillColor: themeAccent, color: '#000', weight: 2, fillOpacity: 1
-        }).addTo(state.mapInstance).bindTooltip(t('map.start'), { permanent: true, direction: 'top', className: 'map-label' });
+        }).addTo(overlay).bindTooltip(t('map.start'), { permanent: true, direction: 'top', className: 'map-label' });
       }
     }
 
@@ -1162,7 +1182,7 @@ async function renderCurrentJump(view) {
       if (!isNaN(exitLat) && !isNaN(exitLon)) {
         L.circleMarker([exitLat, exitLon], {
           radius: 8, fillColor: '#facc15', color: '#000', weight: 2, fillOpacity: 1
-        }).addTo(state.mapInstance).bindTooltip(t('map.exit'), { permanent: true, direction: 'top', className: 'map-label' });
+        }).addTo(overlay).bindTooltip(t('map.exit'), { permanent: true, direction: 'top', className: 'map-label' });
       }
     }
 
@@ -1172,7 +1192,7 @@ async function renderCurrentJump(view) {
       if (!isNaN(canopyLat) && !isNaN(canopyLon)) {
         L.circleMarker([canopyLat, canopyLon], {
           radius: 8, fillColor: '#f472b6', color: '#000', weight: 2, fillOpacity: 1
-        }).addTo(state.mapInstance).bindTooltip(t('map.canopy'), { permanent: true, direction: 'top', className: 'map-label' });
+        }).addTo(overlay).bindTooltip(t('map.canopy'), { permanent: true, direction: 'top', className: 'map-label' });
       }
     }
 
@@ -1183,17 +1203,35 @@ async function renderCurrentJump(view) {
       if (!isNaN(landLat) && !isNaN(landLon)) {
         L.circleMarker([landLat, landLon], {
           radius: 8, fillColor: '#4ade80', color: '#000', weight: 2, fillOpacity: 1
-        }).addTo(state.mapInstance).bindTooltip(t('map.landing'), { permanent: true, direction: 'top', className: 'map-label' });
+        }).addTo(overlay).bindTooltip(t('map.landing'), { permanent: true, direction: 'top', className: 'map-label' });
       }
     }
 
     if (pathCoords.length > 1) {
-      state.mapInstance.fitBounds(L.latLngBounds(pathCoords).pad(0.15));
+      // Animated whenever the new track is at the same drop zone (within
+      // MAP_GLIDE_MAX_M of the current view): a non-animated view change fires
+      // Leaflet's viewprereset, which drops every tile and blanks the map, while
+      // a short glide keeps the old tiles up as the new ones load. Further
+      // away it jumps instead of gliding across the country.
+      const bounds = L.latLngBounds(pathCoords).pad(0.15);
+      const nearby = !!map && map.distance(map.getCenter(), bounds.getCenter()) < MAP_GLIDE_MAX_M;
+      state.mapInstance.fitBounds(bounds, { animate: nearby });
+    }
+
+    // After a jump switch the old track was cleared, so the new one fades in
+    // (.track-fade in style.css). Removing the class and forcing a reflow
+    // restarts the animation on the second and later switches.
+    if (state.mapFadeIn) {
+      state.mapFadeIn = false;
+      const mapEl = state.mapInstance.getContainer();
+      mapEl.classList.remove('track-fade');
+      void mapEl.offsetWidth;
+      mapEl.classList.add('track-fade');
     }
 
     // Reverse hover: tooltip when mousing along the flight path
     const HOVER_THRESHOLD_PX = 20;
-    state.mapInstance.on('mousemove', function(e) {
+    function onMapMouseMove(e) {
       if (!state.mapInstance) return;
       const cursor = e.containerPoint;
       let bestIdx = -1;
@@ -1267,9 +1305,9 @@ async function renderCurrentJump(view) {
 
       // Chart datasets contain full-data, so the chart index == windowFullIdx[bestIdx]
       setChartActiveAtIndex(windowFullIdx[bestIdx]);
-    });
+    }
 
-    state.mapInstance.on('mouseout', function() {
+    function onMapMouseOut() {
       if (state.mapHoverTooltip && state.mapHoverTooltip.isOpen()) {
         state.mapInstance.closeTooltip(state.mapHoverTooltip);
       }
@@ -1278,7 +1316,12 @@ async function renderCurrentJump(view) {
         state.hoverMarker = null;
       }
       clearChartActive();
-    });
+    }
+
+    // Kept on state so the next render can .off() exactly this pair: the map
+    // outlives this closure, and its window arrays would otherwise go stale.
+    state.mapHandlers = { mousemove: onMapMouseMove, mouseout: onMapMouseOut };
+    state.mapInstance.on(state.mapHandlers);
   }
 
   state.lastRenderMap = renderMap;

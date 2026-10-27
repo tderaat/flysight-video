@@ -136,6 +136,10 @@ function applyLanguage(lang) {
   if (typeof refreshVideoConvertLang === 'function') {
     try { refreshVideoConvertLang(); } catch (e) {}
   }
+  // An open what's-new callout (text set from JS).
+  if (typeof refreshWhatsNewLang === 'function') {
+    try { refreshWhatsNewLang(); } catch (e) {}
+  }
   // Selected widget's config panel (rebuilt from scratch in the new language).
   if (typeof updateWidgetSettingsPanel === 'function') {
     try { updateWidgetSettingsPanel(); } catch (e) {}
