@@ -176,7 +176,13 @@ var I18N = {
     'video.fullDescent': 'Include full descent (to landing)',
     'video.exportBtn': 'Export video with overlay',
     'video.cancel': 'Cancel',
-    'video.widgets': 'Widgets',
+    'video.stepWidgets': 'Add widgets',
+    'video.stepExport': 'Export video',
+    'video.stepLocked': 'Mark the exit moment first',
+    'video.exitAt': 'Exit at {time}',
+    'video.widgetCount': 'Widgets: {count}',
+    'video.hintExit': 'Play or scrub to the frame where you leave the aircraft, then mark it. This lines the video up with your FlySight data.',
+    'video.hintWidgets': 'Drag a widget onto the video, or click it to add it. Click a placed widget to move, resize or change it.',
     'video.selectedWidget': 'Selected widget',
 
     // Widget names (picker cards)
@@ -464,7 +470,13 @@ var I18N = {
     'video.fullDescent': 'Gesamten Abstieg einbeziehen (bis zur Landung)',
     'video.exportBtn': 'Video mit Overlay exportieren',
     'video.cancel': 'Abbrechen',
-    'video.widgets': 'Widgets',
+    'video.stepWidgets': 'Widgets hinzufügen',
+    'video.stepExport': 'Video exportieren',
+    'video.stepLocked': 'Zuerst den Absprungmoment markieren',
+    'video.exitAt': 'Absprung bei {time}',
+    'video.widgetCount': 'Widgets: {count}',
+    'video.hintExit': 'Spiele oder spule zu dem Bild, in dem du das Flugzeug verlässt, und markiere es. Damit wird das Video mit deinen FlySight-Daten synchronisiert.',
+    'video.hintWidgets': 'Ziehe ein Widget auf das Video oder klicke es an, um es hinzuzufügen. Klicke auf ein platziertes Widget, um es zu verschieben, zu skalieren oder anzupassen.',
     'video.selectedWidget': 'Ausgewähltes Widget',
 
     // Widget names
@@ -752,7 +764,13 @@ var I18N = {
     'video.fullDescent': 'Volledige afdaling meenemen (tot landing)',
     'video.exportBtn': 'Video met overlay exporteren',
     'video.cancel': 'Annuleren',
-    'video.widgets': 'Widgets',
+    'video.stepWidgets': 'Widgets toevoegen',
+    'video.stepExport': 'Video exporteren',
+    'video.stepLocked': 'Markeer eerst het exitmoment',
+    'video.exitAt': 'Exit op {time}',
+    'video.widgetCount': 'Widgets: {count}',
+    'video.hintExit': 'Speel af of scrol naar het beeld waarop je het vliegtuig verlaat en markeer het. Zo loopt de video gelijk met je FlySight-data.',
+    'video.hintWidgets': 'Sleep een widget naar de video of klik erop om hem toe te voegen. Klik op een geplaatste widget om hem te verplaatsen, te schalen of aan te passen.',
     'video.selectedWidget': 'Geselecteerde widget',
 
     // Widget names
@@ -1040,7 +1058,13 @@ var I18N = {
     'video.fullDescent': "Includi l'intera discesa (fino all'atterraggio)",
     'video.exportBtn': 'Esporta video con overlay',
     'video.cancel': 'Annulla',
-    'video.widgets': 'Widget',
+    'video.stepWidgets': 'Aggiungi widget',
+    'video.stepExport': 'Esporta video',
+    'video.stepLocked': "Segna prima il momento dell'uscita",
+    'video.exitAt': 'Uscita a {time}',
+    'video.widgetCount': 'Widget: {count}',
+    'video.hintExit': "Riproduci o scorri fino al fotogramma in cui lasci l'aereo, poi segnalo. Così il video si allinea ai tuoi dati FlySight.",
+    'video.hintWidgets': 'Trascina un widget sul video o fai clic per aggiungerlo. Fai clic su un widget posizionato per spostarlo, ridimensionarlo o modificarlo.',
     'video.selectedWidget': 'Widget selezionato',
 
     // Widget names
@@ -1328,7 +1352,13 @@ var I18N = {
     'video.fullDescent': 'Inkludera hela nedfärden (till landning)',
     'video.exportBtn': 'Exportera video med overlay',
     'video.cancel': 'Avbryt',
-    'video.widgets': 'Widgetar',
+    'video.stepWidgets': 'Lägg till widgetar',
+    'video.stepExport': 'Exportera video',
+    'video.stepLocked': 'Markera utsprångsögonblicket först',
+    'video.exitAt': 'Utsprång vid {time}',
+    'video.widgetCount': 'Widgetar: {count}',
+    'video.hintExit': 'Spela upp eller dra fram till bildrutan där du lämnar flygplanet och markera den. Då synkas videon med dina FlySight-data.',
+    'video.hintWidgets': 'Dra en widget till videon eller klicka på den för att lägga till den. Klicka på en placerad widget för att flytta den, ändra storlek eller ändra inställningar.',
     'video.selectedWidget': 'Vald widget',
 
     // Widget names (picker cards)
@@ -1616,7 +1646,13 @@ var I18N = {
     'video.fullDescent': 'Incluir todo el descenso (hasta el aterrizaje)',
     'video.exportBtn': 'Exportar vídeo con superposición',
     'video.cancel': 'Cancelar',
-    'video.widgets': 'Widgets',
+    'video.stepWidgets': 'Añadir widgets',
+    'video.stepExport': 'Exportar vídeo',
+    'video.stepLocked': 'Marca primero el momento de salida',
+    'video.exitAt': 'Salida en {time}',
+    'video.widgetCount': 'Widgets: {count}',
+    'video.hintExit': 'Reproduce o desplázate hasta el fotograma en el que sales del avión y márcalo. Así el vídeo se sincroniza con tus datos de FlySight.',
+    'video.hintWidgets': 'Arrastra un widget al vídeo o haz clic para añadirlo. Haz clic en un widget colocado para moverlo, cambiar su tamaño o editarlo.',
     'video.selectedWidget': 'Widget seleccionado',
 
     // Widget names (picker cards)
@@ -1904,7 +1940,13 @@ var I18N = {
     'video.fullDescent': 'Uwzględnij całe zejście (do lądowania)',
     'video.exportBtn': 'Eksportuj wideo z nakładką',
     'video.cancel': 'Anuluj',
-    'video.widgets': 'Widżety',
+    'video.stepWidgets': 'Dodaj widżety',
+    'video.stepExport': 'Eksportuj wideo',
+    'video.stepLocked': 'Najpierw zaznacz moment wyjścia',
+    'video.exitAt': 'Wyjście o {time}',
+    'video.widgetCount': 'Widżety: {count}',
+    'video.hintExit': 'Odtwórz lub przewiń do klatki, w której opuszczasz samolot, i zaznacz ją. Dzięki temu wideo zsynchronizuje się z danymi z FlySight.',
+    'video.hintWidgets': 'Przeciągnij widżet na wideo lub kliknij go, aby go dodać. Kliknij umieszczony widżet, aby go przesunąć, zmienić rozmiar lub ustawienia.',
     'video.selectedWidget': 'Wybrany widżet',
 
     // Widget names (picker cards)

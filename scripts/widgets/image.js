@@ -93,15 +93,47 @@ function _drawImagePlaceholder(ctx, x, y, w, h) {
   ctx.lineTo(cx + glyph * 0.55, cy + glyph * 0.4);
   ctx.closePath();
   ctx.fill();
-
-  if (h > 48) {
-    ctx.fillStyle = '#cbd5e1';
-    ctx.font = `${Math.max(10, Math.min(13, h * 0.11))}px 'Segoe UI', system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('Click to upload image', cx, y + h - Math.max(18, h * 0.18));
-  }
   ctx.restore();
+}
+
+// Validates and stores an uploaded file on the widget. Returns true on success.
+function _applyImageFile(widget, file) {
+  if (!file) return false;
+  if (!_isAcceptedImageFile(file)) {
+    alert(t('cfg.imageType'));
+    return false;
+  }
+  if (file.size > IMAGE_WIDGET_MAX_BYTES) {
+    alert(t('cfg.imageTooLarge'));
+    return false;
+  }
+  if (widget._imageObjectURL) {
+    try { URL.revokeObjectURL(widget._imageObjectURL); } catch {}
+    widget._imageObjectURL = null;
+  }
+  widget._image = null;
+  widget._imageBlobRef = null;
+  widget.config.imageBlob = file;
+  widget.config.imageName = file.name;
+  widget.config.imageType = file.type || '';
+  state.scheduleSaveWidgetLayout();
+  return true;
+}
+
+// Opens the file picker straight away for a freshly placed image widget. Must run
+// inside the drop/click handler, since browsers only allow it with user activation.
+function openImageWidgetPicker(widget) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = IMAGE_WIDGET_ACCEPTED_MIME.join(',');
+  input.addEventListener('change', () => {
+    const file = input.files && input.files[0];
+    if (!_applyImageFile(widget, file)) return;
+    if (!state.widgets.includes(widget)) return;
+    updateWidgetSettingsPanel();
+    drawOverlayPreview();
+  });
+  input.click();
 }
 
 function renderImageWidget(ctx, contentRect, widget, dataIdx, units, scale, opacity) {
@@ -121,7 +153,8 @@ function renderImageWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   const ready = img && img.complete && img.naturalWidth > 0;
   if (ready) {
     ctx.drawImage(img, x, y, w, h);
-  } else {
+  } else if (contentRect.isPreview) {
+    // Editor only: an empty image widget draws nothing into the export.
     _drawImagePlaceholder(ctx, x, y, w, h);
   }
 
@@ -213,28 +246,10 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
   fileInput.addEventListener('change', () => {
     const file = fileInput.files && fileInput.files[0];
     fileInput.value = '';
-    if (!file) return;
-    if (!_isAcceptedImageFile(file)) {
-      alert(t('cfg.imageType'));
-      return;
-    }
-    if (file.size > IMAGE_WIDGET_MAX_BYTES) {
-      alert(t('cfg.imageTooLarge'));
-      return;
-    }
-    if (widget._imageObjectURL) {
-      try { URL.revokeObjectURL(widget._imageObjectURL); } catch {}
-      widget._imageObjectURL = null;
-    }
-    widget._image = null;
-    widget._imageBlobRef = null;
-    widget.config.imageBlob = file;
-    widget.config.imageName = file.name;
-    widget.config.imageType = file.type || '';
+    if (!_applyImageFile(widget, file)) return;
     labelBtn.textContent = t('cfg.replaceImage');
     refreshStatus();
     drawOverlayPreview();
-    state.scheduleSaveWidgetLayout();
   });
   labelBtn.appendChild(fileInput);
   btnRow.appendChild(labelBtn);

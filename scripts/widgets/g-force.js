@@ -70,7 +70,6 @@ function renderGForceWidget(ctx, contentRect, widget, dataIdx, units, scale, opa
   const fillH = barH * fillFrac;
   if (fillH > 0) {
     ctx.save();
-    ctx.filter = scaffoldFilter(barH * 0.025);
     if (ctx.roundRect) {
       ctx.beginPath();
       ctx.roundRect(bx, by, barW, barH, barW * 0.2);
@@ -99,9 +98,7 @@ function renderGForceWidget(ctx, contentRect, widget, dataIdx, units, scale, opa
   ctx.fillStyle = '#f8fafc';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.filter = scaffoldFilter(numFontSize * 0.2);
   ctx.fillText(gVal.toFixed(1), textX, cy);
-  ctx.filter = 'none';
 
   const labelFontSize = barH * 0.1;
   ctx.font = '600 ' + labelFontSize + 'px "Segoe UI", system-ui, sans-serif';

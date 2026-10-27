@@ -162,6 +162,8 @@ function refreshVideoModalLang() {
   if (exitTc && typeof state !== 'undefined' && state.videoExitTime === null) {
     exitTc.textContent = t('video.notSet');
   }
+  if (typeof refreshVideoSteps === 'function') refreshVideoSteps();
+  if (typeof updateVideoModalTitle === 'function') updateVideoModalTitle();
 }
 
 // Languages shown in the circle picker. `code` is the 2-letter badge on the

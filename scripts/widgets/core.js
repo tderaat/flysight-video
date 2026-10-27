@@ -33,15 +33,6 @@ function buildUnitsConfig(widget, options) {
   return group;
 }
 
-// ── Pre-exit scaffold blur ──
-// Until exit is marked the widgets can only show sample values, not this jump's data, so
-// each widget blurs just its dynamic parts (numbers, needles, graph lines) with this filter
-// and leaves boxes, dials and labels sharp. `px` is sized by the caller to its own scale.
-// The export never sees it, since it requires an exit.
-function scaffoldFilter(px) {
-  return state.videoExitTime === null ? 'blur(' + Math.max(1.5, px) + 'px) opacity(0.3)' : 'none';
-}
-
 // ── Shared graph helper: current-value label beside the moving dot ──
 // Always directly right of the dot, vertically centred on it, so it travels with the dot
 // without ever jumping sides.
@@ -229,6 +220,7 @@ function drawSelectionHandles(ctx, contentRect, widget) {
 
 // ── Widget hit-testing ──
 function hitTestWidgets(canvasX, canvasY, contentRect) {
+  if (state.videoExitTime === null) return null;
   for (let i = state.widgets.length - 1; i >= 0; i--) {
     const w = state.widgets[i];
     if (!w._bounds) continue;
@@ -269,6 +261,11 @@ function updateWidgetSettingsPanel() {
   const panel = document.getElementById('widgetSettingsPanel');
   if (!row || !panel) return;
 
+  // Selecting a widget on the video opens the step card holding its settings.
+  // Also keeps the card's widget count current, since every add/remove ends here.
+  if (state.selectedWidgetId !== null && state.videoExitTime !== null) state.videoStep = 2;
+  if (typeof refreshVideoSteps === 'function') refreshVideoSteps();
+
   if (state.selectedWidgetId === null) {
     row.style.display = 'none';
     return;
@@ -305,6 +302,10 @@ function drawOverlayPreview() {
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Widgets can only show this jump's data once the exit is synced, so they
+  // stay hidden until then (hitTestWidgets() skips them too).
+  if (state.videoExitTime === null) return;
 
   const dataIdx = videoTimeToDataIndex(video.currentTime);
 

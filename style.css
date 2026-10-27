@@ -1465,14 +1465,36 @@ canvas { width: 100% !important; }
   .video-step2-grid { grid-template-columns: 1fr; }
 }
 
-/* ── Sync & options sections ── */
-.video-sync-section, .video-options-section, .video-export-section {
-  background: var(--bg-inset); border-radius: 8px; padding: 16px; margin-bottom: 16px;
+/* ── Step cards (1 mark exit, 2 add widgets, 3 export) ── */
+.video-steps { gap: 10px; }
+.video-step-card {
+  background: var(--bg-inset); border-radius: 8px; border: 1px solid transparent;
 }
-.video-sync-section h3, .video-options-section h3 {
-  font-size: 0.9rem; color: var(--text-strong); margin-bottom: 8px;
+.video-step-card.active { border-color: var(--accent-strong); }
+.video-step-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: 0; padding: 12px 14px; font: inherit; text-align: left;
+  color: inherit; cursor: pointer;
 }
-.video-hint { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 12px; }
+.video-step-card.active .video-step-head { cursor: default; }
+.video-step-head:disabled { cursor: not-allowed; }
+.video-step-num {
+  width: 24px; height: 24px; flex: none; border-radius: 50%;
+  border: 2px solid var(--border-strong); display: grid; place-items: center;
+  font-size: 0.78rem; font-weight: 700; color: var(--text-dim);
+}
+.video-step-card.active .video-step-num { background: var(--accent); border-color: var(--accent); color: var(--accent-on); }
+.video-step-card.done .video-step-num { border-color: var(--accent); color: var(--accent); }
+.video-step-title { flex: 1; font-size: 0.92rem; font-weight: 600; color: var(--text-strong); }
+.video-step-head:not(:disabled):hover .video-step-title { color: var(--accent); }
+.video-step-card.active .video-step-head:hover .video-step-title { color: var(--text-strong); }
+.video-step-meta { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+.video-step-card.locked { opacity: 0.55; }
+.video-step-card.locked .video-step-title { color: var(--text-dim); }
+.video-step-body { padding: 0 14px 14px; }
+.video-step-card:not(.active) .video-step-body { display: none; }
+.video-step-sub { border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 12px; }
+.video-hint { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.45; }
 .video-sync-row, .video-options-row {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }

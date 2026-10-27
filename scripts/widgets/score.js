@@ -96,7 +96,6 @@ function renderScoreWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   }
   ctx.font = 'bold ' + p.fontSize + 'px "Segoe UI", system-ui, sans-serif';
   ctx.fillStyle = '#4ade80';
-  ctx.filter = scaffoldFilter(p.fontSize * 0.35);
   ctx.fillText(lines[0], x + p.padding, y + p.padding + p.labelHeight);
 
   ctx.restore();

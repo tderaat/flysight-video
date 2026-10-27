@@ -52,7 +52,6 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
   // Only reveal the graph up to the current position; the scale stays fixed
   // to the whole slice so the curve doesn't rescale as it grows.
   const revealX = (dataIdx >= 0 && dataIdx < times.length) ? tx(times[dataIdx]) : x + w;
-  ctx.filter = scaffoldFilter(h * 0.035);
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, revealX - x, h);
@@ -128,8 +127,6 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
       drawGraphValueLabel(ctx, text, mx, my, h, effectiveScale);
     }
   }
-
-  ctx.filter = 'none';
 
   if (config.showLabel) {
     const labelFontSize = h * 0.12;

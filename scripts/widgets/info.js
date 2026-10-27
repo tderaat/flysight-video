@@ -209,9 +209,7 @@ function renderInfoWidget(ctx, contentRect, widget, dataIdx, units, scale, opaci
     }
     ctx.font = 'bold ' + p.fontSize + 'px "Segoe UI", system-ui, sans-serif';
     ctx.fillStyle = (colors && colors[i]) || '#f8fafc';
-    ctx.filter = scaffoldFilter(p.fontSize * 0.35);
     ctx.fillText(line, x + p.padding, itemY + p.labelHeight);
-    ctx.filter = 'none';
   });
 
   ctx.restore();

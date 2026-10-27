@@ -86,7 +86,6 @@ function renderSpeedWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   ctx.lineCap = 'round';
   ctx.stroke();
 
-  ctx.filter = scaffoldFilter(size * 0.025);
   if (valueFraction > 0) {
     ctx.beginPath();
     ctx.arc(cx, arcCy, radius, startAngle, needleAngle);
@@ -109,9 +108,7 @@ function renderSpeedWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   ctx.fillStyle = '#f8fafc';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.filter = scaffoldFilter(numFontSize * 0.2);
   ctx.fillText(Math.round(speedDisplay).toString(), cx, arcCy + numOffset);
-  ctx.filter = 'none';
 
   ctx.font = '600 ' + unitFontSize + 'px "Segoe UI", system-ui, sans-serif';
   ctx.fillStyle = '#94a3b8';

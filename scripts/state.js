@@ -4,6 +4,7 @@ var state = {
   // Video overlay
   videoObjectURL: null,
   videoExitTime: null,
+  videoStep: 1, // open step card: 1 mark exit, 2 add widgets, 3 export
   currentFlightData: null,
 
   // Widget system

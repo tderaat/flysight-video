@@ -3,7 +3,22 @@
 
 function openVideoModal() {
   if (!state.currentJumpName) return;
+  updateVideoModalTitle();
   document.getElementById('videoModal').classList.add('open');
+}
+
+// "Video Overlay - <jump> (<score> km/h)", score omitted for an unscorable jump.
+// Set from JS rather than data-i18n so a language switch keeps the jump part.
+function updateVideoModalTitle() {
+  const el = document.getElementById('videoModalTitle');
+  if (!el) return;
+  const score = state.currentFlightData && state.currentFlightData.speedScore;
+  let title = t('video.title');
+  if (state.currentJumpName) {
+    title += ' - ' + state.currentJumpName;
+    if (typeof score === 'number' && isFinite(score)) title += ' (' + score.toFixed(2) + ' km/h)';
+  }
+  el.textContent = title;
 }
 
 function closeVideoModal() {
@@ -38,8 +53,8 @@ function closeVideoModal() {
 
   document.getElementById('videoStep1').style.display = '';
   document.getElementById('videoStep2').style.display = 'none';
-  document.getElementById('widgetsSection').style.display = 'none';
-  document.getElementById('exportSection').style.display = 'none';
+  state.videoStep = 1;
+  refreshVideoSteps();
 
   if (typeof hideVideoConvertOffer === 'function') hideVideoConvertOffer();
   if (typeof clearVideoPageDropOverlay === 'function') clearVideoPageDropOverlay();
@@ -602,9 +617,17 @@ function loadVideoIntoPreview(file) {
       // Reset exit
       state.videoExitTime = null;
       document.getElementById('videoExitTimecode').textContent = t('video.notSet');
+      state.videoStep = 1;
+      refreshVideoSteps();
       // Redraw — by now any in-flight restore has likely landed, and even if not,
       // drawOverlayPreview will re-fire from the loadeddata listener.
       drawOverlayPreview();
+      // Start playing straight away so finding the exit is just a matter of
+      // pausing on it. The preview is muted, so browsers allow the autoplay;
+      // if one refuses anyway the button simply stays on "Play".
+      video.play().then(() => {
+        document.getElementById('videoPlayBtn').textContent = t('video.pause');
+      }).catch(() => {});
     });
   });
   // A load that fails outright fires a bare `error` event; reportVideoLoadError()
@@ -661,9 +684,50 @@ function markVideoExit() {
   const v = document.getElementById('videoPreview');
   state.videoExitTime = v.currentTime;
   document.getElementById('videoExitTimecode').textContent = formatVideoTimecode(state.videoExitTime);
-  document.getElementById('widgetsSection').style.display = '';
-  document.getElementById('exportSection').style.display = '';
+  setVideoStep(2); // also redraws, now with the widgets visible
+}
+
+// ── Step cards ──
+// The right column holds three stacked cards; only state.videoStep's is open.
+// Steps 2 and 3 need the exit to be marked, so their headers are disabled
+// until then.
+function setVideoStep(n) {
+  if (n > 1 && state.videoExitTime === null) return;
+  state.videoStep = n;
+  // Widget settings live in card 2; leaving it drops the selection so the
+  // handles don't linger on the video with no settings panel in view.
+  if (n !== 2) {
+    state.selectedWidgetId = null;
+    state.widgetDragState = null;
+  }
+  updateWidgetSettingsPanel(); // also calls refreshVideoSteps()
   drawOverlayPreview();
+}
+
+function refreshVideoSteps() {
+  const exitSet = state.videoExitTime !== null;
+  if (!exitSet) state.videoStep = 1;
+  const count = state.widgets.length;
+  const meta = {
+    1: exitSet ? t('video.exitAt', { time: formatVideoTimecode(state.videoExitTime) }) : '',
+    2: !exitSet ? t('video.stepLocked') : count ? t('video.widgetCount', { count: count }) : '',
+    3: !exitSet ? t('video.stepLocked') : ''
+  };
+  const done = { 1: exitSet, 2: exitSet && count > 0, 3: false };
+  for (let n = 1; n <= 3; n++) {
+    const card = document.getElementById('videoStepCard' + n);
+    if (!card) continue;
+    const active = state.videoStep === n;
+    const locked = n > 1 && !exitSet;
+    card.classList.toggle('active', active);
+    card.classList.toggle('done', done[n] && !active);
+    card.classList.toggle('locked', locked);
+    const head = card.querySelector('.video-step-head');
+    head.disabled = locked;
+    head.setAttribute('aria-expanded', active ? 'true' : 'false');
+    card.querySelector('.video-step-num').textContent = String(n);
+    card.querySelector('.video-step-meta').textContent = active ? '' : meta[n];
+  }
 }
 
 // ── Export pipeline ──

@@ -773,6 +773,7 @@ async function deleteJump(name) {
       state.selectedWidgetId = w.id;
       updateWidgetSettingsPanel();
       drawOverlayPreview();
+      if (type === 'image') openImageWidgetPicker(w);
     }
   });
 
@@ -909,6 +910,7 @@ async function deleteJump(name) {
         state.selectedWidgetId = w.id;
         updateWidgetSettingsPanel();
         drawOverlayPreview();
+        if (type === 'image') openImageWidgetPicker(w);
       }
     });
   });

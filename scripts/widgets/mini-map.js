@@ -74,8 +74,6 @@ function renderMiniMapWidget(ctx, contentRect, widget, dataIdx, units, scale, op
   const minAlt = Math.min(...alts), maxAlt = Math.max(...alts);
   const altRange = maxAlt - minAlt || 1;
 
-  ctx.filter = scaffoldFilter(size * 0.02);
-
   for (let i = 1; i < lats.length; i++) {
     if (isNaN(lats[i]) || isNaN(lons[i]) || isNaN(lats[i - 1]) || isNaN(lons[i - 1])) continue;
     const p0 = px(lats[i - 1], lons[i - 1]);
@@ -107,7 +105,6 @@ function renderMiniMapWidget(ctx, contentRect, widget, dataIdx, units, scale, op
     ctx.fillStyle = '#f8fafc';
     ctx.fill();
   }
-  ctx.filter = 'none';
 
   if (config.showLabel) {
     const labelFontSize = size * 0.08;

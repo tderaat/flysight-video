@@ -2,8 +2,7 @@
 // Renders a classic skydiving altimeter dial: circular white face,
 // numbers 0–11 (x1000 ft), red danger zone, rotating needle.
 
-// blurNeedle: true for the overlay (pre-exit scaffold blur), false for the picker card.
-function _drawAltimeterDial(ctx, cx, cy, radius, altFt, blurNeedle) {
+function _drawAltimeterDial(ctx, cx, cy, radius, altFt) {
   // Dial face — white circle with dark border
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -98,7 +97,6 @@ function _drawAltimeterDial(ctx, cx, cy, radius, altFt, blurNeedle) {
   ctx.shadowBlur = radius * 0.04;
   ctx.shadowOffsetX = radius * 0.01;
   ctx.shadowOffsetY = radius * 0.01;
-  if (blurNeedle) ctx.filter = scaffoldFilter(radius * 0.08);
 
   ctx.beginPath();
   const tipX = cx + needleLen * Math.cos(needleAngle);
@@ -162,7 +160,7 @@ function renderAltimeterWidget(ctx, contentRect, widget, dataIdx, units, scale, 
   }
 
   const radius = size * 0.42;
-  _drawAltimeterDial(ctx, cx, cy, radius, altFt, true);
+  _drawAltimeterDial(ctx, cx, cy, radius, altFt);
 
 
   ctx.restore();

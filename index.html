@@ -256,7 +256,7 @@
 <div class="modal-backdrop" id="videoModal">
   <div class="modal">
     <div class="modal-header">
-      <h2 data-i18n="video.title">Video Overlay</h2>
+      <h2 id="videoModalTitle">Video Overlay</h2>
       <button class="modal-close" onclick="closeVideoModal()">&times;</button>
     </div>
     <div class="modal-body">
@@ -309,90 +309,111 @@
               <input type="range" id="videoScrubber" min="0" max="1000" value="0" step="1">
               <span class="video-duration" id="videoDuration">/ 0:00</span>
             </div>
-
-            <!-- Exit sync -->
-            <div class="video-sync-section">
-              <h3 data-i18n="video.markExit">Mark exit moment</h3>
-              <div class="video-sync-row">
-                <button class="trim-btn" onclick="markVideoExit()" data-i18n="video.useThisMoment">Use this moment</button>
-                <span id="videoExitTimecode" class="video-timecode" data-i18n="video.notSet">Not set</span>
-              </div>
-            </div>
-
-            <!-- Export (hidden until exit is set) -->
-            <div class="video-export-section" id="exportSection" style="display:none;">
-              <label class="export-mode-toggle">
-                <input type="checkbox" id="reliableModeToggle">
-                <span data-i18n="video.reliableMode">Reliable mode (slow machines)</span>
-              </label>
-              <label class="export-mode-toggle">
-                <input type="checkbox" id="fullDescentToggle">
-                <span data-i18n="video.fullDescent">Include full descent (to landing)</span>
-              </label>
-              <button class="trim-btn" id="exportBtn" onclick="startExport()" data-i18n="video.exportBtn">Export video with overlay</button>
-              <div id="exportProgress" style="display:none;">
-                <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-                <span id="progressText" data-i18n="video.preparing">Preparing...</span>
-                <button class="export-cancel-btn" id="exportCancelBtn" onclick="cancelExport()" data-i18n="video.cancel">Cancel</button>
-              </div>
-            </div>
           </div>
 
-          <div class="video-step2-right">
-            <!-- Widgets (hidden until exit is set) -->
-            <div class="video-options-section" id="widgetsSection" style="display:none;">
-              <h3 data-i18n="video.widgets">Widgets</h3>
-              <div class="widget-section">
-                <div class="widget-picker">
-                  <div class="widget-card" draggable="true" data-widget-type="info">
-                    <canvas class="widget-preview" id="widgetPreview_info" width="120" height="68"></canvas>
-                    <span data-i18n="widget.info">Info</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="score">
-                    <canvas class="widget-preview" id="widgetPreview_score" width="120" height="68"></canvas>
-                    <span data-i18n="widget.score">Score</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="vertSpeed">
-                    <canvas class="widget-preview" id="widgetPreview_vertSpeed" width="120" height="68"></canvas>
-                    <span data-i18n="widget.vertSpeed">Vert. Speed</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="horzSpeed">
-                    <canvas class="widget-preview" id="widgetPreview_horzSpeed" width="120" height="68"></canvas>
-                    <span data-i18n="widget.horzSpeed">Horiz. Speed</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="altGraph">
-                    <canvas class="widget-preview" id="widgetPreview_altGraph" width="120" height="68"></canvas>
-                    <span data-i18n="widget.altGraph">Alt. Graph</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="altimeter">
-                    <canvas class="widget-preview" id="widgetPreview_altimeter" width="120" height="68"></canvas>
-                    <span data-i18n="widget.altimeter">Altimeter</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="speedGraph">
-                    <canvas class="widget-preview" id="widgetPreview_speedGraph" width="120" height="68"></canvas>
-                    <span data-i18n="widget.speedGraph">Speed Graph</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="miniMap">
-                    <canvas class="widget-preview" id="widgetPreview_miniMap" width="120" height="68"></canvas>
-                    <span data-i18n="widget.miniMap">Mini Map</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="gForce">
-                    <canvas class="widget-preview" id="widgetPreview_gForce" width="120" height="68"></canvas>
-                    <span data-i18n="widget.gForce">G-Force</span>
-                  </div>
-                  <div class="widget-card" draggable="true" data-widget-type="image">
-                    <canvas class="widget-preview" id="widgetPreview_image" width="120" height="68"></canvas>
-                    <span data-i18n="widget.image">Image</span>
-                  </div>
+          <!-- The three steps as stacked cards. Only the active card is open;
+               2 and 3 stay locked until the exit is marked. State is driven by
+               setVideoStep() / refreshVideoSteps() in scripts/video.js. -->
+          <div class="video-step2-right video-steps">
+            <section class="video-step-card" id="videoStepCard1">
+              <button type="button" class="video-step-head" onclick="setVideoStep(1)">
+                <span class="video-step-num">1</span>
+                <span class="video-step-title" data-i18n="video.markExit">Mark exit moment</span>
+                <span class="video-step-meta"></span>
+              </button>
+              <div class="video-step-body">
+                <p class="video-hint" data-i18n="video.hintExit">Play or scrub to the frame where you leave the aircraft, then mark it. This lines the video up with your FlySight data.</p>
+                <div class="video-sync-row">
+                  <button class="trim-btn" onclick="markVideoExit()" data-i18n="video.useThisMoment">Use this moment</button>
+                  <span id="videoExitTimecode" class="video-timecode">Not set</span>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <!-- Selected widget settings (separate panel, hidden until widget selected) -->
-            <div class="video-options-section" id="widgetSettingsRow" style="display:none;">
-              <h3 data-i18n="video.selectedWidget">Selected widget</h3>
-              <div id="widgetSettingsPanel"></div>
-            </div>
+            <section class="video-step-card" id="videoStepCard2">
+              <button type="button" class="video-step-head" onclick="setVideoStep(2)">
+                <span class="video-step-num">2</span>
+                <span class="video-step-title" data-i18n="video.stepWidgets">Add widgets</span>
+                <span class="video-step-meta"></span>
+              </button>
+              <div class="video-step-body">
+                <p class="video-hint" data-i18n="video.hintWidgets">Drag a widget onto the video, or click it to add it. Click a placed widget to move, resize or change it.</p>
+                <div class="widget-section">
+                  <div class="widget-picker">
+                    <div class="widget-card" draggable="true" data-widget-type="info">
+                      <canvas class="widget-preview" id="widgetPreview_info" width="120" height="68"></canvas>
+                      <span data-i18n="widget.info">Info</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="score">
+                      <canvas class="widget-preview" id="widgetPreview_score" width="120" height="68"></canvas>
+                      <span data-i18n="widget.score">Score</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="vertSpeed">
+                      <canvas class="widget-preview" id="widgetPreview_vertSpeed" width="120" height="68"></canvas>
+                      <span data-i18n="widget.vertSpeed">Vert. Speed</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="horzSpeed">
+                      <canvas class="widget-preview" id="widgetPreview_horzSpeed" width="120" height="68"></canvas>
+                      <span data-i18n="widget.horzSpeed">Horiz. Speed</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="altGraph">
+                      <canvas class="widget-preview" id="widgetPreview_altGraph" width="120" height="68"></canvas>
+                      <span data-i18n="widget.altGraph">Alt. Graph</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="altimeter">
+                      <canvas class="widget-preview" id="widgetPreview_altimeter" width="120" height="68"></canvas>
+                      <span data-i18n="widget.altimeter">Altimeter</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="speedGraph">
+                      <canvas class="widget-preview" id="widgetPreview_speedGraph" width="120" height="68"></canvas>
+                      <span data-i18n="widget.speedGraph">Speed Graph</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="miniMap">
+                      <canvas class="widget-preview" id="widgetPreview_miniMap" width="120" height="68"></canvas>
+                      <span data-i18n="widget.miniMap">Mini Map</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="gForce">
+                      <canvas class="widget-preview" id="widgetPreview_gForce" width="120" height="68"></canvas>
+                      <span data-i18n="widget.gForce">G-Force</span>
+                    </div>
+                    <div class="widget-card" draggable="true" data-widget-type="image">
+                      <canvas class="widget-preview" id="widgetPreview_image" width="120" height="68"></canvas>
+                      <span data-i18n="widget.image">Image</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Selected widget settings (hidden until a widget is selected) -->
+                <div class="video-step-sub" id="widgetSettingsRow" style="display:none;">
+                  <div class="widget-section-label" data-i18n="video.selectedWidget">Selected widget</div>
+                  <div id="widgetSettingsPanel"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="video-step-card" id="videoStepCard3">
+              <button type="button" class="video-step-head" onclick="setVideoStep(3)">
+                <span class="video-step-num">3</span>
+                <span class="video-step-title" data-i18n="video.stepExport">Export video</span>
+                <span class="video-step-meta"></span>
+              </button>
+              <div class="video-step-body" id="exportSection">
+                <label class="export-mode-toggle">
+                  <input type="checkbox" id="reliableModeToggle">
+                  <span data-i18n="video.reliableMode">Reliable mode (slow machines)</span>
+                </label>
+                <label class="export-mode-toggle">
+                  <input type="checkbox" id="fullDescentToggle">
+                  <span data-i18n="video.fullDescent">Include full descent (to landing)</span>
+                </label>
+                <button class="trim-btn" id="exportBtn" onclick="startExport()" data-i18n="video.exportBtn">Export video with overlay</button>
+                <div id="exportProgress" style="display:none;">
+                  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+                  <span id="progressText" data-i18n="video.preparing">Preparing...</span>
+                  <button class="export-cancel-btn" id="exportCancelBtn" onclick="cancelExport()" data-i18n="video.cancel">Cancel</button>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </div>
