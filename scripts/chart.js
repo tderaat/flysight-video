@@ -154,6 +154,15 @@ const CHART_VIEWS = ['scoring', 'jump', 'full'];
 // "same drop zone". See the fitBounds call in renderMap().
 const MAP_GLIDE_MAX_M = 20000;
 
+// The chart fades in as a whole (CSS, .chart-fade-in) instead of Chart.js's
+// default rise from the axis base, which replayed for a full second on every
+// rebuild. Removing the class first restarts the fade when it is already set.
+function playChartFadeIn(canvas) {
+  canvas.classList.remove('chart-fade-in');
+  void canvas.offsetWidth;
+  canvas.classList.add('chart-fade-in');
+}
+
 async function renderCurrentJump(view) {
   if (view === true) view = 'full';
   if (CHART_VIEWS.indexOf(view) < 0) view = 'scoring';
@@ -710,7 +719,9 @@ async function renderCurrentJump(view) {
   // ── Chart ──
   if (state.chartInstance) state.chartInstance.destroy();
 
-  const ctx = document.getElementById('chart').getContext('2d');
+  const chartCanvas = document.getElementById('chart');
+  const ctx = chartCanvas.getContext('2d');
+  playChartFadeIn(chartCanvas);
   state.chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
@@ -816,6 +827,7 @@ async function renderCurrentJump(view) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: { mode: 'index', intersect: false },
       onHover: function(event, elements) {
         if (elements.length > 0 && state.mapInstance) {

@@ -581,6 +581,10 @@ body.has-jumps .dropzone p { display: none; }
 canvas { width: 100% !important; }
 .chart-canvas-wrap { position: relative; width: 100%; aspect-ratio: 2.5; min-height: 300px; }
 .chart-canvas-wrap canvas { height: 100% !important; }
+/* The chart's intro: a fade of the whole canvas, restarted on every rebuild by
+   playChartFadeIn() in chart.js (Chart.js's own animation is off). */
+#chart.chart-fade-in { animation: chartFadeIn 300ms ease-out; }
+@keyframes chartFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .chart-container .chart-resize-handle,
 .map-container .map-resize-handle {
   position: absolute;

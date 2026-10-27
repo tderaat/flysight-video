@@ -13,11 +13,51 @@ const STORE_TILES = 'tiles';
 const TILE_CACHE_MAX = 4000;      // ~30 kB/tile -> a ~120 MB ceiling
 const TILE_PRUNE_EVERY = 200;     // check the count every N writes
 
+const TILE_MEM_MAX = 512;         // in-memory LRU of blob URLs, ~15 MB
+
 let _tileWrites = 0;
 let _tilePruning = false;
 
 function tileKey(url) {
   return url;
+}
+
+// ── In-memory layer ──
+// Leaflet throws away a zoom level's <img>s as soon as you leave it, so going
+// back used to cost an IndexedDB read, a fresh blob URL and a decode per tile.
+// Recently shown tiles keep their blob URL here instead, which lets the
+// browser reuse the already-decoded image and the tile appear synchronously.
+// Map iteration order is insertion order, so re-inserting on a hit makes the
+// first key the least recently used.
+const _tileMem = new Map();
+
+function memGetTile(url) {
+  const objectUrl = _tileMem.get(url);
+  if (!objectUrl) return null;
+  _tileMem.delete(url);
+  _tileMem.set(url, objectUrl);
+  return objectUrl;
+}
+
+function memPutTile(url, blob) {
+  const existing = memGetTile(url);
+  if (existing) return existing;
+  const objectUrl = URL.createObjectURL(blob);
+  _tileMem.set(url, objectUrl);
+  if (_tileMem.size > TILE_MEM_MAX) {
+    const [oldUrl, oldObjectUrl] = _tileMem.entries().next().value;
+    _tileMem.delete(oldUrl);
+    // A tile already on screen keeps its decoded pixels after a revoke.
+    URL.revokeObjectURL(oldObjectUrl);
+  }
+  return objectUrl;
+}
+
+function memDropTile(url) {
+  const objectUrl = _tileMem.get(url);
+  if (!objectUrl) return;
+  _tileMem.delete(url);
+  URL.revokeObjectURL(objectUrl);
 }
 
 async function getCachedTile(url) {
@@ -126,10 +166,10 @@ async function tileCacheStats() {
 }
 
 // ── Leaflet layer ──
-// Cache-first `createTile`: cached Blob -> network fetch (cached on success)
-// -> plain <img src> as a last resort. The final fallback matters because a
-// fetch() can fail on CORS grounds where a plain <img> would still render;
-// that path simply doesn't populate the cache.
+// Cache-first `createTile`: memory -> cached Blob -> network fetch (cached on
+// success) -> plain <img src> as a last resort. The final fallback matters
+// because a fetch() can fail on CORS grounds where a plain <img> would still
+// render; that path simply doesn't populate the cache.
 const CachedTileLayer = L.TileLayer.extend({
   createTile(coords, done) {
     const tile = document.createElement('img');
@@ -137,28 +177,36 @@ const CachedTileLayer = L.TileLayer.extend({
     tile.setAttribute('role', 'presentation');
 
     const url = this.getTileUrl(coords);
-    let objectUrl = null;
-    const revoke = () => {
-      if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
-    };
+    let fromMem = false;
 
-    L.DomEvent.on(tile, 'load', () => { revoke(); done(null, tile); });
+    L.DomEvent.on(tile, 'load', () => done(null, tile));
     L.DomEvent.on(tile, 'error', () => {
-      revoke();
+      // A blob URL that fails to load is useless to keep around.
+      if (fromMem) memDropTile(url);
       if (!navigator.onLine) setMapTilesOffline(true);
       done(new Error('tile load failed'), tile);
     });
 
-    const showBlob = blob => { objectUrl = URL.createObjectURL(blob); tile.src = objectUrl; };
-    const showDirect = () => { tile.src = url; };
+    const showBlob = blob => { fromMem = true; tile.src = memPutTile(url, blob); };
+    const showDirect = () => { fromMem = false; tile.src = url; };
+
+    const memUrl = memGetTile(url);
+    if (memUrl) {
+      fromMem = true;
+      tile._fromCache = true;
+      tile.src = memUrl;
+      return tile;
+    }
 
     getCachedTile(url).then(blob => {
-      if (blob) return showBlob(blob);
+      if (blob) {
+        tile._fromCache = true;
+        return showBlob(blob);
+      }
       if (!navigator.onLine) {
         // Offline with nothing cached for this tile: fail fast rather than
         // waiting on a network request that can't succeed.
         setMapTilesOffline(true);
-        revoke();
         done(new Error('offline'), tile);
         return;
       }
@@ -175,6 +223,20 @@ const CachedTileLayer = L.TileLayer.extend({
     }).catch(() => showDirect());
 
     return tile;
+  },
+
+  // Leaflet fades every tile in over 200 ms. That reads as "loading" for a
+  // tile that came out of the cache, so those are shown at full opacity
+  // straight away; only freshly downloaded tiles still fade in. Backdating
+  // `loaded` makes Leaflet's next _updateOpacity pass see the fade as done,
+  // so pruning of the tiles underneath still happens on its normal path.
+  _tileReady(coords, err, tile) {
+    L.TileLayer.prototype._tileReady.call(this, coords, err, tile);
+    if (err || !tile || !tile._fromCache || !this._tiles) return;
+    const entry = this._tiles[this._tileCoordsToKey(coords)];
+    if (!entry) return;
+    entry.loaded = 1;
+    L.DomUtil.setOpacity(entry.el, 1);
   },
 });
 
