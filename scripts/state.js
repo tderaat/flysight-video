@@ -5,6 +5,9 @@ var state = {
   videoObjectURL: null,
   videoExitTime: null,
   videoStep: 1, // open step card: 1 mark exit, 2 add widgets, 3 export
+  videoCropStart: null, // export crop in video seconds (null = no video loaded)
+  videoCropEnd: null,
+  videoExporting: false,
   currentFlightData: null,
 
   // Widget system

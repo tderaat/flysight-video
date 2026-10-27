@@ -224,29 +224,16 @@ async function renderCurrentJump(view) {
     if (endIdx < 0) endIdx = data.length - 1;
   }
 
-  const times = [], altitudes = [], vertSpeeds = [], horzSpeeds = [], diveAngles = [], sliceLats = [], sliceLons = [], velNs = [], velEs = [];
+  // Slice used for the stats (max speed, performance window, speed score).
+  const times = [], altitudes = [], vertSpeeds = [];
   for (let i = startIdx; i <= endIdx; i++) {
-    const tRel = allTimes[i] - exitTime;
-    times.push(tRel);
+    times.push(allTimes[i] - exitTime);
     altitudes.push(allAlts[i]);
     vertSpeeds.push(allVelD[i]);
-    const vN = parseFloat(data[i].velN) || 0;
-    const vE = parseFloat(data[i].velE) || 0;
-    const hSpd = Math.sqrt(vN * vN + vE * vE);
-    horzSpeeds.push(hSpd);
-    if (tRel < -5 || tRel > canopyTimeRel + 5) {
-      diveAngles.push(null);
-    } else {
-      diveAngles.push(Math.atan2(allVelD[i], hSpd) * (180 / Math.PI));
-    }
-    velNs.push(vN);
-    velEs.push(vE);
-    sliceLats.push(parseFloat(data[i].lat));
-    sliceLons.push(parseFloat(data[i].lon));
   }
 
-  // Full-data arrays — fed to chart datasets and to map (window-filtered).
-  // Independent of the slice arrays above, which still drive state.currentFlightData
+  // Full-data arrays — fed to chart datasets and to map (window-filtered), and
+  // sliced for state.currentFlightData
   // (the contract video overlay widgets depend on).
   const chartTimes = [], chartAlts = [], chartVertSpeeds = [], chartHorzSpeeds = [], chartDiveAngles = [], chartLats = [], chartLons = [], chartVelNs = [], chartVelEs = [];
   for (let i = 0; i < data.length; i++) {
@@ -1342,14 +1329,27 @@ async function renderCurrentJump(view) {
   const initialMax = showFull ? chartTimes[chartTimes.length - 1] : viewMax;
   renderMap(initialMin, initialMax);
 
-  // Expose flight data for video overlay sync. `landingTimeRel`/`canopyTimeRel`
-  // (seconds relative to exit) let the export decide how far to run.
+  // Flight data for the video overlay widgets: exit − 5 s through landing + 5 s,
+  // so a video that runs to landing keeps its widgets updating under canopy.
+  // The two graph widgets stop at graphEndIdx (canopy + 5 s) so freefall keeps
+  // most of their width. Taken from the full arrays, so it doesn't depend on
+  // which chart view is active.
   const landingTimeRel = chartTimes[landingIdx];
-  state.currentFlightData = { times, altitudes, vertSpeeds, horzSpeeds, diveAngles, lats: sliceLats, lons: sliceLons, velNs, velEs, exitIdx: exitIdx - startIdx, canopyIdx: canopyIdx - startIdx, speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd, canopyTimeRel, landingTimeRel, groundAlt, wind, steepMarkers };
+  const lastIdx = chartTimes.length - 1;
+  const firstAtOrAfter = (t) => { const i = chartTimes.findIndex(x => x >= t); return i < 0 ? lastIdx : i; };
+  const ovStart = firstAtOrAfter(-5);
+  const ovEnd = Math.max(ovStart, firstAtOrAfter(landingTimeRel + 5));
+  const ov = arr => arr.slice(ovStart, ovEnd + 1);
+  state.currentFlightData = {
+    times: ov(chartTimes), altitudes: ov(chartAlts), vertSpeeds: ov(chartVertSpeeds), horzSpeeds: ov(chartHorzSpeeds),
+    diveAngles: ov(chartDiveAngles), lats: ov(chartLats), lons: ov(chartLons), velNs: ov(chartVelNs), velEs: ov(chartVelEs),
+    exitIdx: exitIdx - ovStart, canopyIdx: canopyIdx - ovStart,
+    graphEndIdx: Math.min(ovEnd, Math.max(ovStart, firstAtOrAfter(canopyTimeRel + 5))) - ovStart,
+    speedScore, perfWindowStartTime, perfWindowEndTime, best3sStart, best3sEnd, canopyTimeRel, landingTimeRel, groundAlt, wind, steepMarkers,
+  };
 
-  // Full-recording dataset (relative to exit), used by the video export's
-  // "full descent" option to build an overlay-data slice that reaches landing.
-  // Indices here are absolute (into the full arrays), unlike currentFlightData.
+  // Full-recording dataset (relative to exit). Indices here are absolute (into
+  // the full arrays), unlike currentFlightData.
   state.currentFlightDataFull = {
     times: chartTimes, altitudes: chartAlts, vertSpeeds: chartVertSpeeds, horzSpeeds: chartHorzSpeeds,
     diveAngles: chartDiveAngles, lats: chartLats, lons: chartLons, velNs: chartVelNs, velEs: chartVelEs,

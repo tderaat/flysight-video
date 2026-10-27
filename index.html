@@ -304,10 +304,29 @@
               </div>
             </div>
             <div class="video-controls">
-              <button class="trim-btn" id="videoPlayBtn" onclick="toggleVideoPlay()" data-i18n="video.play">Play</button>
+              <button class="trim-btn video-play-btn" id="videoPlayBtn" onclick="toggleVideoPlay()" aria-label="Play">
+                <svg class="icon-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9.5-5.5z" fill="currentColor"/></svg>
+                <svg class="icon-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" fill="currentColor"/></svg>
+              </button>
               <span class="video-timecode" id="videoTimecode">0:00.000</span>
-              <input type="range" id="videoScrubber" min="0" max="1000" value="0" step="1">
+              <!-- Timeline: scrubbing in every step; in step 3 (.cropping) also the
+                   export crop handles. Driven by the timeline IIFE in scripts/video.js. -->
+              <div class="video-timeline" id="videoTimeline">
+                <div class="vt-track"></div>
+                <div class="vt-dim vt-dim-start" id="vtDimStart"></div>
+                <div class="vt-dim vt-dim-end" id="vtDimEnd"></div>
+                <div class="vt-sel" id="vtSel"></div>
+                <div class="vt-markers" id="vtMarkers"></div>
+                <div class="vt-playhead" id="vtPlayhead"></div>
+                <div class="vt-handle" id="vtHandleStart" role="slider" tabindex="0" aria-label="Export start" data-i18n-aria="video.cropStart"></div>
+                <div class="vt-handle" id="vtHandleEnd" role="slider" tabindex="0" aria-label="Export end" data-i18n-aria="video.cropEnd"></div>
+              </div>
               <span class="video-duration" id="videoDuration">/ 0:00</span>
+            </div>
+            <!-- Selected widget settings, under the timeline (hidden until a widget is selected) -->
+            <div class="video-settings-card" id="widgetSettingsRow" style="display:none;">
+              <div class="widget-section-label" data-i18n="video.selectedWidget">Selected widget</div>
+              <div id="widgetSettingsPanel"></div>
             </div>
           </div>
 
@@ -382,12 +401,6 @@
                     </div>
                   </div>
                 </div>
-
-                <!-- Selected widget settings (hidden until a widget is selected) -->
-                <div class="video-step-sub" id="widgetSettingsRow" style="display:none;">
-                  <div class="widget-section-label" data-i18n="video.selectedWidget">Selected widget</div>
-                  <div id="widgetSettingsPanel"></div>
-                </div>
               </div>
             </section>
 
@@ -398,13 +411,17 @@
                 <span class="video-step-meta"></span>
               </button>
               <div class="video-step-body" id="exportSection">
+                <!-- What the export will produce; filled by renderVideoTimeline() and
+                     refreshExportFormatInfo() in scripts/video.js. -->
+                <dl class="export-info">
+                  <dt data-i18n="video.cropRangeLabel">Export range</dt><dd id="exportRangeText"></dd>
+                  <dt data-i18n="video.infoResolution">Resolution</dt><dd id="exportResText"></dd>
+                  <dt data-i18n="video.infoFormat">Format</dt><dd id="exportFormatText"></dd>
+                  <dt data-i18n="video.infoSize">Estimated size</dt><dd id="exportSizeText"></dd>
+                </dl>
                 <label class="export-mode-toggle">
                   <input type="checkbox" id="reliableModeToggle">
                   <span data-i18n="video.reliableMode">Reliable mode (slow machines)</span>
-                </label>
-                <label class="export-mode-toggle">
-                  <input type="checkbox" id="fullDescentToggle">
-                  <span data-i18n="video.fullDescent">Include full descent (to landing)</span>
                 </label>
                 <button class="trim-btn" id="exportBtn" onclick="startExport()" data-i18n="video.exportBtn">Export video with overlay</button>
                 <div id="exportProgress" style="display:none;">

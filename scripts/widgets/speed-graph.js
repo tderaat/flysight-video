@@ -38,8 +38,12 @@ function renderSpeedGraphWidget(ctx, contentRect, widget, dataIdx, units, scale,
     return;
   }
 
-  const times = fd.times;
-  const speeds = fd.vertSpeeds;
+  // Graphs plot exit − 5 s through canopy + 5 s; the data runs on to landing
+  // for the other widgets, and past the graph's end the dot holds there.
+  const gEnd = graphEndIndex(fd);
+  const times = fd.times.slice(0, gEnd + 1);
+  const speeds = fd.vertSpeeds.slice(0, gEnd + 1);
+  const gIdx = Math.min(dataIdx, gEnd);
   const minT = times[0], maxT = times[times.length - 1];
   const minSpd = Math.min(...speeds), maxSpd = Math.max(...speeds);
   const tRange = maxT - minT || 1;
@@ -51,7 +55,7 @@ function renderSpeedGraphWidget(ctx, contentRect, widget, dataIdx, units, scale,
 
   // Only reveal the graph up to the current position; the scale stays fixed
   // to the whole slice so the curve doesn't rescale as it grows.
-  const revealX = (dataIdx >= 0 && dataIdx < times.length) ? tx(times[dataIdx]) : x + w;
+  const revealX = (gIdx >= 0) ? tx(times[gIdx]) : x + w;
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, revealX - x, h);
@@ -103,9 +107,9 @@ function renderSpeedGraphWidget(ctx, contentRect, widget, dataIdx, units, scale,
   ctx.fill();
   ctx.restore();
 
-  if (dataIdx >= 0 && dataIdx < times.length) {
-    const mx = tx(times[dataIdx]);
-    const my = ty(speeds[dataIdx]);
+  if (gIdx >= 0) {
+    const mx = tx(times[gIdx]);
+    const my = ty(speeds[gIdx]);
     ctx.beginPath();
     ctx.arc(mx, my, 3 * effectiveScale, 0, Math.PI * 2);
     ctx.fillStyle = '#f8fafc';
@@ -119,7 +123,7 @@ function renderSpeedGraphWidget(ctx, contentRect, widget, dataIdx, units, scale,
     ctx.stroke();
 
     if (config.showValue) {
-      const v = speeds[dataIdx];
+      const v = speeds[gIdx];
       const text = config.units === 'imperial'
         ? (v * 2.23694).toFixed(0) + ' mph'
         : (v * 3.6).toFixed(0) + ' km/h';

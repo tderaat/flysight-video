@@ -30,17 +30,17 @@ function closeVideoModal() {
     v.removeAttribute('src');
     v.load();
   }
-  const playBtn = document.getElementById('videoPlayBtn');
-  if (playBtn) playBtn.textContent = t('video.play');
+  setVideoPlayButton(false);
 
   if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
   state.videoObjectURL = null;
 
   state.videoExitTime = null;
+  state.videoCropStart = null;
+  state.videoCropEnd = null;
   document.getElementById('videoExitTimecode').textContent = t('video.notSet');
   document.getElementById('videoTimecode').textContent = '0:00.000';
   document.getElementById('videoDuration').textContent = '/ 0:00.000';
-  document.getElementById('videoScrubber').value = 0;
 
   // Flush any pending debounced save with the current populated widgets
   // BEFORE we clear them, otherwise a stale timer would save an empty layout.
@@ -611,11 +611,12 @@ function loadVideoIntoPreview(file) {
 
       video.currentTime = 0;
       document.getElementById('videoDuration').textContent = '/ ' + formatVideoTimecode(video.duration);
-      document.getElementById('videoScrubber').max = Math.floor(video.duration * 1000);
       document.getElementById('videoStep1').style.display = 'none';
       document.getElementById('videoStep2').style.display = 'block';
-      // Reset exit
+      // Reset exit; the crop covers the whole video until the exit is marked.
       state.videoExitTime = null;
+      state.videoCropStart = 0;
+      state.videoCropEnd = video.duration;
       document.getElementById('videoExitTimecode').textContent = t('video.notSet');
       state.videoStep = 1;
       refreshVideoSteps();
@@ -625,9 +626,7 @@ function loadVideoIntoPreview(file) {
       // Start playing straight away so finding the exit is just a matter of
       // pausing on it. The preview is muted, so browsers allow the autoplay;
       // if one refuses anyway the button simply stays on "Play".
-      video.play().then(() => {
-        document.getElementById('videoPlayBtn').textContent = t('video.pause');
-      }).catch(() => {});
+      video.play().catch(() => {});
     });
   });
   // A load that fails outright fires a bare `error` event; reportVideoLoadError()
@@ -645,32 +644,256 @@ function loadVideoIntoPreview(file) {
   video.load();
 }
 
-// Playback controls
+// Playback controls. The button is icon-only with a fixed width, so the
+// timeline beside it doesn't shift when it flips; the label lives in aria-label.
+function setVideoPlayButton(playing) {
+  const btn = document.getElementById('videoPlayBtn');
+  if (!btn) return;
+  btn.classList.toggle('playing', playing);
+  btn.setAttribute('aria-label', playing ? t('video.pause') : t('video.play'));
+}
+
 function toggleVideoPlay() {
   const v = document.getElementById('videoPreview');
   if (v.paused) {
-    v.play();
-    document.getElementById('videoPlayBtn').textContent = t('video.pause');
+    // In step 3 playback stays inside the export crop.
+    if (isVideoCropping() && (v.currentTime < state.videoCropStart || v.currentTime >= state.videoCropEnd - 0.05)) {
+      v.currentTime = state.videoCropStart;
+    }
+    v.play().catch(() => {});
   } else {
     v.pause();
-    document.getElementById('videoPlayBtn').textContent = t('video.play');
+  }
+}
+
+// ── Timeline + export crop ──
+// The default crop, set when the exit is marked: CROP_LEAD_SEC before exit
+// through CROP_TAIL_SEC after the score appears (the end of the performance
+// window), falling back to canopy for an unscorable jump.
+const CROP_LEAD_SEC = 5;
+const CROP_TAIL_SEC = 5;
+const CROP_MIN_SEC = 0.5;
+const CROP_SNAP_PX = 8;
+
+function isVideoCropping() {
+  return state.videoStep === 3 && state.videoExitTime !== null && state.videoCropEnd !== null;
+}
+
+// Exit, score and canopy in video time, for the markers and snapping.
+function videoTimelineMarkers() {
+  const video = document.getElementById('videoPreview');
+  const fd = state.currentFlightData;
+  if (state.videoExitTime === null || !fd || !(video.duration > 0)) return [];
+  const exit = state.videoExitTime;
+  const list = [{ key: 'exit', t: exit, label: t('map.exit') }];
+  if (Number.isFinite(fd.perfWindowEndTime)) list.push({ key: 'score', t: exit + fd.perfWindowEndTime, label: t('widget.score') });
+  if (Number.isFinite(fd.canopyTimeRel)) list.push({ key: 'canopy', t: exit + fd.canopyTimeRel, label: t('map.canopy') });
+  if (Number.isFinite(fd.landingTimeRel)) list.push({ key: 'landing', t: exit + fd.landingTimeRel, label: t('map.landing') });
+  return list.filter(m => m.t >= 0 && m.t <= video.duration);
+}
+
+// The crop must always contain the exit through the moment the score appears:
+// the start can't move past the exit, the end can't move before the score
+// (before the exit for an unscorable jump). Both are clamped to the video.
+function videoCropLimits() {
+  const video = document.getElementById('videoPreview');
+  const dur = video.duration || 0;
+  const exit = state.videoExitTime;
+  if (exit === null) return { startMax: dur, endMin: 0 };
+  const fd = state.currentFlightData;
+  const scoreT = fd && Number.isFinite(fd.perfWindowEndTime) ? exit + fd.perfWindowEndTime : exit;
+  return { startMax: Math.min(dur, exit), endMin: Math.min(dur, Math.max(0, scoreT)) };
+}
+
+function setDefaultVideoCrop() {
+  const video = document.getElementById('videoPreview');
+  const fd = state.currentFlightData;
+  const dur = video.duration;
+  const exit = state.videoExitTime;
+  let endRel = null;
+  if (fd && Number.isFinite(fd.perfWindowEndTime)) endRel = fd.perfWindowEndTime + CROP_TAIL_SEC;
+  else if (fd && Number.isFinite(fd.canopyTimeRel)) endRel = fd.canopyTimeRel;
+  const start = Math.max(0, exit - CROP_LEAD_SEC);
+  const end = endRel === null ? dur : Math.min(dur, exit + endRel);
+  if (end - start < CROP_MIN_SEC) { state.videoCropStart = 0; state.videoCropEnd = dur; return; }
+  state.videoCropStart = start;
+  state.videoCropEnd = end;
+}
+
+// Positions the playhead, handles and dimmed ends. Pass rebuildMarkers when
+// the exit, the jump, the language or the timeline width may have changed.
+function renderVideoTimeline(rebuildMarkers) {
+  const tl = document.getElementById('videoTimeline');
+  const video = document.getElementById('videoPreview');
+  if (!tl) return;
+  const dur = video.duration > 0 ? video.duration : 0;
+  const pct = s => (dur ? Math.min(100, Math.max(0, s / dur * 100)) : 0) + '%';
+  const cropping = isVideoCropping();
+  tl.classList.toggle('cropping', cropping);
+  document.getElementById('vtPlayhead').style.left = pct(video.currentTime || 0);
+
+  if (state.videoCropEnd !== null) {
+    const s = state.videoCropStart, e = state.videoCropEnd;
+    const hs = document.getElementById('vtHandleStart');
+    const he = document.getElementById('vtHandleEnd');
+    hs.style.left = pct(s);
+    he.style.left = pct(e);
+    hs.setAttribute('aria-valuetext', formatVideoTimecode(s));
+    he.setAttribute('aria-valuetext', formatVideoTimecode(e));
+    const sel = document.getElementById('vtSel');
+    sel.style.left = pct(s);
+    sel.style.width = (dur ? (e - s) / dur * 100 : 0) + '%';
+    document.getElementById('vtDimStart').style.width = pct(s);
+    document.getElementById('vtDimEnd').style.width = (dur ? (dur - e) / dur * 100 : 0) + '%';
+    const rangeEl = document.getElementById('exportRangeText');
+    if (rangeEl) rangeEl.textContent = formatVideoTimecode(s) + ' – ' + formatVideoTimecode(e) + ' (' + (e - s).toFixed(1) + ' s)';
+    // Bitrate is a target, so the size is an estimate.
+    const sizeEl = document.getElementById('exportSizeText');
+    if (sizeEl) sizeEl.textContent = '≈ ' + Math.max(1, Math.round((e - s) * EXPORT_BITRATE / 8 / 1e6)) + ' MB';
+  }
+
+  if (!rebuildMarkers) return;
+  const wrap = document.getElementById('vtMarkers');
+  wrap.innerHTML = '';
+  // The fastest 3 s as a green band, matching the chart's scoring zone.
+  const fd = state.currentFlightData;
+  if (dur && state.videoExitTime !== null && fd && Number.isFinite(fd.best3sStart) && Number.isFinite(fd.best3sEnd)) {
+    const zs = state.videoExitTime + fd.best3sStart, ze = state.videoExitTime + fd.best3sEnd;
+    if (ze > 0 && zs < dur) {
+      const zone = document.createElement('div');
+      zone.className = 'vt-zone';
+      zone.style.left = pct(zs);
+      zone.style.width = (Math.min(ze, dur) - Math.max(zs, 0)) / dur * 100 + '%';
+      wrap.append(zone);
+    }
+  }
+  const labels = [];
+  for (const m of videoTimelineMarkers()) {
+    const tick = document.createElement('div');
+    tick.className = 'vt-marker ' + m.key;
+    tick.style.left = pct(m.t);
+    const label = document.createElement('div');
+    label.className = 'vt-marker-label ' + m.key;
+    label.style.left = pct(m.t);
+    label.textContent = m.label;
+    wrap.append(tick, label);
+    labels.push(label);
+  }
+  // On a long video the markers sit close together; drop a label that would
+  // overlap the one before it rather than print them on top of each other.
+  let lastRight = -Infinity;
+  for (const label of labels) {
+    const r = label.getBoundingClientRect();
+    if (r.width && r.left < lastRight + 4) { label.style.visibility = 'hidden'; continue; }
+    lastRight = r.right;
   }
 }
 
 (function() {
   const video = document.getElementById('videoPreview');
-  const scrubber = document.getElementById('videoScrubber');
+  const tl = document.getElementById('videoTimeline');
+  const handleStart = document.getElementById('vtHandleStart');
+  const handleEnd = document.getElementById('vtHandleEnd');
+
   video.addEventListener('timeupdate', () => {
     document.getElementById('videoTimecode').textContent = formatVideoTimecode(video.currentTime);
-    scrubber.value = Math.floor(video.currentTime * 1000);
+    renderVideoTimeline();
     drawOverlayPreview();
   });
-  video.addEventListener('ended', () => {
-    document.getElementById('videoPlayBtn').textContent = t('video.play');
-  });
-  scrubber.addEventListener('input', () => {
-    video.currentTime = scrubber.value / 1000;
-  });
+  video.addEventListener('play', () => { setVideoPlayButton(true); requestAnimationFrame(followPlayback); });
+  video.addEventListener('pause', () => setVideoPlayButton(false));
+  video.addEventListener('ended', () => setVideoPlayButton(false));
+
+  // timeupdate fires only a few times a second: too coarse to stop on the crop
+  // end, and the playhead would step. Follow playback per frame instead.
+  function followPlayback() {
+    if (video.paused) return;
+    if (isVideoCropping() && !state.videoExporting && video.currentTime >= state.videoCropEnd) {
+      video.pause();
+      video.currentTime = state.videoCropEnd;
+    }
+    renderVideoTimeline();
+    requestAnimationFrame(followPlayback);
+  }
+
+  function timeAt(clientX) {
+    const r = tl.getBoundingClientRect();
+    const dur = video.duration || 0;
+    return Math.min(dur, Math.max(0, (clientX - r.left) / r.width * dur));
+  }
+  function snapTime(t) {
+    const dur = video.duration || 0;
+    const tol = CROP_SNAP_PX / tl.getBoundingClientRect().width * dur;
+    const targets = [0, dur];
+    for (const m of videoTimelineMarkers()) targets.push(m.t);
+    if (state.videoExitTime !== null) targets.push(state.videoExitTime - CROP_LEAD_SEC);
+    const fd = state.currentFlightData;
+    if (state.videoExitTime !== null && fd && Number.isFinite(fd.perfWindowEndTime)) {
+      targets.push(state.videoExitTime + fd.perfWindowEndTime + CROP_TAIL_SEC);
+    }
+    let best = t, bestDiff = tol;
+    for (const s of targets) {
+      const d = Math.abs(s - t);
+      if (d < bestDiff) { best = s; bestDiff = d; }
+    }
+    return best;
+  }
+  function setCropEdge(which, t) {
+    const dur = video.duration || 0;
+    const lim = videoCropLimits();
+    if (which === 'start') state.videoCropStart = Math.max(0, Math.min(t, lim.startMax, state.videoCropEnd - CROP_MIN_SEC));
+    else state.videoCropEnd = Math.min(dur, Math.max(t, lim.endMin, state.videoCropStart + CROP_MIN_SEC));
+    // Show the frame at the edge being moved, so it can be placed by eye.
+    if (!video.paused) video.pause();
+    video.currentTime = which === 'start' ? state.videoCropStart : state.videoCropEnd;
+    renderVideoTimeline();
+  }
+  function seekTo(t) {
+    if (isVideoCropping()) t = Math.min(state.videoCropEnd, Math.max(state.videoCropStart, t));
+    video.currentTime = t;
+    renderVideoTimeline();
+  }
+
+  function drag(el, onMove) {
+    el.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || !(video.duration > 0)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      el.setPointerCapture(e.pointerId);
+      onMove(e.clientX);
+      const move = ev => onMove(ev.clientX);
+      const up = () => {
+        el.removeEventListener('pointermove', move);
+        el.removeEventListener('pointerup', up);
+        el.removeEventListener('pointercancel', up);
+      };
+      el.addEventListener('pointermove', move);
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
+    });
+  }
+  drag(handleStart, x => setCropEdge('start', snapTime(timeAt(x))));
+  drag(handleEnd, x => setCropEdge('end', snapTime(timeAt(x))));
+  drag(tl, x => seekTo(timeAt(x)));
+
+  // Arrow keys nudge a focused handle by 0.1 s, or 1 s with Shift.
+  for (const [el, which] of [[handleStart, 'start'], [handleEnd, 'end']]) {
+    el.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const step = (e.shiftKey ? 1 : 0.1) * (e.key === 'ArrowLeft' ? -1 : 1);
+      const cur = which === 'start' ? state.videoCropStart : state.videoCropEnd;
+      setCropEdge(which, cur + step);
+    });
+  }
+
+  if (typeof ResizeObserver === 'function') {
+    let lastW = 0;
+    new ResizeObserver(() => {
+      const w = tl.clientWidth;
+      if (w && w !== lastW) { lastW = w; renderVideoTimeline(true); }
+    }).observe(tl);
+  }
 })();
 
 function formatVideoTimecode(sec) {
@@ -684,6 +907,8 @@ function markVideoExit() {
   const v = document.getElementById('videoPreview');
   state.videoExitTime = v.currentTime;
   document.getElementById('videoExitTimecode').textContent = formatVideoTimecode(state.videoExitTime);
+  // (Re)marking the exit moves every marker, so the crop resets to the default.
+  setDefaultVideoCrop();
   setVideoStep(2); // also redraws, now with the widgets visible
 }
 
@@ -694,8 +919,8 @@ function markVideoExit() {
 function setVideoStep(n) {
   if (n > 1 && state.videoExitTime === null) return;
   state.videoStep = n;
-  // Widget settings live in card 2; leaving it drops the selection so the
-  // handles don't linger on the video with no settings panel in view.
+  // Widgets are edited in card 2; leaving it drops the selection so the
+  // handles and the settings panel under the timeline don't linger.
   if (n !== 2) {
     state.selectedWidgetId = null;
     state.widgetDragState = null;
@@ -728,6 +953,37 @@ function refreshVideoSteps() {
     card.querySelector('.video-step-num').textContent = String(n);
     card.querySelector('.video-step-meta').textContent = active ? '' : meta[n];
   }
+  renderVideoTimeline(true);
+  refreshExportFormatInfo();
+}
+
+// Resolution and format rows in card 3. Reliable mode probes WebCodecs, which
+// is async, so the result is cached per frame size; exportFormatSeq drops a stale
+// probe that resolves after a newer refresh.
+let exportFormatSeq = 0;
+const webCodecsPickCache = new Map();
+function refreshExportFormatInfo() {
+  const video = document.getElementById('videoPreview');
+  const resEl = document.getElementById('exportResText');
+  const fmtEl = document.getElementById('exportFormatText');
+  if (!resEl || !fmtEl) return;
+  const w = video.videoWidth, h = video.videoHeight;
+  resEl.textContent = w && h ? w + ' × ' + h : '';
+  const tail = ', ' + EXPORT_FPS + ' fps, ' + t('video.noAudio');
+  const seq = ++exportFormatSeq;
+  const reliable = document.getElementById('reliableModeToggle');
+  const webCodecs = typeof window.VideoEncoder === 'function' && typeof window.VideoFrame === 'function';
+  if (!(reliable && reliable.checked && webCodecs && w && h)) {
+    fmtEl.textContent = realtimeExportFormat().label + tail;
+    return;
+  }
+  const key = w + 'x' + h;
+  if (!webCodecsPickCache.has(key)) webCodecsPickCache.set(key, pickWebCodecsCodec(w, h));
+  webCodecsPickCache.get(key).then(pick => {
+    if (seq !== exportFormatSeq) return;
+    const label = !pick ? realtimeExportFormat().label : pick.container === 'mp4' ? 'MP4 (H.264)' : 'WebM (VP9)';
+    fmtEl.textContent = label + tail;
+  });
 }
 
 // ── Export pipeline ──
@@ -746,62 +1002,11 @@ function setReliableExportPref(on) {
   const toggle = document.getElementById('reliableModeToggle');
   if (!toggle) return;
   toggle.checked = getReliableExportPref();
-  toggle.addEventListener('change', () => setReliableExportPref(toggle.checked));
+  toggle.addEventListener('change', () => {
+    setReliableExportPref(toggle.checked);
+    refreshExportFormatInfo();
+  });
 })();
-
-// Persisted "include full descent" preference (default off).
-function getFullDescentPref() {
-  try { return localStorage.getItem('flysight_full_descent_export') === '1'; } catch { return false; }
-}
-function setFullDescentPref(on) {
-  try { localStorage.setItem('flysight_full_descent_export', on ? '1' : '0'); } catch {}
-}
-(function() {
-  const toggle = document.getElementById('fullDescentToggle');
-  if (!toggle) return;
-  toggle.checked = getFullDescentPref();
-  toggle.addEventListener('change', () => setFullDescentPref(toggle.checked));
-})();
-
-// Build an overlay-data slice [exit-5s .. maxTimeRel] from the full-recording
-// dataset, matching the state.currentFlightData contract. Used by the export's
-// "full descent" option so widgets keep updating under canopy through landing
-// instead of clamping to the end of the default (canopy+5s) jump window.
-function buildExtendedFlightData(maxTimeRel) {
-  const full = state.currentFlightDataFull;
-  if (!full || !full.times || !full.times.length) return null;
-
-  let s = full.times.findIndex(t => t >= -5);
-  if (s < 0) s = 0;
-  let e = full.times.length - 1;
-  for (let i = s; i < full.times.length; i++) {
-    if (full.times[i] > maxTimeRel) { e = i - 1; break; }
-  }
-  if (e < s) e = s;
-
-  const slice = arr => arr.slice(s, e + 1);
-  return {
-    times: slice(full.times),
-    altitudes: slice(full.altitudes),
-    vertSpeeds: slice(full.vertSpeeds),
-    horzSpeeds: slice(full.horzSpeeds),
-    diveAngles: slice(full.diveAngles),
-    lats: slice(full.lats),
-    lons: slice(full.lons),
-    velNs: slice(full.velNs),
-    velEs: slice(full.velEs),
-    exitIdx: Math.max(0, full.exitIdx - s),
-    canopyIdx: Math.max(0, full.canopyIdx - s),
-    speedScore: full.speedScore,
-    perfWindowStartTime: full.perfWindowStartTime,
-    perfWindowEndTime: full.perfWindowEndTime,
-    best3sStart: full.best3sStart,
-    best3sEnd: full.best3sEnd,
-    canopyTimeRel: full.canopyTimeRel,
-    landingTimeRel: full.landingTimeRel,
-    groundAlt: full.groundAlt,
-  };
-}
 
 // Render every placed widget onto ctx for the given flight-data index.
 // Shared by both export paths (the on-screen preview keeps its own copy in
@@ -887,30 +1092,12 @@ function startExport() {
 
   const video = document.getElementById('videoPreview');
 
-  const trimStart = Math.max(0, state.videoExitTime - 5);
-  const canopyFlightTime = state.currentFlightData.times[state.currentFlightData.canopyIdx] || state.currentFlightData.times[state.currentFlightData.times.length - 1];
+  // Export exactly the crop chosen on the timeline in step 3.
+  if (state.videoCropEnd === null) setDefaultVideoCrop();
+  const trimStart = Math.max(0, state.videoCropStart);
+  const trimEnd = Math.min(video.duration, state.videoCropEnd);
 
-  // "Include full descent": run through landing + 5 s (or to the video end when
-  // landing wasn't detected), and swap in an overlay dataset that reaches that
-  // far so widgets keep updating under canopy. Restored in finishExport/failExport.
-  const fullDescentToggle = document.getElementById('fullDescentToggle');
-  const wantFullDescent = !!(fullDescentToggle && fullDescentToggle.checked);
-  let restoreFlightData = null;
-  let trimEnd;
-  if (wantFullDescent) {
-    const landingTimeRel = state.currentFlightData.landingTimeRel;
-    trimEnd = (Number.isFinite(landingTimeRel) && landingTimeRel > 0)
-      ? Math.min(video.duration, state.videoExitTime + landingTimeRel + 5)
-      : video.duration;
-    const ext = buildExtendedFlightData(trimEnd - state.videoExitTime);
-    if (ext) {
-      const original = state.currentFlightData;
-      state.currentFlightData = ext;
-      restoreFlightData = () => { state.currentFlightData = original; };
-    }
-  } else {
-    trimEnd = Math.min(video.duration, state.videoExitTime + canopyFlightTime);
-  }
+  state.videoExporting = true;
 
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth;
@@ -933,16 +1120,14 @@ function startExport() {
     progressEl.style.display = 'none';
     btnEl.disabled = false;
     state.activeExportCancel = null;
-    document.getElementById('videoPlayBtn').textContent = 'Play';
+    state.videoExporting = false;
+    setVideoPlayButton(!video.paused);
     modalBody.style.pointerEvents = '';
     modalBody.style.opacity = '';
   }
   function setProgress(pct, label) {
     fillEl.style.width = Math.min(Math.max(pct, 0), 100) + '%';
     textEl.textContent = label;
-  }
-  function restoreSwappedData() {
-    if (restoreFlightData) { restoreFlightData(); restoreFlightData = null; drawOverlayPreview(); }
   }
   function finishExport(blob, fileExt) {
     const url = URL.createObjectURL(blob);
@@ -951,19 +1136,16 @@ function startExport() {
     a.download = state.currentJumpName.replace(/\.[^.]+$/, '') + '_overlay' + fileExt;  // suffix kept untranslated for stable filenames
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    restoreSwappedData();
     restoreUI();
   }
   function failExport(message) {
     try { if (!video.paused) video.pause(); } catch {}
-    restoreSwappedData();
     restoreUI();
     alert(message);
   }
   // Cancellation: tear down quietly with no download and no alert.
   function abortExport() {
     try { if (!video.paused) video.pause(); } catch {}
-    restoreSwappedData();
     restoreUI();
   }
 
@@ -990,25 +1172,31 @@ function startExport() {
   }
 }
 
+// Both export paths render at EXPORT_FPS with a EXPORT_BITRATE target.
+const EXPORT_FPS = 30;
+const EXPORT_BITRATE = 5_000_000;
+
+// Container the real-time path records into: MP4 where MediaRecorder can
+// (Chrome, Edge, Safari), WebM otherwise (Firefox).
+function realtimeExportFormat() {
+  const ok = type => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type);
+  if (ok('video/mp4')) return { mimeType: 'video/mp4', fileExt: '.mp4', label: 'MP4' + (ok('video/mp4;codecs=avc1') ? ' (H.264)' : '') };
+  if (ok('video/webm;codecs=vp9')) return { mimeType: 'video/webm;codecs=vp9', fileExt: '.webm', label: 'WebM (VP9)' };
+  return { mimeType: 'video/webm', fileExt: '.webm', label: 'WebM' };
+}
+
 // Real-time path: canvas.captureStream + MediaRecorder driven by playback.
 // Fast on capable machines; hardened so a decode stall surfaces a message and
 // delivers a partial file instead of hanging silently.
 function exportRealtime(opts) {
   const { video, canvas, ctx, contentRect, trimStart, trimEnd, setProgress, finishExport, failExport, abortExport } = opts;
 
-  let mimeType = 'video/webm;codecs=vp9';
-  let fileExt = '.webm';
-  if (MediaRecorder.isTypeSupported('video/mp4')) {
-    mimeType = 'video/mp4';
-    fileExt = '.mp4';
-  } else if (!MediaRecorder.isTypeSupported(mimeType)) {
-    mimeType = 'video/webm';
-  }
+  const { mimeType, fileExt } = realtimeExportFormat();
 
   let stream, recorder;
   try {
-    stream = canvas.captureStream(30);
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
+    stream = canvas.captureStream(EXPORT_FPS);
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: EXPORT_BITRATE });
   } catch (e) {
     failExport(t('video.errRecorder', { msg: (e && e.message ? e.message : e) }));
     return;
@@ -1036,8 +1224,8 @@ function exportRealtime(opts) {
     try { recorder.stop(); } catch {}
   }
   function onVideoEnded() {
-    // Natural end of a short video (trimEnd was capped to video.duration, e.g.
-    // when "full descent" is on but the footage stops before landing). Once the
+    // Natural end of a short video (the crop ends at the very end of the
+    // footage, and the last frame may never reach trimEnd). Once the
     // video ends, requestVideoFrameCallback stops firing, so renderFrame can't
     // catch this itself — deliver whatever we captured.
     if (finished || aborted) return;
@@ -1139,39 +1327,49 @@ function exportRealtime(opts) {
   }).catch(e => failExport(t('video.errSeek', { msg: (e && e.message ? e.message : e) })));
 }
 
+// Codec for the reliable path at this frame size, or null when WebCodecs has
+// no usable config (the export then falls back to the real-time path).
+// Prefer Constrained Baseline H.264 (profile_idc 66 + constraint_set1):
+// Baseline forbids B-frames by spec, so the encoder cannot reorder frames.
+// High profile (avc1.640028) lets Firefox's encoder emit B-frames, which come
+// out in decode order with non-monotonic presentation timestamps that mp4-muxer
+// rejects ("DTS must be monotonically increasing"). We try Baseline at
+// decreasing levels (5.2 → 4.0 → 3.0) to fit the frame size, and only fall back
+// to High if no Baseline level is available. Levels: 34=5.2, 28=4.0, 1f=3.1.
+async function pickWebCodecsCodec(width, height) {
+  if (typeof window.VideoEncoder !== 'function') return null;
+  async function supported(codec) {
+    try {
+      const s = await window.VideoEncoder.isConfigSupported({ codec, width, height });
+      return !!(s && s.supported);
+    } catch { return false; }
+  }
+  if (typeof window.Mp4Muxer !== 'undefined') {
+    for (const c of ['avc1.42E034', 'avc1.42E028', 'avc1.42E01F', 'avc1.640028']) {
+      if (await supported(c)) return { codec: c, container: 'mp4' };
+    }
+  }
+  if (typeof window.WebMMuxer !== 'undefined' && await supported('vp09.00.10.08')) {
+    return { codec: 'vp09.00.10.08', container: 'webm' };
+  }
+  return null;
+}
+
 // Reliable path: WebCodecs VideoEncoder, frame-by-frame. Decoupled from
 // real-time playback, so a slow CPU only makes it take longer — it never
 // stalls and the output timing is frame-accurate (explicit timestamps).
 async function exportWithWebCodecs(opts) {
   const { video, canvas, ctx, contentRect, trimStart, trimEnd, setProgress, finishExport, failExport, abortExport } = opts;
 
-  const FPS = 30;
+  const FPS = EXPORT_FPS;
   const width = canvas.width;
   const height = canvas.height;
-
-  async function codecSupported(codecStr) {
-    try {
-      const s = await window.VideoEncoder.isConfigSupported({ codec: codecStr, width, height });
-      return !!(s && s.supported);
-    } catch { return false; }
-  }
 
   try {
     let muxer, target, codec, fileExt, mimeType;
 
-    // Prefer Constrained Baseline H.264 (profile_idc 66 + constraint_set1):
-    // Baseline forbids B-frames by spec, so the encoder cannot reorder frames.
-    // High profile (avc1.640028) lets Firefox's encoder emit B-frames, which come
-    // out in decode order with non-monotonic presentation timestamps that mp4-muxer
-    // rejects ("DTS must be monotonically increasing"). We try Baseline at
-    // decreasing levels (5.2 → 4.0 → 3.0) to fit the frame size, and only fall back
-    // to High if no Baseline level is available. Levels: 34=5.2, 28=4.0, 1f=3.1.
-    let h264Codec = null;
-    if (typeof window.Mp4Muxer !== 'undefined') {
-      for (const c of ['avc1.42E034', 'avc1.42E028', 'avc1.42E01F', 'avc1.640028']) {
-        if (await codecSupported(c)) { h264Codec = c; break; }
-      }
-    }
+    const pick = await pickWebCodecsCodec(width, height);
+    const h264Codec = pick && pick.container === 'mp4' ? pick.codec : null;
     if (h264Codec) {
       codec = h264Codec;
       fileExt = '.mp4';
@@ -1186,8 +1384,8 @@ async function exportWithWebCodecs(opts) {
         // all timestamps to a zero base. No-op on Chrome (first chunk already 0).
         firstTimestampBehavior: 'offset',
       });
-    } else if (typeof window.WebMMuxer !== 'undefined' && await codecSupported('vp09.00.10.08')) {
-      codec = 'vp09.00.10.08';
+    } else if (pick && pick.container === 'webm') {
+      codec = pick.codec;
       fileExt = '.webm';
       mimeType = 'video/webm';
       target = new window.WebMMuxer.ArrayBufferTarget();
@@ -1212,7 +1410,7 @@ async function exportWithWebCodecs(opts) {
     // 'realtime' hints the encoder to avoid frame reordering. Firefox ignores it
     // for H.264 (hence the Baseline-profile codec choice above, which forbids
     // B-frames outright), but it's harmless and helps encoders that do honor it.
-    encoder.configure({ codec, width, height, bitrate: 5_000_000, framerate: FPS, latencyMode: 'realtime' });
+    encoder.configure({ codec, width, height, bitrate: EXPORT_BITRATE, framerate: FPS, latencyMode: 'realtime' });
 
     const totalFrames = Math.max(1, Math.ceil((trimEnd - trimStart) * FPS));
     video.muted = true;
@@ -1230,8 +1428,8 @@ async function exportWithWebCodecs(opts) {
       if (cancelled) break;
       if (encoderError) throw encoderError;
       // Never seek to exactly video.duration — some browsers won't fire 'seeked'
-      // there, which would otherwise time out (e.g. a short clip that ends before
-      // landing + 5 s, so trimEnd was capped to video.duration).
+      // there, which would otherwise time out (e.g. a crop that runs to the end
+      // of the video, so trimEnd is video.duration).
       // Not named `t` — that's the global translation function, used below.
       const seekTime = Math.min(trimStart + i / FPS, trimEnd, Math.max(0, video.duration - 0.01));
       await seekVideoTo(video, seekTime, {

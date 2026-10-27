@@ -1446,7 +1446,53 @@ canvas { width: 100% !important; }
 }
 .video-timecode { font-family: monospace; font-size: 0.9rem; color: var(--accent); white-space: nowrap; }
 .video-duration { font-family: monospace; font-size: 0.85rem; color: var(--text-dim); white-space: nowrap; }
-#videoScrubber { flex: 1; accent-color: var(--accent); }
+.video-play-btn { width: 40px; height: 30px; padding: 0; flex: none; display: grid; place-items: center; }
+.video-play-btn svg { width: 16px; height: 16px; display: block; }
+.video-play-btn .icon-pause, .video-play-btn.playing .icon-play { display: none; }
+.video-play-btn.playing .icon-pause { display: block; }
+
+/* Timeline under the preview. Times map to `left` as a percentage of the
+   width; in step 3 (.cropping) the crop handles and dimmed ends appear. */
+.video-timeline {
+  flex: 1; min-width: 0; position: relative; height: 40px;
+  cursor: pointer; user-select: none; touch-action: none;
+}
+.vt-track { position: absolute; left: 0; right: 0; top: 10px; height: 6px; border-radius: 3px; background: var(--border-strong); }
+.vt-sel { position: absolute; top: 10px; height: 6px; background: var(--accent); opacity: 0.6; display: none; }
+.vt-dim { position: absolute; top: 2px; height: 22px; background: var(--bg-body); opacity: 0.6; display: none; pointer-events: none; }
+.vt-dim-start { left: 0; }
+.vt-dim-end { right: 0; }
+.vt-playhead {
+  position: absolute; top: 0; width: 2px; height: 26px; margin-left: -1px;
+  background: var(--text-strong); border-radius: 1px; pointer-events: none; z-index: 2;
+}
+.vt-handle {
+  position: absolute; top: 1px; width: 10px; height: 24px; margin-left: -5px;
+  background: var(--accent); border-radius: 3px; cursor: ew-resize; display: none; z-index: 3;
+}
+.vt-handle::after {
+  content: ''; position: absolute; left: 4px; top: 7px; width: 2px; height: 10px;
+  background: var(--accent-on); opacity: 0.6; border-radius: 1px;
+}
+.vt-handle:focus-visible { outline: 2px solid var(--text-strong); outline-offset: 1px; }
+.video-timeline.cropping .vt-handle,
+.video-timeline.cropping .vt-sel,
+.video-timeline.cropping .vt-dim { display: block; }
+.vt-marker { position: absolute; top: 4px; height: 18px; border-left: 2px dashed #94a3b8; margin-left: -1px; pointer-events: none; }
+.vt-marker.score { border-left-color: #4ade80; }
+.vt-marker.landing { border-left-style: solid; }
+.vt-zone { position: absolute; top: 6px; height: 14px; background: rgba(74, 222, 128, 0.35); border-radius: 2px; pointer-events: none; }
+.vt-marker-label {
+  position: absolute; top: 25px; transform: translateX(-50%); white-space: nowrap;
+  font-size: 0.7rem; color: #94a3b8; pointer-events: none;
+}
+.vt-marker-label.score { color: #4ade80; }
+.export-info {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px;
+  margin: 0 0 12px; font-size: 0.8rem;
+}
+.export-info dt { color: var(--text-muted); white-space: nowrap; }
+.export-info dd { margin: 0; color: var(--text-strong); text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ── Step 2 two-column grid ── */
 .video-step2-grid {
@@ -1493,7 +1539,7 @@ canvas { width: 100% !important; }
 .video-step-card.locked .video-step-title { color: var(--text-dim); }
 .video-step-body { padding: 0 14px 14px; }
 .video-step-card:not(.active) .video-step-body { display: none; }
-.video-step-sub { border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 12px; }
+.video-settings-card { background: var(--bg-inset); border-radius: 8px; padding: 12px 14px; }
 .video-hint { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.45; }
 .video-sync-row, .video-options-row {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;

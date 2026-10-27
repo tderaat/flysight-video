@@ -153,11 +153,8 @@ function applyLanguage(lang) {
 // Re-apply the JS-set bits of the video modal (play/pause button + "Not set"
 // exit timecode) so a mid-session language switch updates them too.
 function refreshVideoModalLang() {
-  var playBtn = document.getElementById('videoPlayBtn');
   var video = document.getElementById('videoPreview');
-  if (playBtn && video) {
-    playBtn.textContent = video.paused ? t('video.play') : t('video.pause');
-  }
+  if (video && typeof setVideoPlayButton === 'function') setVideoPlayButton(!video.paused);
   var exitTc = document.getElementById('videoExitTimecode');
   if (exitTc && typeof state !== 'undefined' && state.videoExitTime === null) {
     exitTc.textContent = t('video.notSet');

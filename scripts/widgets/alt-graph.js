@@ -38,8 +38,12 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
     return;
   }
 
-  const times = fd.times;
-  const alts = fd.altitudes;
+  // Graphs plot exit − 5 s through canopy + 5 s; the data runs on to landing
+  // for the other widgets, and past the graph's end the dot holds there.
+  const gEnd = graphEndIndex(fd);
+  const times = fd.times.slice(0, gEnd + 1);
+  const alts = fd.altitudes.slice(0, gEnd + 1);
+  const gIdx = Math.min(dataIdx, gEnd);
   const minT = times[0], maxT = times[times.length - 1];
   const minAlt = Math.min(...alts), maxAlt = Math.max(...alts);
   const tRange = maxT - minT || 1;
@@ -51,7 +55,7 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
 
   // Only reveal the graph up to the current position; the scale stays fixed
   // to the whole slice so the curve doesn't rescale as it grows.
-  const revealX = (dataIdx >= 0 && dataIdx < times.length) ? tx(times[dataIdx]) : x + w;
+  const revealX = (gIdx >= 0) ? tx(times[gIdx]) : x + w;
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, revealX - x, h);
@@ -103,9 +107,9 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
   ctx.fill();
   ctx.restore();
 
-  if (dataIdx >= 0 && dataIdx < times.length) {
-    const mx = tx(times[dataIdx]);
-    const my = ty(alts[dataIdx]);
+  if (gIdx >= 0) {
+    const mx = tx(times[gIdx]);
+    const my = ty(alts[gIdx]);
     ctx.beginPath();
     ctx.arc(mx, my, 3 * effectiveScale, 0, Math.PI * 2);
     ctx.fillStyle = '#f8fafc';
@@ -120,7 +124,7 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
 
     if (config.showValue) {
       // AGL, the same figure as the Info widget and the Exit Altitude card.
-      const agl = alts[dataIdx] - (fd.groundAlt || 0);
+      const agl = alts[gIdx] - (fd.groundAlt || 0);
       const text = config.units === 'imperial'
         ? (agl * 3.28084).toFixed(0) + ' ft'
         : agl.toFixed(0) + ' m';

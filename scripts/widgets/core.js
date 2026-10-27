@@ -33,6 +33,14 @@ function buildUnitsConfig(widget, options) {
   return group;
 }
 
+// ── Shared graph helper: last index the graph widgets plot ──
+// state.currentFlightData runs to landing + 5 s; the Alt. Graph and Speed Graph
+// stop at fd.graphEndIdx (canopy + 5 s) so freefall keeps most of their width.
+function graphEndIndex(fd) {
+  const last = fd.times.length - 1;
+  return Number.isInteger(fd.graphEndIdx) ? Math.max(0, Math.min(fd.graphEndIdx, last)) : last;
+}
+
 // ── Shared graph helper: current-value label beside the moving dot ──
 // Always directly right of the dot, vertically centred on it, so it travels with the dot
 // without ever jumping sides.
@@ -261,8 +269,9 @@ function updateWidgetSettingsPanel() {
   const panel = document.getElementById('widgetSettingsPanel');
   if (!row || !panel) return;
 
-  // Selecting a widget on the video opens the step card holding its settings.
-  // Also keeps the card's widget count current, since every add/remove ends here.
+  // Selecting a widget on the video opens step card 2 (Add widgets); its settings
+  // show under the timeline. Also keeps the card's widget count current, since
+  // every add/remove ends here.
   if (state.selectedWidgetId !== null && state.videoExitTime !== null) state.videoStep = 2;
   if (typeof refreshVideoSteps === 'function') refreshVideoSteps();
 
