@@ -123,7 +123,33 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body
   top: 12px;
   min-width: 0;
 }
-.main-content { min-width: 0; padding-top: 34px; }
+/* A column whose last child is the footer: margin-top:auto pins the footer to
+   the bottom of the viewport while the column is short (no jump loaded) and
+   lets it follow the notes once the chart section fills it. The min-height is
+   the viewport less .page-layout's vertical padding. */
+.main-content {
+  min-width: 0;
+  padding-top: 34px;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 36px);
+}
+
+/* ── Page footer: privacy note + storage warning, under the notes ── */
+.page-footer {
+  margin-top: auto;
+  padding-top: 24px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  text-align: center;
+}
+.page-footer hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0 0 12px;
+}
+.page-footer strong { font-weight: 600; }
 
 /* ── Header ── */
 .header { display: flex; align-items: center; gap: 12px; margin-top: -5px; }
@@ -292,25 +318,53 @@ body.has-jumps .dropzone p { display: none; }
 }
 .jump-list > .jump-day:first-child .jump-day-header { padding-top: 0; }
 .jump-day-header:hover { color: var(--text-muted); }
-.jump-day-chevron {
-  font-size: 0.55rem;
-  line-height: 1;
-  opacity: 0;
-  transition: opacity 0.15s, transform 0.15s;
+/* Collapse toggle: an accordion-style caret pinned to the header's right edge
+   and always visible, pointing up when the day is open (fold it away) and down
+   when it is collapsed (open it). Same colour as the day count beside the date.
+   Drawn as two borders of a rotated square so it is crisp and centred in every
+   font. */
+.jump-day-toggle {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 12px;
+  height: 12px;
+  color: var(--text-dim);
+  transition: color 0.15s;
 }
-.jump-day-header:hover .jump-day-chevron { opacity: 1; }
-.jump-day.collapsed .jump-day-chevron { opacity: 1; transform: rotate(-90deg); }
+.jump-day-toggle::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  /* The 1px nudges recentre the visible V, whose point sits off-centre in its
+     box after the rotation. */
+  transform: translate(-50%, calc(-50% + 1px)) rotate(-135deg);
+  transition: transform 0.15s;
+}
+.jump-day.collapsed .jump-day-toggle::before {
+  transform: translate(-50%, calc(-50% - 1px)) rotate(45deg);
+}
+.jump-day-header:hover .jump-day-toggle { color: var(--accent); }
 .jump-day-count { color: var(--text-dim); display: none; }
 .jump-day.collapsed .jump-day-count { display: inline; }
-/* Date sort direction toggle — only rendered in the first day header, pinned to
-   its right edge. Always visible (unlike the hover-only chevron) so it's findable. */
-.jump-day-header .jump-sort-toggle {
-  margin-left: auto;
+/* Date sort direction toggle — in its own bar above the day cards, right-aligned,
+   with the direction spelled out beside the arrow. */
+.jump-list-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -4px;
+}
+.jump-list-bar .jump-sort-toggle {
   background: none; border: none; padding: 0 2px;
   color: var(--text-dim); cursor: pointer;
-  font-family: inherit; font-size: 0.85rem; line-height: 1;
+  font-family: inherit; font-size: 0.7rem; line-height: 1;
+  text-transform: uppercase; letter-spacing: 0.05em;
 }
-.jump-day-header .jump-sort-toggle:hover { color: var(--accent); }
+.jump-list-bar .jump-sort-toggle:hover { color: var(--accent); }
 .jump-chip {
   background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 16px; cursor: pointer; transition: all 0.15s;

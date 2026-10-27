@@ -377,34 +377,38 @@ function buildJumpDayGroups(jumps, sortMode) {
   return { groups: groups, undated: undated };
 }
 
-// One collapsible day group: a small grey header (date, chevron, count) plus the
-// wrapper its jumps go into. Returns the pieces so the caller can add its own
-// header controls (the sidebar's sort toggle, the compare list's select-all
+// One collapsible day group: a header strip (date, count, a collapse caret on
+// the right) plus the wrapper its jumps go into. Returns the pieces so
+// the caller can add its own header controls (the compare list's select-all
 // checkbox) before filling the wrapper.
 function makeJumpDayGroup(opts) {
   const group = document.createElement('div');
   group.className = 'jump-day' + (opts.collapsed ? ' collapsed' : '');
   const header = document.createElement('div');
   header.className = 'jump-day-header';
+  header.setAttribute('aria-expanded', opts.collapsed ? 'false' : 'true');
   const label = document.createElement('span');
   label.className = 'jump-day-label';
   label.textContent = formatJumpDayHeader(opts.date);
-  const chevron = document.createElement('span');
-  chevron.className = 'jump-day-chevron';
-  chevron.setAttribute('aria-hidden', 'true');
-  chevron.textContent = '▾'; // ▾, rotated to ▸ when collapsed (CSS)
   const count = document.createElement('span');
   count.className = 'jump-day-count';
   count.textContent = '(' + opts.count + ')';
+  // The caret is drawn by CSS (a rotated border corner), so it is crisp and
+  // centred in every font; it points up when open and down when collapsed.
+  const toggle = document.createElement('span');
+  toggle.className = 'jump-day-toggle';
+  toggle.setAttribute('aria-hidden', 'true');
   header.appendChild(label);
-  header.appendChild(chevron);
   header.appendChild(count);
+  header.appendChild(toggle);
 
   const dk = opts.dayKey;
   const storageKey = opts.storageKey;
   header.addEventListener('click', function() {
     const set = getCollapsedDays(storageKey);
-    if (group.classList.toggle('collapsed')) set.add(dk); else set.delete(dk);
+    const nowCollapsed = group.classList.toggle('collapsed');
+    if (nowCollapsed) set.add(dk); else set.delete(dk);
+    header.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
     saveCollapsedDays(set, storageKey);
   });
 
@@ -415,15 +419,18 @@ function makeJumpDayGroup(opts) {
   return { group: group, header: header, jumpsWrap: jumpsWrap };
 }
 
-// The sort toggle shown in the first day header: an arrow pointing the way the
-// dates run (↑ oldest first / ↓ newest first). Click doesn't collapse the day.
-function makeJumpSortToggle(mode) {
+// The date sort toggle: an arrow pointing the way the dates run (↑ oldest
+// first / ↓ newest first). With `withLabel` the direction is also spelled out
+// before the arrow (the sidebar's bar above the days), so no tooltip is needed.
+// Click never collapses a day.
+function makeJumpSortToggle(mode, withLabel) {
   const btn = document.createElement('button');
   btn.className = 'jump-sort-toggle';
   btn.type = 'button';
-  btn.textContent = mode === 'date-desc' ? '↓' : '↑';
+  const arrow = mode === 'date-desc' ? '↓' : '↑';
   const tip = t(mode === 'date-desc' ? 'sort.dateDesc' : 'sort.dateAsc');
-  btn.setAttribute('data-tip', tip);
+  btn.textContent = withLabel ? tip + ' ' + arrow : arrow;
+  if (!withLabel) btn.setAttribute('data-tip', tip);
   btn.setAttribute('aria-label', tip);
   btn.addEventListener('click', function(e) {
     e.stopPropagation();
@@ -431,6 +438,15 @@ function makeJumpSortToggle(mode) {
   });
   return btn;
 }
+
+// Trash can for the jump chip's delete button, from the same path as the video
+// widget's delete circle (TRASH_ICON_PATH in widgets/core.js). Inline SVG rather
+// than the 🗑 character, which renders as a full-colour emoji on most platforms;
+// stroked in currentColor so it follows the button's grey / hover-white like
+// the glyphs beside it.
+const TRASH_ICON_SVG = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+  'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" ' +
+  'aria-hidden="true"><path d="' + TRASH_ICON_PATH + '"/></svg>';
 
 async function renderJumpList() {
   const list = document.getElementById('jumpList');
@@ -466,20 +482,27 @@ async function renderJumpList() {
       <span>${j.name}${scoreLabel}</span>
       <button class="edit-btn" onclick="event.stopPropagation(); openRenameModal('${safeName}')" data-tip="${t('tip.rename')}">&#x270E;</button>
       <button class="download-btn" onclick="event.stopPropagation(); downloadJump('${safeName}')" data-tip="${t('tip.downloadCsv')}">&#x2913;</button>
-      <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${safeName}')" data-tip="${t('tip.remove')}">&times;</button>
+      <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${safeName}')" data-tip="${t('tip.remove')}" aria-label="${t('tip.remove')}">${TRASH_ICON_SVG}</button>
     `;
     target.appendChild(chip);
   };
 
-  groups.forEach((g, gi) => {
-    const { header, group, jumpsWrap } = makeJumpDayGroup({
+  // The sort toggle sits in its own bar above the days: it orders the whole
+  // list, and inside the first day header it read as that day's setting.
+  if (groups.length > 0) {
+    const bar = document.createElement('div');
+    bar.className = 'jump-list-bar';
+    bar.appendChild(makeJumpSortToggle(sortMode, true));
+    list.appendChild(bar);
+  }
+
+  groups.forEach(g => {
+    const { group, jumpsWrap } = makeJumpDayGroup({
       date: g.date,
       dayKey: g.dayKey,
       count: g.items.length,
       collapsed: collapsed.has(g.dayKey)
     });
-    // The sort toggle only goes in the first day header.
-    if (gi === 0) header.appendChild(makeJumpSortToggle(sortMode));
     g.items.forEach(it => appendJump(jumpsWrap, it.jump));
     list.appendChild(group);
   });

@@ -203,6 +203,7 @@ async function openCompareModal() {
   // Fresh modal session — clear the manual-pause memory so rotation auto-
   // starts on the first 3D view entry.
   state.compare3dRotateUserPaused = false;
+  await syncCompareFromSidebar();
   await renderCompareJumpsList();
   renderCompareView();
   // If the modal reopens on the 3D view (e.g. user closed and reopened),
@@ -210,6 +211,26 @@ async function openCompareModal() {
   if (state.compareActiveView === 'view3d' && !state.compare3dAnimating) {
     startCompare3dAnimation();
   }
+}
+
+// Opening the modal mirrors the sidebar: the same days are collapsed, and the
+// selection is every usable jump in a day that is open there. A day the user
+// has folded away in the sidebar starts collapsed and unticked here. Changes
+// made inside the modal stay in the modal until the next open.
+async function syncCompareFromSidebar() {
+  const jumps = await getStoredJumps();
+  const sidebarCollapsed = getCollapsedDays();
+  saveCollapsedDays(sidebarCollapsed, COMPARE_COLLAPSED_DAYS_KEY);
+
+  const { groups, undated } = buildJumpDayGroups(jumps, readJumpSort());
+  state.compareSelected.clear();
+  const select = it => {
+    if (getCompareData(it.jump) !== null) state.compareSelected.add(it.jump.name);
+  };
+  groups.forEach(g => {
+    if (!sidebarCollapsed.has(g.dayKey)) g.items.forEach(select);
+  });
+  undated.forEach(select);
 }
 
 function closeCompareModal() {
@@ -305,14 +326,8 @@ async function renderCompareJumpsList() {
   let scores = {};
   try { scores = JSON.parse(localStorage.getItem('flysight_scores') || '{}'); } catch (e) {}
 
-  // Default: pre-select all jumps that have valid data. Triggers on first
-  // open and whenever the selection has been emptied (e.g. user unchecked
-  // everything and reopened).
-  if (state.compareSelected.size === 0) {
-    jumps.forEach(j => {
-      if (getCompareData(j) !== null) state.compareSelected.add(j.name);
-    });
-  }
+  // The selection itself is set on open by syncCompareFromSidebar(); a
+  // re-render (language switch, sort flip) keeps whatever the user ticked.
 
   // Drop selections for jumps that no longer exist.
   const liveNames = new Set(jumps.map(j => j.name));

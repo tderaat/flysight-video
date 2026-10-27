@@ -33,7 +33,9 @@ function renderScoreWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   const reached = hasData && fd.speedScore && fd.perfWindowEndTime !== null
     && fd.times[dataIdx] > fd.perfWindowEndTime;
   if (hasData && !reached) {
-    // Editor only: a dashed outline so the hidden widget can still be found and selected.
+    // Editor only: a dashed outline so the hidden widget can still be found and selected,
+    // with a note saying why it is empty. The note is editor UI, never in the export, so
+    // unlike the on-video labels it is translated.
     if (contentRect.isPreview) {
       ctx.save();
       ctx.strokeStyle = 'rgba(248, 250, 252, 0.5)';
@@ -43,6 +45,24 @@ function renderScoreWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
       if (ctx.roundRect) ctx.roundRect(x, y, p.boxW, p.boxH, p.fontSize * 0.3);
       else ctx.rect(x, y, p.boxW, p.boxH);
       ctx.stroke();
+
+      const note = t('overlay.scoreHidden');
+      let noteSize = p.labelFontSize;
+      ctx.font = '600 ' + noteSize + 'px "Segoe UI", system-ui, sans-serif';
+      const fit = p.boxW - p.padding * 2;
+      const noteW = ctx.measureText(note).width;
+      if (noteW > fit) {
+        noteSize *= fit / noteW;
+        ctx.font = '600 ' + noteSize + 'px "Segoe UI", system-ui, sans-serif';
+      }
+      // A dark shadow, not a box fill (a filled ghost read as a different
+      // background), so the note stays legible over bright sky.
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+      ctx.shadowBlur = noteSize * 0.5;
+      ctx.fillStyle = 'rgba(248, 250, 252, 0.85)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(note, x + p.boxW / 2, y + p.boxH / 2);
       ctx.restore();
     }
     return;

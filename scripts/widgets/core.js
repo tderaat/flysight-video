@@ -175,6 +175,11 @@ function getWidgetOpacity(widget, dataIdx) {
 }
 
 // ── Widget selection handles ──
+// Trash can outline on a 24-unit grid: lid, handle, tapered bin, two slats.
+// Shared with the jump list's delete button (TRASH_ICON_SVG in main.js), so
+// both delete controls show the same icon.
+const TRASH_ICON_PATH = 'M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6';
+
 function drawSelectionHandles(ctx, contentRect, widget) {
   if (!widget._bounds) return;
   const b = widget._bounds;
@@ -208,16 +213,16 @@ function drawSelectionHandles(ctx, contentRect, widget) {
   ctx.fillStyle = '#ef4444';
   ctx.fill();
 
+  // White trash can, the same icon as the jump list's delete button: the 24-unit
+  // path scaled to 12 px and centred in the circle.
+  const iconSize = 12;
+  ctx.translate(delX + (delSize - iconSize) / 2, delY + (delSize - iconSize) / 2);
+  ctx.scale(iconSize / 24, iconSize / 24);
   ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 3; // in path units, so 1.5 px on screen
   ctx.lineCap = 'round';
-  const inset = 4;
-  ctx.beginPath();
-  ctx.moveTo(delX + inset, delY + inset);
-  ctx.lineTo(delX + delSize - inset, delY + delSize - inset);
-  ctx.moveTo(delX + delSize - inset, delY + inset);
-  ctx.lineTo(delX + inset, delY + delSize - inset);
-  ctx.stroke();
+  ctx.lineJoin = 'round';
+  ctx.stroke(new Path2D(TRASH_ICON_PATH));
 
   ctx.restore();
 }

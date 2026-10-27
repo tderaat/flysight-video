@@ -130,7 +130,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'EXIT',
     'annot.windowEnd': 'WINDOW END',
-    'annot.pastVert': 'VERTICAL',
+    'annot.pastVert': 'INVERTED',
     'annot.best3s': 'BEST 3s',
 
     // Map markers + hover labels
@@ -145,6 +145,10 @@ var I18N = {
 
     'notes.title': 'Notes',
     'notes.saved': 'Saved',
+    'footer.privacy': 'Your jump files, notes and settings never leave this device: nothing is uploaded to a server. Everything is kept in your browser\'s local storage (IndexedDB and localStorage). Only the satellite map imagery is downloaded from the internet.',
+    'footer.persistence': 'Browser storage is not meant for long-term keeping. Clearing site data or browsing history, a private window, switching browser or device, or the browser freeing up space can delete it without warning. Keep your original CSV files as your backup.',
+    'footer.label': 'Disclaimer',
+    'overlay.scoreHidden': 'Hidden until score',
 
     // Chart right-click context menu
     'ctx.setExit': 'Set exit point here',
@@ -404,7 +408,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'ABSPRUNG',
     'annot.windowEnd': 'FENSTERENDE',
-    'annot.pastVert': 'SENKRECHT',
+    'annot.pastVert': 'INVERTIERT',
     'annot.best3s': 'BESTE 3s',
 
     // Map markers + hover labels
@@ -419,6 +423,10 @@ var I18N = {
 
     'notes.title': 'Notizen',
     'notes.saved': 'Gespeichert',
+    'footer.privacy': 'Ihre Sprungdateien, Notizen und Einstellungen verlassen dieses Gerät nie: Es wird nichts auf einen Server hochgeladen. Alles wird im lokalen Speicher Ihres Browsers abgelegt (IndexedDB und localStorage). Nur die Satellitenkartenbilder werden aus dem Internet geladen.',
+    'footer.persistence': 'Browserspeicher ist nicht für die langfristige Aufbewahrung gedacht. Das Löschen von Websitedaten oder des Browserverlaufs, ein privates Fenster, ein Wechsel von Browser oder Gerät oder ein Browser, der Speicherplatz freigibt, kann ihn ohne Vorwarnung löschen. Bewahren Sie Ihre originalen CSV-Dateien als Sicherung auf.',
+    'footer.label': 'Hinweis',
+    'overlay.scoreHidden': 'Bis zur Wertung ausgeblendet',
 
     // Chart right-click context menu
     'ctx.setExit': 'Absprungpunkt hier setzen',
@@ -678,7 +686,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'EXIT',
     'annot.windowEnd': 'EINDE VENSTER',
-    'annot.pastVert': 'VERTICAAL',
+    'annot.pastVert': 'OMGEKEERD',
     'annot.best3s': 'BESTE 3s',
 
     // Map markers + hover labels
@@ -693,6 +701,10 @@ var I18N = {
 
     'notes.title': 'Notities',
     'notes.saved': 'Opgeslagen',
+    'footer.privacy': 'Je sprongbestanden, notities en instellingen verlaten dit apparaat nooit: er wordt niets naar een server geüpload. Alles staat in de lokale opslag van je browser (IndexedDB en localStorage). Alleen de satellietbeelden van de kaart worden van internet gedownload.',
+    'footer.persistence': 'Browseropslag is niet bedoeld om lang te bewaren. Sitegegevens of browsegeschiedenis wissen, een privévenster, een andere browser of een ander apparaat, of de browser die ruimte vrijmaakt, kan alles zonder waarschuwing verwijderen. Bewaar je originele CSV-bestanden als back-up.',
+    'footer.label': 'Disclaimer',
+    'overlay.scoreHidden': 'Verborgen tot de score',
 
     // Chart right-click context menu
     'ctx.setExit': 'Exitpunt hier instellen',
@@ -952,7 +964,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'USCITA',
     'annot.windowEnd': 'FINE FINESTRA',
-    'annot.pastVert': 'VERTICALE',
+    'annot.pastVert': 'INVERTITO',
     'annot.best3s': 'MIGLIORI 3s',
 
     // Map markers + hover labels
@@ -967,6 +979,10 @@ var I18N = {
 
     'notes.title': 'Note',
     'notes.saved': 'Salvato',
+    'footer.privacy': 'I tuoi file dei lanci, le note e le impostazioni non lasciano mai questo dispositivo: nulla viene caricato su un server. Tutto è salvato nella memoria locale del browser (IndexedDB e localStorage). Solo le immagini satellitari della mappa vengono scaricate da internet.',
+    'footer.persistence': 'La memoria del browser non è pensata per la conservazione a lungo termine. Cancellare i dati del sito o la cronologia, una finestra privata, cambiare browser o dispositivo, o il browser che libera spazio possono eliminarla senza preavviso. Conserva i file CSV originali come backup.',
+    'footer.label': 'Avvertenza',
+    'overlay.scoreHidden': 'Nascosto fino al punteggio',
 
     // Chart right-click context menu
     'ctx.setExit': 'Imposta qui il punto di uscita',
@@ -1226,7 +1242,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'UTSPRÅNG',
     'annot.windowEnd': 'FÖNSTRETS SLUT',
-    'annot.pastVert': 'LODRÄT',
+    'annot.pastVert': 'INVERTERAD',
     'annot.best3s': 'BÄSTA 3 s',
 
     // Map markers + hover labels
@@ -1241,6 +1257,10 @@ var I18N = {
 
     'notes.title': 'Anteckningar',
     'notes.saved': 'Sparat',
+    'footer.privacy': 'Dina hoppfiler, anteckningar och inställningar lämnar aldrig den här enheten: inget laddas upp till en server. Allt sparas i webbläsarens lokala lagring (IndexedDB och localStorage). Endast satellitbilderna till kartan hämtas från internet.',
+    'footer.persistence': 'Webbläsarens lagring är inte avsedd för långsiktig förvaring. Att rensa webbplatsdata eller historik, ett privat fönster, byte av webbläsare eller enhet, eller att webbläsaren frigör utrymme kan radera den utan förvarning. Spara dina ursprungliga CSV-filer som säkerhetskopia.',
+    'footer.label': 'Friskrivning',
+    'overlay.scoreHidden': 'Dold tills poängen visas',
 
     // Chart right-click context menu
     'ctx.setExit': 'Sätt utsprångspunkten här',
@@ -1500,7 +1520,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'SALIDA',
     'annot.windowEnd': 'FIN DE VENTANA',
-    'annot.pastVert': 'VERTICAL',
+    'annot.pastVert': 'INVERTIDO',
     'annot.best3s': 'MEJORES 3 s',
 
     // Map markers + hover labels
@@ -1515,6 +1535,10 @@ var I18N = {
 
     'notes.title': 'Notas',
     'notes.saved': 'Guardado',
+    'footer.privacy': 'Tus archivos de saltos, notas y ajustes nunca salen de este dispositivo: no se sube nada a ningún servidor. Todo se guarda en el almacenamiento local de tu navegador (IndexedDB y localStorage). Solo las imágenes de satélite del mapa se descargan de internet.',
+    'footer.persistence': 'El almacenamiento del navegador no está pensado para guardar datos a largo plazo. Borrar los datos del sitio o el historial, una ventana privada, cambiar de navegador o de dispositivo, o que el navegador libere espacio puede eliminarlo sin aviso. Guarda tus archivos CSV originales como copia de seguridad.',
+    'footer.label': 'Aviso legal',
+    'overlay.scoreHidden': 'Oculto hasta la puntuación',
 
     // Chart right-click context menu
     'ctx.setExit': 'Fijar aquí el punto de salida',
@@ -1774,7 +1798,7 @@ var I18N = {
     // On-chart annotation labels
     'annot.exit': 'WYJŚCIE',
     'annot.windowEnd': 'KONIEC OKNA',
-    'annot.pastVert': 'PIONOWO',
+    'annot.pastVert': 'ODWRÓCONY',
     'annot.best3s': 'NAJLEPSZE 3 s',
 
     // Map markers + hover labels
@@ -1789,6 +1813,10 @@ var I18N = {
 
     'notes.title': 'Notatki',
     'notes.saved': 'Zapisano',
+    'footer.privacy': 'Twoje pliki skoków, notatki i ustawienia nigdy nie opuszczają tego urządzenia: nic nie jest wysyłane na serwer. Wszystko jest przechowywane w lokalnej pamięci przeglądarki (IndexedDB i localStorage). Z internetu pobierane są tylko zdjęcia satelitarne mapy.',
+    'footer.persistence': 'Pamięć przeglądarki nie służy do długoterminowego przechowywania. Wyczyszczenie danych witryny lub historii, okno prywatne, zmiana przeglądarki lub urządzenia albo zwolnienie miejsca przez przeglądarkę mogą ją usunąć bez ostrzeżenia. Zachowaj oryginalne pliki CSV jako kopię zapasową.',
+    'footer.label': 'Zastrzeżenie',
+    'overlay.scoreHidden': 'Ukryte do czasu wyniku',
 
     // Chart right-click context menu
     'ctx.setExit': 'Ustaw tutaj punkt wyjścia',
