@@ -79,6 +79,7 @@ var I18N = {
     // Page-wide drop overlays
     'drop.csvTitle': 'Drop FlySight CSV anywhere',
     'drop.csvSubtitle': 'Release to load the jump',
+    'drop.csvFolderHint': 'You can also drop a folder: every CSV inside it is loaded',
     'drop.videoTitle': 'Drop video file anywhere',
     'drop.videoSubtitle': 'Release to load the video',
 
@@ -423,6 +424,7 @@ var I18N = {
     // Page-wide drop overlays
     'drop.csvTitle': 'FlySight-CSV irgendwo ablegen',
     'drop.csvSubtitle': 'Loslassen, um den Sprung zu laden',
+    'drop.csvFolderHint': 'Sie können auch einen Ordner ablegen: Jede CSV darin wird geladen',
     'drop.videoTitle': 'Videodatei irgendwo ablegen',
     'drop.videoSubtitle': 'Loslassen, um das Video zu laden',
 
@@ -767,6 +769,7 @@ var I18N = {
     // Page-wide drop overlays
     'drop.csvTitle': 'Sleep een FlySight-CSV ergens naartoe',
     'drop.csvSubtitle': 'Laat los om de sprong te laden',
+    'drop.csvFolderHint': 'Je kunt ook een map neerzetten: elke CSV erin wordt geladen',
     'drop.videoTitle': 'Sleep een videobestand ergens naartoe',
     'drop.videoSubtitle': 'Laat los om de video te laden',
 
@@ -1111,6 +1114,7 @@ var I18N = {
     // Page-wide drop overlays
     'drop.csvTitle': 'Trascina un CSV FlySight ovunque',
     'drop.csvSubtitle': 'Rilascia per caricare il lancio',
+    'drop.csvFolderHint': 'Puoi anche rilasciare una cartella: ogni CSV al suo interno viene caricato',
     'drop.videoTitle': 'Trascina un file video ovunque',
     'drop.videoSubtitle': 'Rilascia per caricare il video',
 
@@ -1455,6 +1459,7 @@ var I18N = {
     // Page-wide drop overlays
     'drop.csvTitle': 'Släpp FlySight-CSV var som helst',
     'drop.csvSubtitle': 'Släpp för att läsa in hoppet',
+    'drop.csvFolderHint': 'Du kan också släppa en mapp: varje CSV i den läses in',
     'drop.videoTitle': 'Släpp videofil var som helst',
     'drop.videoSubtitle': 'Släpp för att läsa in videon',
 
@@ -1799,6 +1804,7 @@ var I18N = {
     // Page-wide drop overlays
     'drop.csvTitle': 'Suelta un CSV de FlySight en cualquier parte',
     'drop.csvSubtitle': 'Suelta para cargar el salto',
+    'drop.csvFolderHint': 'También puedes soltar una carpeta: se cargan todos los CSV que contiene',
     'drop.videoTitle': 'Suelta un archivo de vídeo en cualquier parte',
     'drop.videoSubtitle': 'Suelta para cargar el vídeo',
 
@@ -2143,6 +2149,7 @@ var I18N = {
     // Page-wide drop overlays
     'drop.csvTitle': 'Upuść plik CSV z FlySight w dowolnym miejscu',
     'drop.csvSubtitle': 'Puść, aby wczytać skok',
+    'drop.csvFolderHint': 'Możesz też upuścić folder: wczytany zostanie każdy plik CSV w środku',
     'drop.videoTitle': 'Upuść plik wideo w dowolnym miejscu',
     'drop.videoSubtitle': 'Puść, aby wczytać wideo',
 

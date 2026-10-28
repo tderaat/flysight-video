@@ -426,6 +426,7 @@ body.has-jumps .dropzone p { display: none; }
 }
 .page-drop-panel h2 { font-size: 1.6rem; color: var(--text-strong); margin-bottom: 12px; font-weight: 500; }
 .page-drop-panel p { font-size: 1rem; color: var(--text-mid); }
+.page-drop-panel .page-drop-hint { font-size: 0.85rem; color: var(--text-dim); margin-top: 16px; }
 
 /* Sits above the video modal (z-index 1000) so it covers the small dropzone during a drag. */
 .video-page-drop-overlay {
