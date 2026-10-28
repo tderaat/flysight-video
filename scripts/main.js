@@ -8,10 +8,76 @@ dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classL
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
 dropzone.addEventListener('drop', e => {
   e.preventDefault();
+  // The window-level drop handler below must not import the same files again.
+  e.stopPropagation();
   dropzone.classList.remove('dragover');
-  handleFiles(e.dataTransfer.files);
+  handleDrop(e.dataTransfer);
 });
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+// ── Folder import ──
+// A dropped folder shows up in dataTransfer.files as one empty, unreadable
+// entry, so folders are read through the entry API instead. The entries must
+// be taken synchronously inside the drop event: dataTransfer is emptied as
+// soon as the handler yields.
+function handleDrop(dataTransfer) {
+  const entries = droppedEntriesWithFolder(dataTransfer);
+  if (!entries) {
+    handleFiles(dataTransfer.files);
+    return;
+  }
+  filesFromEntries(entries).then(files => handleFiles(files, { folder: true }));
+}
+
+// The drop's entries when at least one of them is a folder, else null (a plain
+// file drop keeps its existing path).
+function droppedEntriesWithFolder(dataTransfer) {
+  const items = dataTransfer && dataTransfer.items;
+  if (!items || !items.length) return null;
+  const entries = [];
+  let hasFolder = false;
+  for (const item of items) {
+    if (item.kind !== 'file' || typeof item.webkitGetAsEntry !== 'function') continue;
+    const entry = item.webkitGetAsEntry();
+    if (!entry) continue;
+    if (entry.isDirectory) hasFolder = true;
+    entries.push(entry);
+  }
+  return hasFolder ? entries : null;
+}
+
+// Hidden files and folders: dotfiles, and the "._TRACK.CSV" resource-fork
+// copies macOS writes next to every file on a FAT-formatted SD card.
+function isHiddenName(name) {
+  return name.charAt(0) === '.';
+}
+
+// Walk the dropped entries recursively and collect every CSV file. Anything
+// else on the card (CONFIG.TXT, RAW.UBX, videos) is not even opened.
+// readEntries() returns a folder's children in batches, so it is called until
+// it comes back empty. An unreadable entry is skipped, not fatal.
+async function filesFromEntries(entries) {
+  const files = [];
+  async function walk(entry) {
+    if (isHiddenName(entry.name)) return;
+    try {
+      if (entry.isFile) {
+        if (/\.csv$/i.test(entry.name)) files.push(await new Promise((res, rej) => entry.file(res, rej)));
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        for (;;) {
+          const batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+          if (!batch.length) break;
+          for (const child of batch) await walk(child);
+        }
+      }
+    } catch (e) {
+      console.warn('Folder import: could not read', entry.fullPath, e);
+    }
+  }
+  for (const entry of entries) await walk(entry);
+  return files;
+}
 
 // ── Page-wide drop target ──
 // When the user drags a file anywhere on the page, surface a full-viewport
@@ -92,7 +158,7 @@ window.addEventListener('drop', e => {
   e.preventDefault();
   dragDepth = 0;
   pageDropOverlay.classList.remove('active');
-  handleFiles(e.dataTransfer.files);
+  handleDrop(e.dataTransfer);
 });
 
 function isCsvFile(file) {
@@ -164,14 +230,35 @@ function resolveJumpName(base, csv, taken) {
   return name + ' (' + n + ')';
 }
 
-async function handleFiles(files) {
+// Batches at least this large are stored with one counting chip and a list
+// refresh every BULK_RENDER_EVERY files: re-rendering the sidebar (which reads
+// every stored jump back) after each of 200 files is what made a big import crawl.
+const BULK_IMPORT_MIN = 10;
+const BULK_RENDER_EVERY = 25;
+
+// A yield that also fires in a background tab, where requestAnimationFrame
+// does not (nextPaint() would stall the import until the tab is shown).
+function yieldToBrowser() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+// `opts.folder`: the files come from a dropped folder (already walked by
+// filesFromEntries(), which skips hidden files). Non-CSV files are then skipped
+// silently instead of alerted, and CSVs with no GPS timestamps (FlySight 2's
+// SENSOR.CSV) are left out.
+async function handleFiles(files, opts) {
+  const folder = !!(opts && opts.folder);
   const all = Array.from(files);
   const csvFiles = all.filter(isCsvFile);
   const rejected = all.filter(f => !isCsvFile(f));
-  if (rejected.length) {
+  if (rejected.length && !folder) {
     alert(t('alert.onlyCsv', { files: rejected.map(f => f.name).join(', ') }));
   }
-  if (!csvFiles.length) return;
+  if (!csvFiles.length) {
+    if (folder) alert(t('alert.noCsvInFolder'));
+    return;
+  }
+  if (folder || csvFiles.length >= BULK_IMPORT_MIN) return importBulk(csvFiles, folder);
 
   // Register every dropped file as "loading" up front and render the sidebar
   // so the user sees spinner chips immediately — even before FileReader
@@ -193,6 +280,7 @@ async function handleFiles(files) {
 
   let lastName = null;
   const takenNames = new Set();
+  const storedNames = [];
   for (const file of csvFiles) {
     const base = baseJumpName(file);
     try {
@@ -202,6 +290,7 @@ async function handleFiles(files) {
       await storeJump(name, csv);
       if (state.compareDataCache) state.compareDataCache.delete(name);
       lastName = name;
+      storedNames.push(name);
     } catch (e) {
       // Individual file failures shouldn't block the rest of the batch.
       console.error('Failed to load', file.name, e);
@@ -216,7 +305,112 @@ async function handleFiles(files) {
   }
 
   if (lastName) selectJump(lastName);
+  if (storedNames.length && typeof warmSeasonCache === 'function') warmSeasonCache(storedNames);
 }
+
+// Large batches and folder imports. Same naming as handleFiles(), plus:
+//   - a file identical to the stored jump it resolves to is not rewritten, so
+//     re-importing a whole SD card only stores what is new or changed;
+//   - in folder mode, a CSV without GPS timestamps is skipped;
+//   - the newest flight, not the last file read, becomes the open jump;
+//   - a folder import ends with a summary toast.
+async function importBulk(csvFiles, folder) {
+  const storedCsv = new Map((await getStoredJumps()).map(j => [j.name, j.csv]));
+  state.importProgress = { done: 0, total: csvFiles.length };
+  await renderJumpList();
+  await yieldToBrowser();
+
+  const takenNames = new Set();
+  const changed = [];
+  let unchanged = 0, skipped = 0;
+  let newest = null;
+  for (const file of csvFiles) {
+    try {
+      const csv = await readFileAsText(file);
+      const date = jumpFlightDate(csv);
+      if (folder && !date) {
+        skipped++;
+      } else {
+        const name = resolveJumpName(baseJumpName(file), csv, takenNames);
+        takenNames.add(name);
+        if (storedCsv.get(name) === csv) {
+          unchanged++;
+        } else {
+          await storeJump(name, csv);
+          storedCsv.set(name, csv);
+          if (state.compareDataCache) state.compareDataCache.delete(name);
+          changed.push(name);
+        }
+        const ms = date ? date.getTime() : -Infinity;
+        if (!newest || ms >= newest.ms) newest = { name, ms };
+      }
+    } catch (e) {
+      console.error('Failed to load', file.name, e);
+      skipped++;
+    }
+    state.importProgress.done++;
+    if (state.importProgress.done % BULK_RENDER_EVERY === 0) await renderJumpList();
+    else updateImportProgressChip();
+    await yieldToBrowser();
+  }
+
+  state.importProgress = null;
+  // The list was only rebuilt every BULK_RENDER_EVERY files, and selectJump()
+  // no longer rebuilds it, so bring it up to date first.
+  await renderJumpList();
+  if (newest) await selectJump(newest.name);
+  if (folder) showImportToast(changed.length, unchanged, skipped);
+  // Score the new and changed jumps in the background, so the season view
+  // opens without a wait (warmSeasonCache in scripts/season.js).
+  if (changed.length && typeof warmSeasonCache === 'function') warmSeasonCache(changed);
+}
+
+function importProgressText() {
+  const p = state.importProgress;
+  return t('import.progress', { done: p.done, total: p.total });
+}
+
+// Updates the counting chip in place between full list renders.
+function updateImportProgressChip() {
+  const label = document.querySelector('#importProgressChip .jump-loading-name');
+  if (label && state.importProgress) label.textContent = importProgressText();
+}
+
+// ── Import summary toast ──
+// Same look and place as the undo toast; sits above it when both are up.
+const IMPORT_TOAST_MS = 8000;
+let importToastTimer = null;
+let importToastCounts = null;
+
+function showImportToast(imported, unchanged, skipped) {
+  importToastCounts = { imported, unchanged, skipped };
+  refreshImportToastLang();
+  const toast = document.getElementById('importToast');
+  toast.classList.toggle('stacked', !document.getElementById('undoToast').hidden);
+  toast.hidden = false;
+  clearTimeout(importToastTimer);
+  importToastTimer = setTimeout(hideImportToast, IMPORT_TOAST_MS);
+}
+
+function hideImportToast() {
+  clearTimeout(importToastTimer);
+  importToastCounts = null;
+  document.getElementById('importToast').hidden = true;
+}
+
+// Called from applyLanguage().
+function refreshImportToastLang() {
+  if (importToastCounts) document.getElementById('importToastText').textContent = t('import.done', importToastCounts);
+}
+
+(function initImportToast() {
+  const toast = document.getElementById('importToast');
+  document.getElementById('importToastClose').addEventListener('click', hideImportToast);
+  toast.addEventListener('mouseenter', () => clearTimeout(importToastTimer));
+  toast.addEventListener('mouseleave', () => {
+    if (importToastCounts) importToastTimer = setTimeout(hideImportToast, IMPORT_TOAST_MS);
+  });
+})();
 
 // ── Jump list rendering ──
 function makeLoadingChip(name) {
@@ -291,13 +485,31 @@ function saveCollapsedDays(set, key) {
   try { localStorage.setItem(key || COLLAPSED_DAYS_KEY, JSON.stringify([...set])); } catch (e) {}
 }
 
+// Per-year open/closed choices for the sidebar's year groups, persisted as
+// { "2025": true (collapsed) | false (open) }. A year with no choice yet
+// follows the default: the newest year open, every older year collapsed.
+const COLLAPSED_YEARS_KEY = 'flysight_collapsed_years';
+function getCollapsedYears() {
+  try {
+    const v = JSON.parse(localStorage.getItem(COLLAPSED_YEARS_KEY) || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch (e) { return {}; }
+}
+function saveCollapsedYears(map) {
+  try { localStorage.setItem(COLLAPSED_YEARS_KEY, JSON.stringify(map)); } catch (e) {}
+}
+function isYearCollapsed(map, year, newestYear) {
+  const v = map[year];
+  return typeof v === 'boolean' ? v : year !== newestYear;
+}
+
 // ── Jump list sorting ──
 // The list is always sorted by date; only the direction is user-controlled, via
 // the small sort icon in the first day header. The choice persists in a cookie
 // (1-year), mirrored to localStorage as a fallback for file:// origins that drop
 // cookies — same pattern as theme/lang.
 const JUMP_SORTS = ['date-asc', 'date-desc'];
-const DEFAULT_JUMP_SORT = 'date-asc';
+const DEFAULT_JUMP_SORT = 'date-desc';   // newest first
 
 function readJumpSort() {
   let v = null;
@@ -357,7 +569,8 @@ function jumpSortComparator(mode) {
 // (compare colors) off the stored order.
 function buildJumpDayGroups(jumps, sortMode) {
   const items = jumps.map(j => {
-    const flight = jumpFlightDate(j.csv);
+    // Index entries (getJumpIndex()) carry the date already; full rows don't.
+    const flight = j.flightDate !== undefined ? j.flightDate : jumpFlightDate(j.csv);
     return { jump: j, date: flight || (j.addedAt ? new Date(j.addedAt) : null) };
   });
   items.sort(jumpSortComparator(sortMode));
@@ -419,6 +632,52 @@ function makeJumpDayGroup(opts) {
   return { group: group, header: header, jumpsWrap: jumpsWrap };
 }
 
+// One collapsible year in the sidebar: a header line (the year, its jump
+// count, a caret) above that year's day cards. `fill(body)` builds the days;
+// it runs only once the year is open, so a folded year costs one line of DOM.
+function makeJumpYearGroup(opts) {
+  const section = document.createElement('div');
+  section.className = 'jump-year' + (opts.collapsed ? ' collapsed' : '');
+  const header = document.createElement('div');
+  header.className = 'jump-year-header';
+  header.setAttribute('aria-expanded', opts.collapsed ? 'false' : 'true');
+  const label = document.createElement('span');
+  label.className = 'jump-year-label';
+  label.textContent = String(opts.year);
+  const count = document.createElement('span');
+  count.className = 'jump-year-count';
+  count.textContent = opts.count === 1 ? t('list.yearJumpsOne') : t('list.yearJumps', { count: opts.count });
+  const toggle = document.createElement('span');
+  toggle.className = 'jump-day-toggle';
+  toggle.setAttribute('aria-hidden', 'true');
+  header.appendChild(label);
+  header.appendChild(count);
+  header.appendChild(toggle);
+
+  const body = document.createElement('div');
+  body.className = 'jump-year-days';
+  let filled = false;
+  const fillOnce = () => {
+    if (filled) return;
+    filled = true;
+    opts.fill(body);
+  };
+  if (!opts.collapsed) fillOnce();
+
+  header.addEventListener('click', function() {
+    const nowCollapsed = section.classList.toggle('collapsed');
+    header.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+    if (!nowCollapsed) fillOnce();
+    const map = getCollapsedYears();
+    map[opts.year] = nowCollapsed;
+    saveCollapsedYears(map);
+  });
+
+  section.appendChild(header);
+  section.appendChild(body);
+  return section;
+}
+
 // The date sort toggle: an arrow pointing the way the dates run (↑ oldest
 // first / ↓ newest first). With `withLabel` the direction is also spelled out
 // before the arrow (the sidebar's bar above the days), so no tooltip is needed.
@@ -450,10 +709,10 @@ const TRASH_ICON_SVG = '<svg viewBox="0 0 24 24" width="12" height="12" fill="no
 
 async function renderJumpList() {
   const list = document.getElementById('jumpList');
-  const jumps = await getStoredJumps();
+  const jumps = await getJumpIndex();
   let scores = {};
   try { scores = JSON.parse(localStorage.getItem('flysight_scores') || '{}'); } catch (e) {}
-  const hasLoading = state.loadingJumps.size > 0;
+  const hasLoading = state.loadingJumps.size > 0 || !!state.importProgress;
   document.body.classList.toggle('has-jumps', jumps.length > 0 || hasLoading);
   // Read back by the inline script after <body> to pick the dropzone size before paint.
   try { localStorage.setItem('flysight_has_jumps', jumps.length > 0 ? '1' : '0'); } catch (e) {}
@@ -477,6 +736,7 @@ async function renderJumpList() {
     }
     const chip = document.createElement('div');
     chip.className = 'jump-chip' + (j.name === state.currentJumpName ? ' active' : '');
+    chip.dataset.name = j.name;
     const score = scores[j.name];
     const scoreLabel = score ? ` <span class="score">(${score.toFixed(1)} km/h)</span>` : '';
     const safeName = j.name.replace(/'/g, "\\'");
@@ -499,7 +759,7 @@ async function renderJumpList() {
     list.appendChild(bar);
   }
 
-  groups.forEach(g => {
+  const appendDay = (target, g) => {
     const { group, header, jumpsWrap } = makeJumpDayGroup({
       date: g.date,
       dayKey: g.dayKey,
@@ -520,8 +780,29 @@ async function renderJumpList() {
     });
     header.insertBefore(del, header.querySelector('.jump-day-toggle'));
     g.items.forEach(it => appendJump(jumpsWrap, it.jump));
-    list.appendChild(group);
-  });
+    target.appendChild(group);
+  };
+
+  // Once the jumps span two or more years, the days are grouped by year, each
+  // year folding to one line. With a single year there is no year level at all.
+  // Groups are date-sorted, so each year's days are one contiguous run.
+  const yearOf = g => g.date.getUTCFullYear();
+  const years = [...new Set(groups.map(yearOf))];
+  if (years.length >= 2) {
+    const newestYear = Math.max(...years);
+    const collapsedYears = getCollapsedYears();
+    years.forEach(year => {
+      const yearDays = groups.filter(g => yearOf(g) === year);
+      list.appendChild(makeJumpYearGroup({
+        year: year,
+        count: yearDays.reduce((n, g) => n + g.items.length, 0),
+        collapsed: isYearCollapsed(collapsedYears, year, newestYear),
+        fill: body => yearDays.forEach(g => appendDay(body, g))
+      }));
+    });
+  } else {
+    groups.forEach(g => appendDay(list, g));
+  }
   // Undated jumps (unreadable CSV and no addedAt — none in practice) fall back
   // to the flat list at the bottom.
   undated.forEach(it => appendJump(list, it.jump));
@@ -533,6 +814,64 @@ async function renderJumpList() {
     if (storedNames.has(name)) return;
     list.appendChild(makeLoadingChip(name));
   });
+  if (state.importProgress) {
+    const chip = makeLoadingChip(importProgressText());
+    chip.id = 'importProgressChip';
+    list.appendChild(chip);
+  }
+}
+
+function findJumpChip(name) {
+  return Array.from(document.querySelectorAll('#jumpList .jump-chip')).find(c => c.dataset.name === name) || null;
+}
+
+// Move the highlight to the jump just opened without rebuilding the list.
+// Rebuilds only when its chip isn't there (a jump just put back by undo).
+function markActiveJumpChip(name) {
+  const chip = findJumpChip(name);
+  if (!chip) { renderJumpList(); return; }
+  document.querySelectorAll('#jumpList .jump-chip.active').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+}
+
+// Refresh one chip's score label once renderCurrentJump() has scored the jump,
+// the same "(312.4 km/h)" renderJumpList() writes.
+function updateJumpChipScore(name, score) {
+  const chip = findJumpChip(name);
+  if (!chip) return;
+  const label = chip.querySelector(':scope > span');
+  let el = label.querySelector('.score');
+  if (!score) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('span');
+    el.className = 'score';
+    label.append(' ', el);
+  }
+  el.textContent = '(' + score.toFixed(1) + ' km/h)';
+}
+
+// Open a jump picked somewhere other than the sidebar (the season graph): its
+// day and year are unfolded if collapsed, and its chip scrolled into view once
+// the list has re-rendered, so the open jump is never hidden in a folded day.
+async function openJumpFromElsewhere(name) {
+  const jump = (await getJumpIndex()).find(j => j.name === name);
+  if (!jump) return;
+  // Same day key as buildJumpDayGroups(), including its addedAt fallback.
+  const date = jump.flightDate || (jump.addedAt ? new Date(jump.addedAt) : null);
+  if (date) {
+    const collapsed = getCollapsedDays();
+    if (collapsed.delete(jumpDayKey(date))) saveCollapsedDays(collapsed);
+    // Stored as open even when the list has a single year and shows no year
+    // level: harmless, and right once a second year arrives.
+    const years = getCollapsedYears();
+    years[date.getUTCFullYear()] = false;
+    saveCollapsedYears(years);
+  }
+  const opening = selectJump(name);
+  await renderJumpList();
+  const chip = document.querySelector('#jumpList .jump-chip.active');
+  if (chip) chip.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  await opening;
 }
 
 // Bumped per selectJump() so only the latest of several quick clicks clears
@@ -545,7 +884,7 @@ const LAST_JUMP_KEY = 'flysight_last_jump';
 async function selectJump(name) {
   state.currentJumpName = name;
   try { localStorage.setItem(LAST_JUMP_KEY, name); } catch (e) {}
-  renderJumpList();
+  markActiveJumpChip(name);
   // With a jump already on screen, swap it for a same-sized scaffold first:
   // rendering takes most of a second, and until then the old jump's data stayed
   // up. The first jump of a session has nothing to keep the place of, so it
@@ -596,8 +935,7 @@ function jumpCsvFilename(name) {
 }
 
 async function downloadJump(name) {
-  const jumps = await getStoredJumps();
-  const jump = jumps.find(j => j.name === name);
+  const jump = await getJump(name);
   if (!jump) return;
   saveBlob(new Blob([jump.csv], { type: 'text/csv' }), jumpCsvFilename(name));
 }
@@ -706,7 +1044,7 @@ async function confirmRename() {
   if (!oldName) return closeRenameModal();
   if (!newName || newName === oldName) return closeRenameModal();
 
-  const jumps = await getStoredJumps();
+  const jumps = await getJumpIndex();
   if (jumps.some(j => j.name === newName)) {
     alert(t('alert.jumpExists', { name: newName }));
     return;
@@ -719,6 +1057,7 @@ async function confirmRename() {
   migrateLocalStorageKey('flysight_scores', oldName, newName);
   migrateLocalStorageKey('flysight_exit_overrides', oldName, newName);
   migrateLocalStorageKey('flysight_notes', oldName, newName);
+  migrateLocalStorageKey('flysight_season_hidden', oldName, newName);
   if (state.compareDataCache && state.compareDataCache.has(oldName)) {
     state.compareDataCache.set(newName, state.compareDataCache.get(oldName));
     state.compareDataCache.delete(oldName);
@@ -805,7 +1144,7 @@ async function undoDelete() {
   if (!u) return;
   hideUndoToast();
   // A file uploaded under the same name since the delete wins over the old copy.
-  const stored = new Set((await getStoredJumps()).map(j => j.name));
+  const stored = new Set((await getJumpIndex()).map(j => j.name));
   const rows = u.rows.filter(r => !stored.has(r.name));
   if (!rows.length) return;
   await restoreJumps(rows);
@@ -1226,7 +1565,7 @@ renderWidgetPreviews();
 (async () => {
   initJumpNotes();
   await renderJumpList();
-  const jumps = await getStoredJumps();
+  const jumps = await getJumpIndex();
   if (jumps.length === 0) return;
   // Reopen the jump from last time; fall back to the most recently added one
   // when it has since been deleted (or nothing was stored yet).

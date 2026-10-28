@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v52">
+<meta name="app-build" content="flysight-v56">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -80,6 +80,15 @@
        round pickers. Hidden until a jump is loaded (body.has-jump-loaded); the
        label collapses to icon-only below the 900px breakpoint, where the
        data-tip tooltip takes over. -->
+  <button type="button" class="picker-btn top-action" id="seasonBtn" onclick="openSeasonModal()"
+          data-tip="Season overview" data-i18n-tip="btn.seasonTip"
+          aria-label="Season overview" data-i18n-aria="btn.seasonTip">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="3 17 9 11 13 15 21 7"/>
+      <polyline points="15 7 21 7 21 13"/>
+    </svg>
+    <span class="top-action-label" data-i18n="btn.season">Season</span>
+  </button>
   <button type="button" class="picker-btn top-action" id="compareJumpsBtn" onclick="openCompareModal()"
           data-tip="Compare jumps" data-i18n-tip="btn.compareJumps"
           aria-label="Compare jumps" data-i18n-aria="btn.compareJumps">
@@ -205,19 +214,39 @@
         <button class="trim-btn secondary" onclick="renderCurrentJump('full')" data-i18n="btn.fullFlight">Full flight</button>
         <button class="trim-btn secondary icon-btn" onclick="zoomChart(1)" data-tip="Zoom in" data-i18n-tip="tip.zoomIn">+</button>
         <button class="trim-btn secondary icon-btn" onclick="zoomChart(-1)" data-tip="Zoom out" data-i18n-tip="tip.zoomOut">−</button>
+        <div class="share-wrap" id="shareWrap">
+          <button type="button" class="trim-btn secondary icon-btn share-btn" id="shareBtn" aria-haspopup="true" aria-expanded="false"
+                  data-tip="Share as image" data-i18n-tip="share.tip" aria-label="Share as image" data-i18n-aria="share.tip">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+          </button>
+          <div class="share-menu" id="shareMenu" role="dialog" aria-labelledby="shareMenuTitle" hidden>
+            <div class="share-menu-title" id="shareMenuTitle" data-i18n="share.title">Share as image</div>
+            <label class="share-option"><input type="radio" name="shareLayout" value="chart"> <span data-i18n="share.chartOnly">Chart only</span></label>
+            <label class="share-option"><input type="radio" name="shareLayout" value="stats" checked> <span data-i18n="share.chartStats">Chart with stats</span></label>
+            <div class="share-actions">
+              <button type="button" class="trim-btn" id="shareDownloadBtn" data-i18n="share.download">Download PNG</button>
+              <button type="button" class="trim-btn secondary" id="shareCopyBtn" data-i18n="share.copy">Copy image</button>
+              <button type="button" class="trim-btn secondary" id="shareNativeBtn" data-i18n="share.share" hidden>Share...</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="chart-canvas-wrap" id="chartCanvasWrap">
       <canvas id="chart"></canvas>
     </div>
-    <div class="chart-resize-handle" id="chartResizeHandle" title="Drag to resize chart height" data-i18n-tip="tip.resizeChart" data-tip="Drag to resize chart height"></div>
+    <div class="chart-resize-handle" id="chartResizeHandle" data-i18n-tip="tip.resizeChart" data-tip="Drag to resize chart height"></div>
   </div>
   <div class="map-stats-row">
     <div class="map-container" id="mapContainer">
       <div id="map"></div>
       <div class="map-offline-note" data-i18n="map.offlineTiles" hidden>Offline: showing cached map tiles only</div>
-      <div class="map-resize-handle" id="mapResizeHandle" title="Drag to resize map height" data-i18n-tip="tip.resizeMap" data-tip="Drag to resize map height"></div>
-      <div class="map-split-handle" id="mapSplitHandle" title="Drag to resize map/stats width" data-i18n-tip="tip.resizeMapWidth" data-tip="Drag to resize map/stats width"></div>
+      <div class="map-resize-handle" id="mapResizeHandle" data-i18n-tip="tip.resizeMap" data-tip="Drag to resize map height"></div>
+      <div class="map-split-handle" id="mapSplitHandle" data-i18n-tip="tip.resizeMapWidth" data-tip="Drag to resize map/stats width"></div>
     </div>
     <div class="stats-panel">
       <div class="stats" id="stats"></div>
@@ -441,6 +470,48 @@
   </div>
 </div>
 
+<!-- Season Overview Modal: one graph of every jump's score (scripts/season.js) -->
+<div class="modal-backdrop" id="seasonModal">
+  <div class="modal season-modal">
+    <div class="modal-header season-header">
+      <h2 data-i18n="season.title">Season overview</h2>
+      <div class="season-tabs" id="seasonTabs"></div>
+      <button class="modal-close" onclick="closeSeasonModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="season-bar">
+        <span class="season-summary" id="seasonSummary"></span>
+        <span class="season-hidden" id="seasonHidden" hidden></span>
+        <div class="season-legend" id="seasonLegend"></div>
+        <div class="share-wrap" id="seasonShareWrap" hidden>
+          <button type="button" class="trim-btn secondary icon-btn share-btn" id="seasonShareBtn" aria-haspopup="true" aria-expanded="false"
+                  data-tip="Share as image" data-i18n-tip="share.tip" aria-label="Share as image" data-i18n-aria="share.tip">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+          </button>
+          <div class="share-menu" id="seasonShareMenu" role="dialog" aria-labelledby="seasonShareMenuTitle" hidden>
+            <div class="share-menu-title" id="seasonShareMenuTitle" data-i18n="share.title">Share as image</div>
+            <div class="share-actions">
+              <button type="button" class="trim-btn" id="seasonShareDownloadBtn" data-i18n="share.download">Download PNG</button>
+              <button type="button" class="trim-btn secondary" id="seasonShareCopyBtn" data-i18n="share.copy">Copy image</button>
+              <button type="button" class="trim-btn secondary" id="seasonShareNativeBtn" data-i18n="share.share" hidden>Share...</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="season-chart-box">
+        <canvas id="seasonChart"></canvas>
+        <div class="season-skeleton" id="seasonSkeleton" aria-hidden="true" hidden></div>
+        <div class="season-status" id="seasonStatus" hidden></div>
+        <div class="season-status" id="seasonEmpty" hidden data-i18n="season.empty">No scored jumps in this season yet.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Compare Jumps Modal -->
 <div class="modal-backdrop" id="compareModal">
   <div class="modal compare-modal">
@@ -541,6 +612,10 @@
   <button type="button" class="undo-toast-btn" id="undoToastBtn" data-i18n="toast.undo">Undo</button>
   <button type="button" class="undo-toast-close" id="undoToastClose" data-i18n-aria="toast.dismiss" aria-label="Dismiss">&times;</button>
 </div>
+<div class="undo-toast import-toast" id="importToast" role="status" aria-live="polite" hidden>
+  <span class="undo-toast-text" id="importToastText"></span>
+  <button type="button" class="undo-toast-close" id="importToastClose" data-i18n-aria="toast.dismiss" aria-label="Dismiss">&times;</button>
+</div>
 
 <!-- App scripts — loaded in dependency order (leaf modules first) -->
 <script src="scripts/state.js"></script>
@@ -550,6 +625,7 @@
 <script src="scripts/storage.js"></script>
 <script src="scripts/csv.js"></script>
 <script src="scripts/wind.js"></script>
+<script src="scripts/analysis.js"></script>
 <script src="scripts/tiles.js"></script>
 <script src="scripts/notes.js"></script>
 <script src="scripts/zip.js"></script>
@@ -567,6 +643,8 @@
 <script src="scripts/convert.js"></script>
 <script src="scripts/video.js"></script>
 <script src="scripts/compare.js"></script>
+<script src="scripts/season.js"></script>
+<script src="scripts/share.js"></script>
 <script src="scripts/main.js"></script>
 <script src="scripts/whats-new.js"></script>
 

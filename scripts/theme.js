@@ -56,6 +56,11 @@ function applyTheme(t) {
   if (cmp && cmp.classList.contains('open') && typeof renderCompareView === 'function') {
     try { renderCompareView(); } catch (e) {}
   }
+  // And the season overview's graph and legend swatches.
+  var season = document.getElementById('seasonModal');
+  if (season && season.classList.contains('open') && typeof renderSeasonView === 'function') {
+    try { renderSeasonView(); } catch (e) {}
+  }
 }
 
 // Reads a CSS custom property from <html>. Returned strings are

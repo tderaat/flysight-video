@@ -4,7 +4,7 @@
 // Release id. Must equal the app-build meta tag in index.html and
 // CACHE_VERSION in sw.js; index.html reloads once when they disagree, which
 // means the page and its scripts came from different releases.
-var APP_BUILD = 'flysight-v52';
+var APP_BUILD = 'flysight-v56';
 
 var state = {
   // Video overlay
@@ -41,6 +41,9 @@ var state = {
   // Rendered as loading chips in the sidebar so users see progress while
   // large files are processed.
   loadingJumps: new Set(),
+  // { done, total } while a large batch (a folder import) is stored; rendered
+  // as one counting chip instead of a spinner per file. null otherwise.
+  importProgress: null,
 };
 
 // ── Video time → flight data index mapping ──

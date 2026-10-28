@@ -167,8 +167,7 @@ async function renderCurrentJump(view) {
   if (view === true) view = 'full';
   if (CHART_VIEWS.indexOf(view) < 0) view = 'scoring';
   const showFull = view === 'full';
-  const jumps = await getStoredJumps();
-  const jump = jumps.find(j => j.name === state.currentJumpName);
+  const jump = await getJump(state.currentJumpName);
   if (!jump) return;
 
   const section = document.getElementById('chartSection');
@@ -193,15 +192,7 @@ async function renderCurrentJump(view) {
   // Apply a manual exit override (set via the chart's right-click menu), snapped
   // to the nearest sample. Falls back to automatic detection when none is set.
   const exitOverrideSec = getExitOverride(state.currentJumpName);
-  let forcedExitIdx;
-  if (exitOverrideSec !== null) {
-    let best = 0, bestDiff = Infinity;
-    for (let i = 0; i < allTimes.length; i++) {
-      const d = Math.abs(allTimes[i] - exitOverrideSec);
-      if (d < bestDiff) { bestDiff = d; best = i; }
-    }
-    forcedExitIdx = best;
-  }
+  const forcedExitIdx = exitOverrideSec !== null ? nearestSampleIndex(allTimes, exitOverrideSec) : undefined;
 
   const { exitIdx, landingIdx, canopyIdx } = detectExitAndLanding(data, forcedExitIdx);
   const exitTime = allTimes[exitIdx];
@@ -399,39 +390,9 @@ async function renderCurrentJump(view) {
     ? Math.sqrt((exitVelN - wind.wN) ** 2 + (exitVelE - wind.wE) ** 2) * 3.6
     : null;
 
-  // ── FAI Speed Skydiving Performance Window ──
-  const PERF_WINDOW_HEIGHT = 7400 * 0.3048;
-  const BREAKOFF_AGL = 5600 * 0.3048;
-  const breakoffAltMSL = groundAlt + BREAKOFF_AGL;
-
-  const VELD_THRESHOLD = 10;
-  let perfWindowStartTime = null;
-  let perfWindowStartAlt = null;
-  for (let i = 1; i < times.length; i++) {
-    if (times[i] < 0) continue;
-    if (vertSpeeds[i] >= VELD_THRESHOLD) {
-      if (times[i - 1] >= 0 && vertSpeeds[i - 1] < VELD_THRESHOLD) {
-        const frac = (VELD_THRESHOLD - vertSpeeds[i - 1]) / (vertSpeeds[i] - vertSpeeds[i - 1]);
-        perfWindowStartTime = times[i - 1] + frac * (times[i] - times[i - 1]);
-        perfWindowStartAlt = altitudes[i - 1] + frac * (altitudes[i] - altitudes[i - 1]);
-      } else {
-        perfWindowStartTime = times[i];
-        perfWindowStartAlt = altitudes[i];
-      }
-      break;
-    }
-  }
-
-  const windowEndByDrop = perfWindowStartAlt !== null ? perfWindowStartAlt - PERF_WINDOW_HEIGHT : null;
-  const perfWindowEndAlt = windowEndByDrop !== null ? Math.max(windowEndByDrop, breakoffAltMSL) : breakoffAltMSL;
-
-  let perfWindowEndTime = null;
-  for (let i = 0; i < times.length; i++) {
-    if (times[i] >= 0 && altitudes[i] <= perfWindowEndAlt) {
-      perfWindowEndTime = times[i];
-      break;
-    }
-  }
+  // ── FAI Speed Skydiving Performance Window (scripts/analysis.js) ──
+  const perfWin = computePerformanceWindow(times, altitudes, vertSpeeds, groundAlt);
+  const { perfWindowStartTime, perfWindowStartAlt, perfWindowEndTime, perfWindowEndAlt } = perfWin;
 
   // Visible x range for the active preset. 'scoring' frames the part of the jump
   // that is actually scored (exit -1 s through the performance window end +3 s);
@@ -466,45 +427,8 @@ async function renderCurrentJump(view) {
   const showGroundVert = groundVertT !== null &&
     groundVertT <= perfWindowEndTime + VERTICAL_LINE_MAX_PAST_END_SEC;
 
-  // Speed score computation
-  const TIME_DELTA = 0.005;
-  const SCORE_WINDOW = 3;
-  const windowBottomAGL = BREAKOFF_AGL;
-  const fromExit = PERF_WINDOW_HEIGHT;
-  let speedScore = null;
-  let best3sStart = null;
-  let best3sEnd = null;
-  if (perfWindowStartTime !== null && perfWindowEndTime !== null) {
-    const altsAGL = altitudes.map(a => a - groundAlt);
-    const perfStartAltAGL = perfWindowStartAlt - groundAlt;
-
-    let maxScore = 0;
-    let iStart = times.length - 1;
-
-    for (let iEnd = times.length - 1; iEnd >= 0; iEnd--) {
-      const tStart = times[iEnd] - SCORE_WINDOW;
-
-      while (iStart >= 0 && times[iStart] > tStart + TIME_DELTA) {
-        iStart--;
-      }
-
-      if (iStart < 0) break;
-      if (times[iStart] < 0) break;
-
-      if (altsAGL[iEnd] < perfStartAltAGL - fromExit) continue;
-      if (altsAGL[iEnd] < windowBottomAGL) continue;
-
-      if (times[iStart] < tStart - TIME_DELTA) continue;
-
-      const score = (altsAGL[iStart] - altsAGL[iEnd]) / (times[iEnd] - times[iStart]);
-      if (score > maxScore) {
-        maxScore = score;
-        best3sStart = times[iStart];
-        best3sEnd = times[iEnd];
-      }
-    }
-    if (maxScore > 0) speedScore = maxScore * 3.6;
-  }
+  // Speed score: fastest exactly-3-second window (scripts/analysis.js).
+  const { speedScore, best3sStart, best3sEnd } = computeSpeedScore(times, altitudes, groundAlt, perfWin);
 
   // Cache speed score
   try {
@@ -512,16 +436,15 @@ async function renderCurrentJump(view) {
     scores[state.currentJumpName] = speedScore;
     localStorage.setItem('flysight_scores', JSON.stringify(scores));
   } catch (e) { /* ignore */ }
-  renderJumpList();
+  updateJumpChipScore(state.currentJumpName, speedScore);
 
   const dateStr = data[0].time ? data[0].time.split('T')[0] : '';
   document.getElementById('chartTitle').textContent = dateStr + ' — ' + state.currentJumpName;
 
   // ── Exit altitude validation ──
+  // EXIT_MIN_AGL / EXIT_MAX_AGL (13,000 / 14,000 ft) live in scripts/analysis.js.
   const exitAltAGL = exitAlt - groundAlt;
-  const EXIT_MIN_AGL = 3962;
-  const EXIT_MAX_AGL = 4267;
-  const exitValid = exitAltAGL >= EXIT_MIN_AGL && exitAltAGL <= EXIT_MAX_AGL;
+  const exitValid = isExitAltitudeValid(exitAltAGL);
   const exitTooHigh = exitAltAGL > EXIT_MAX_AGL;
 
   // A valid exit keeps the green corner badge with its hover tooltip; an invalid
@@ -656,6 +579,28 @@ async function renderCurrentJump(view) {
   const altTip = msl => t('tip.altAglMsl', {
     aglM: (msl - groundAlt).toFixed(0), aglFt: ((msl - groundAlt) * 3.28084).toFixed(0),
     mslM: msl.toFixed(0), mslFt: (msl * 3.28084).toFixed(0) });
+
+  // The same figures as plain numbers, for the share image (scripts/share.js),
+  // which draws them on a canvas instead of reading them back out of the cards.
+  state.currentJumpStats = {
+    name: state.currentJumpName,
+    utcDate: utcStart.date,
+    utcTime: utcStart.time,
+    speedScore,
+    exitAglM: exitAltAGL,
+    exitValid,
+    exitMessage,
+    maxVertKmh: maxFallSpeed * 3.6,
+    windowStartAglM: perfWindowStartAlt !== null ? perfWindowStartAlt - groundAlt : null,
+    windowEndAglM: perfWindowEndAlt !== null && isFinite(perfWindowEndAlt) ? perfWindowEndAlt - groundAlt : null,
+    avgAccelExitToEnd,
+    avgAccelBest3s,
+    maxSAcc,
+    accValid,
+    windKmh: wind ? wind.speedKmh : null,
+    windFromDeg: wind ? wind.fromDeg : null,
+    airKmh: wind ? exitAirSpeed : null
+  };
 
   document.getElementById('stats').innerHTML = `
     ${speedScoreHtml}

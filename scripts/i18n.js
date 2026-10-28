@@ -140,9 +140,18 @@ function applyLanguage(lang) {
   if (typeof refreshWhatsNewLang === 'function') {
     try { refreshWhatsNewLang(); } catch (e) {}
   }
+  // The season overview's tabs, summary line, legend and graph labels.
+  var seasonModal = document.getElementById('seasonModal');
+  if (seasonModal && seasonModal.classList.contains('open') && typeof renderSeasonView === 'function') {
+    try { renderSeasonView(); } catch (e) {}
+  }
   // A showing undo toast ("Deleted ...", text set from JS).
   if (typeof refreshUndoToastLang === 'function') {
     try { refreshUndoToastLang(); } catch (e) {}
+  }
+  // A showing folder-import summary toast.
+  if (typeof refreshImportToastLang === 'function') {
+    try { refreshImportToastLang(); } catch (e) {}
   }
   // Selected widget's config panel (rebuilt from scratch in the new language).
   if (typeof updateWidgetSettingsPanel === 'function') {

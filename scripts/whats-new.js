@@ -18,6 +18,7 @@
 //   text:   translation key for the one-line explanation
 var WHATS_NEW = [
   { id: 'feedback', added: '2026-10-27', target: '#feedbackBtn', text: 'new.feedback' },
+  { id: 'season', added: '2026-10-27', target: '#seasonBtn', text: 'new.season' },
 ];
 
 var WHATS_NEW_FIRST_SEEN_KEY = 'flysight_first_seen';
@@ -87,7 +88,7 @@ async function whatsNewHasPriorUse() {
       if (localStorage.getItem(WHATS_NEW_PRIOR_USE_KEYS[i]) != null) return true;
     }
   } catch (e) {}
-  try { return (await getStoredJumps()).length > 0; } catch (e) { return false; }
+  try { return (await getJumpIndex()).length > 0; } catch (e) { return false; }
 }
 
 // Returns this browser's first-seen date, writing it on the very first call.

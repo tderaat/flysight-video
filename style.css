@@ -32,6 +32,9 @@
   --backdrop: rgba(0, 0, 0, 0.85);
   --page-drop-bg: rgba(15, 23, 42, 0.85);
   --tooltip-bg: rgba(15, 23, 42, 0.92);
+  /* Hover bubbles ([data-tip], .exit-tooltip): a step lighter than the cards so they stand out. */
+  --tip-bg: #334155;
+  --tip-border: #475569;
   --shadow-modal: rgba(0, 0, 0, 0.5);
   --shadow-soft: rgba(0, 0, 0, 0.4);
 }
@@ -59,6 +62,8 @@
   --backdrop: rgba(15, 23, 42, 0.45);
   --page-drop-bg: rgba(248, 250, 252, 0.85);
   --tooltip-bg: rgba(255, 255, 255, 0.95);
+  --tip-bg: #ffffff;
+  --tip-border: #cbd5e1;
   --shadow-modal: rgba(15, 23, 42, 0.18);
   --shadow-soft: rgba(15, 23, 42, 0.12);
 }
@@ -233,7 +238,8 @@ body.has-jump-loaded .top-action { display: inline-flex; }
 .top-action.top-feedback { display: inline-flex; text-decoration: none; box-sizing: border-box; }
 /* The label makes the tooltip redundant on wide screens; it comes back below
    when the button collapses to icon-only (see the 900px media query). */
-.top-action[data-tip]:hover::after { display: none; }
+.top-action[data-tip]:hover::after,
+.top-action[data-tip]:hover::before { display: none; }
 
 /* ── What's new callout (scripts/whats-new.js) ──
    Absolute in the page, so it scrolls away with the top bar it points into.
@@ -281,6 +287,8 @@ body.has-jump-loaded .top-action { display: inline-flex; }
   color: var(--text-dim); font-size: 1.2rem; line-height: 1; cursor: pointer;
 }
 .undo-toast-close:hover { color: var(--text-strong); }
+/* Folder-import summary: the undo toast's look, lifted above it when both show. */
+.import-toast.stacked { bottom: 84px; }
 
 .whats-new {
   position: absolute;
@@ -403,7 +411,6 @@ body.has-jump-loaded .top-action { display: inline-flex; }
 body.has-jumps .dropzone { padding: 14px 12px; }
 body.has-jumps .dropzone h2 { font-size: 0.85rem; margin-bottom: 0; }
 body.has-jumps .dropzone p { display: none; }
-
 /* ── Page-wide drop overlay (active during file drag) ── */
 .page-drop-overlay {
   display: none; position: fixed; inset: 0; z-index: 900;
@@ -481,6 +488,37 @@ body.has-jumps .dropzone p { display: none; }
   transform: translate(-50%, calc(-50% - 1px)) rotate(45deg);
 }
 .jump-day-header:hover .jump-day-toggle { color: var(--accent); }
+/* Year groups (sidebar only, once the jumps span two or more years). An open
+   year is a plain heading with a rule above its day cards, a level above them
+   without competing; a collapsed year becomes one card-styled line. The caret
+   is the day's, rotated by the year's own state (child selectors, so a folded
+   day inside an open year keeps its own caret). */
+.jump-year { display: flex; flex-direction: column; gap: 8px; }
+.jump-year.collapsed > .jump-year-days { display: none; }
+.jump-year-days { display: flex; flex-direction: column; gap: 8px; }
+.jump-year-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-strong);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.jump-year.collapsed > .jump-year-header {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+.jump-year-count { color: var(--text-dim); font-size: 0.75rem; font-weight: 400; }
+.jump-year-header:hover > .jump-day-toggle { color: var(--accent); }
+.jump-year.collapsed > .jump-year-header > .jump-day-toggle::before {
+  transform: translate(-50%, calc(-50% - 1px)) rotate(45deg);
+}
 /* Delete-day trash button, before the caret. Shown on header hover or focus
    (always on touch screens), so a column of day headers isn't a column of bins. */
 .jump-day-delete {
@@ -632,28 +670,29 @@ body.has-jumps .dropzone p { display: none; }
   width: min(240px, 60vw);
   right: 0; left: auto; transform: none;
   text-align: left;
-  /* Above Leaflet's panes (400) and its attribution/zoom controls (1000),
-     which the bubble can hang over. */
-  z-index: 1001;
   font-style: normal;
 }
+/* The bubble's arrow stays under the button's centre. */
+.stat-info[data-tip]::before { left: auto; right: 3px; margin-left: 0; }
 /* A whole stat card carrying its own tooltip (Avg Accel Down explains itself
    in a couple of sentences). Same treatment as .stat-info: the base bubble is
-   nowrap, which sends a paragraph clean off the side of the viewport. The
-   raised z-index is what keeps it above Leaflet, whose panes sit at 400 and
-   would otherwise swallow a bubble hanging over the map. */
+   nowrap, which sends a paragraph clean off the side of the viewport. */
 .stat-card[data-tip]::after {
   white-space: normal;
   width: min(260px, 62vw);
   right: 0; left: auto; transform: none;
   text-align: left;
-  z-index: 1001;
 }
 /* One-line tooltips on a single figure (AGL/MSL altitudes): right-anchored for
-   the same reason, and above the map's controls. */
+   the same reason. */
 .stat-value[data-tip]::after, .stat-detail[data-tip]::after {
   right: 0; left: auto; transform: none;
-  z-index: 1001;
+}
+/* These elements can be wider than their right-anchored bubble, so a centred
+   arrow could land outside it: pinned near the right edge instead. */
+.stat-card[data-tip]::before,
+.stat-value[data-tip]::before, .stat-detail[data-tip]::before {
+  left: auto; right: 14px; margin-left: 0;
 }
 .chart-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 canvas { width: 100% !important; }
@@ -829,7 +868,15 @@ canvas { width: 100% !important; }
   .top-action { width: 34px; padding: 0; border-radius: 50%; gap: 0; }
   .top-action .top-action-label { display: none; }
   .top-action[data-tip]:hover::after { display: block; bottom: auto; top: calc(100% + 8px); }
-  .header { padding-right: 220px; margin-bottom: 0; }
+  /* The bubble drops below the button, so its arrow sits on top and points up. */
+  .top-action[data-tip]:hover::before {
+    display: block; bottom: auto; top: calc(100% + 4px);
+    border: 0; border-left: 1px solid var(--tip-border); border-top: 1px solid var(--tip-border);
+  }
+  /* Six icon circles (34 px, 6 px apart) are 234 px wide; with the bar 16 px
+     from the edge the title needs 252 px kept clear. */
+  .top-pickers { gap: 6px; right: 16px; }
+  .header { padding-right: 252px; margin-bottom: 0; }
   .header h1 { font-size: 1.15rem; }
 }
 .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -856,7 +903,8 @@ canvas { width: 100% !important; }
   display: inline-flex; vertical-align: middle;
   width: 22px; height: 22px; margin-left: 4px;
 }
-.exit-badge.badge-inline .exit-tooltip { top: 28px; }
+.exit-badge.badge-inline .exit-tooltip { top: 30px; }
+.exit-badge.badge-inline .exit-tooltip::before { right: 5.5px; }
 .stat-detail.dim { opacity: 0.5; font-size: 0.8rem; font-weight: 400; margin-top: 2px; }
 .stat-detail-label { font-size: 0.7rem; font-weight: 400; opacity: 0.6; margin-right: 4px; text-transform: uppercase; }
 
@@ -875,14 +923,24 @@ canvas { width: 100% !important; }
 }
 .exit-tooltip {
   display: none;
-  position: absolute; top: 32px; right: 0;
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  position: absolute; top: 34px; right: 0;
+  background: var(--tip-bg); border: 1px solid var(--tip-border); border-radius: 8px;
   padding: 8px 12px; font-size: 0.78rem; font-weight: 400;
-  color: var(--text-mid); white-space: nowrap; z-index: 10;
+  color: var(--text-mid); white-space: nowrap; z-index: 5000;
   box-shadow: 0 4px 12px var(--shadow-soft);
   line-height: 1.5;
 }
 .exit-badge:hover .exit-tooltip { display: block; }
+/* Arrow pointing up at the badge's centre (13 px from the right edge). Same
+   construction as the [data-tip] arrow below. */
+.exit-tooltip::before {
+  content: '';
+  position: absolute; top: -5px; right: 7.5px;
+  width: 8px; height: 8px;
+  background: var(--tip-bg);
+  border-left: 1px solid var(--tip-border); border-top: 1px solid var(--tip-border);
+  transform: rotate(45deg);
+}
 
 /* Permanent red warning line for an invalid (too high / too low) exit altitude.
    Sits between the card's label and its value, replacing the corner badge. */
@@ -914,14 +972,41 @@ canvas { width: 100% !important; }
 [data-tip]::after {
   content: attr(data-tip);
   display: none;
-  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: var(--tip-bg); border: 1px solid var(--tip-border); border-radius: 8px;
   padding: 8px 12px; font-size: 0.78rem; font-weight: 400;
-  color: var(--text-mid); white-space: nowrap; z-index: 20;
+  color: var(--text-mid); white-space: nowrap; z-index: 5000;
   box-shadow: 0 4px 12px var(--shadow-soft);
   line-height: 1.5; pointer-events: none;
 }
 [data-tip]:hover::after { display: block; }
+/* The bubble's arrow, pointing down at the element's centre: a square turned
+   45°, bordered on its two outer sides and centred on the bubble's bottom
+   border, which it covers (z-index one above the bubble) so the two read as
+   one shape. The resize handles already draw their grip with ::before, so
+   they keep a plain bubble; :where() keeps that exclusion at zero specificity,
+   so the variants elsewhere (.stat-info, .top-action, ...) win without
+   depending on source order. */
+[data-tip]:not(:where(.chart-resize-handle, .map-resize-handle, .map-split-handle))::before {
+  content: '';
+  display: none;
+  position: absolute; bottom: calc(100% + 4px); left: 50%; margin-left: -4.5px;
+  width: 8px; height: 8px;
+  background: var(--tip-bg);
+  border-right: 1px solid var(--tip-border); border-bottom: 1px solid var(--tip-border);
+  transform: rotate(45deg);
+  z-index: 5001; pointer-events: none;
+}
+[data-tip]:not(:where(.chart-resize-handle, .map-resize-handle, .map-split-handle)):hover::before { display: block; }
+/* Tooltips draw above everything: 5000 clears Leaflet's panes and controls
+   (up to 1000), the modals (1000), the drop overlays (1100) and the chart's
+   context menu (1200). A bubble can only rise as high as its element's own
+   stacking context, so the hovered element is lifted to the same layer (the
+   resize handles, for one, sit at z-index 1), and so is the top-right button
+   bar (50) and the exit badge while hovered. */
+[data-tip]:hover,
+.top-pickers:hover,
+.exit-badge:hover { z-index: 5000; }
 
 /* ── Map ── */
 .map-container { background: var(--bg-card); border-radius: 12px; padding: 10px; position: relative; }
@@ -963,6 +1048,35 @@ canvas { width: 100% !important; }
 .trim-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .trim-btn.icon-btn { padding: 6px 10px; min-width: 32px; font-size: 1rem; line-height: 1; }
 
+/* ── Share as image: chart-header button and its menu (scripts/share.js) ── */
+.share-wrap { position: relative; display: flex; }
+.share-btn { display: flex; align-items: center; justify-content: center; }
+.share-btn svg { display: block; }
+/* No tooltip while the menu is open: it would sit on top of it. */
+.share-wrap.open .share-btn[data-tip]::after,
+.share-wrap.open .share-btn[data-tip]::before { display: none; }
+.share-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 1001;
+  width: 230px; box-sizing: border-box; padding: 12px;
+  background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 10px;
+  box-shadow: 0 8px 24px var(--shadow-modal);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.share-menu[hidden] { display: none; }
+.share-menu-title {
+  font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.05em; margin-bottom: 2px;
+}
+.share-option { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text); cursor: pointer; }
+.share-option input { accent-color: var(--accent); margin: 0; }
+.share-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.share-actions .trim-btn { width: 100%; }
+.share-wrap[hidden] { display: none; }
+/* The season menu has no layout choice, so its buttons follow the title directly. */
+.season-bar .share-actions { margin-top: 0; }
+/* The bar's items sit on a text baseline; the button centres on the legend. */
+.season-bar .share-wrap { align-self: center; }
+
 /* ── Chart right-click context menu ── */
 .chart-context-menu {
   position: fixed; z-index: 1200;
@@ -1002,6 +1116,72 @@ canvas { width: 100% !important; }
 }
 .modal-close:hover { color: var(--text-strong); }
 .modal-body { padding: 24px; }
+
+/* ── Season overview modal ── */
+.modal.season-modal { width: 95%; max-width: 1280px; }
+.modal-header.season-header { justify-content: flex-start; gap: 20px; flex-wrap: wrap; }
+.season-header .modal-close { margin-left: auto; }
+.season-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.season-bar {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px;
+  margin-bottom: 12px; font-size: 0.85rem;
+}
+.season-summary { color: var(--text-strong); font-weight: 600; }
+.season-hidden { color: var(--text-muted); font-size: 0.85rem; }
+.season-hidden[hidden] { display: none; }
+.season-show-all {
+  background: none; border: none; padding: 0; font: inherit; color: var(--accent);
+  cursor: pointer; text-decoration: underline;
+}
+.season-show-all:hover { color: var(--text-strong); }
+.season-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-left: auto; font-size: 0.8rem; color: var(--text-muted); }
+.season-legend-swatch { display: inline-block; margin-right: 6px; vertical-align: middle; }
+.season-legend-item.dot .season-legend-swatch { width: 10px; height: 10px; border-radius: 50%; background: var(--sw); }
+.season-legend-item.dash .season-legend-swatch { width: 16px; border-top: 2px dashed var(--sw); }
+.season-legend-item.line .season-legend-swatch { width: 16px; border-top: 2px solid var(--sw); }
+/* Legend items are toggles (button reset; struck through and faded when off). */
+.season-legend-item {
+  background: none; border: none; padding: 2px 4px; margin: -2px -4px;
+  font: inherit; color: inherit; cursor: pointer; border-radius: 4px;
+}
+.season-legend-item:hover { color: var(--text-strong); }
+.season-legend-item:focus-visible { outline: 1px solid var(--accent); }
+.season-legend-item.off { color: var(--text-dim); text-decoration: line-through; }
+.season-legend-item.off .season-legend-swatch { opacity: 0.45; }
+.season-chart-box { position: relative; height: min(60vh, 520px); min-height: 280px; }
+.season-status {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 0.9rem; background: var(--bg-card);
+}
+.season-status[hidden] { display: none; }
+/* Progress line over the loading skeleton: a pill, not a full cover. */
+#seasonStatus { inset: auto 0 12px 0; background: none; z-index: 1; }
+
+/* Loading skeleton: shown from open until the first render (setSeasonLoading). */
+.season-skeleton {
+  position: absolute; inset: 0 0 28px 48px;
+  background: repeating-linear-gradient(to bottom,
+    transparent 0, transparent calc(25% - 1px), rgba(148,163,184,0.08) calc(25% - 1px), rgba(148,163,184,0.08) 25%);
+}
+.season-skeleton[hidden] { display: none; }
+.season-skeleton span {
+  position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%; background: var(--border);
+  animation: season-skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes season-skeleton-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .season-skeleton span { animation: none; opacity: 0.6; } }
+.season-modal.loading .season-summary,
+.season-modal.loading .season-hidden,
+.season-modal.loading .season-legend,
+.season-modal.loading .season-tabs,
+.season-modal.loading .share-wrap { visibility: hidden; }
+.season-modal.loading .season-bar::before {
+  content: ''; width: 90px; height: 12px; border-radius: 6px; background: var(--border);
+  animation: season-skeleton-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .season-modal.loading .season-bar::before { animation: none; } }
+@media (max-width: 900px) { .season-legend { margin-left: 0; } }
 
 /* ── Rename jump modal ── */
 .modal.rename-modal { width: 90%; max-width: 420px; }

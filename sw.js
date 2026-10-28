@@ -26,7 +26,7 @@
 // SRI hash. Being cross-origin it is not intercepted here either, and the CDN
 // serves it immutable, so the browser cache keeps it between sessions.
 
-const CACHE_VERSION = 'flysight-v52';
+const CACHE_VERSION = 'flysight-v56';
 
 // A connection that is up but barely working (a weak signal at the drop zone)
 // would otherwise keep the app waiting; after this long the cache answers.
@@ -66,6 +66,7 @@ const PRECACHE = [
   'scripts/storage.js',
   'scripts/csv.js',
   'scripts/wind.js',
+  'scripts/analysis.js',
   'scripts/tiles.js',
   'scripts/notes.js',
   'scripts/zip.js',
@@ -83,6 +84,10 @@ const PRECACHE = [
   'scripts/convert.js',
   'scripts/video.js',
   'scripts/compare.js',
+  'scripts/season.js',
+  'scripts/share.js',
+  // Loaded by season.js as a Web Worker, not by index.html
+  'scripts/analysis-worker.js',
   'scripts/main.js',
   'scripts/whats-new.js',
 ];
