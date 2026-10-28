@@ -16,13 +16,15 @@ state.compareVertSpeedChart = null;
 state.compareDiveAngleChart = null;
 state.compareAccelDownChart = null;
 state.compareJumpColors = new Map(); // name -> hsl color, rebuilt on each list render
-// Every jump in the list whose data can actually be built, i.e. the set the
-// global select-all box toggles. Rebuilt on each list render.
-state.compareSelectableNames = [];
 // Jump names in the order the list renders them, so the tables' baseline row
 // and the graphs' dataset order follow the display order rather than the order
-// the user happened to tick things in.
+// the user happened to tick things in. Also the set the global select-all box
+// toggles (minus the jumps found unusable, see compareUsable()).
 state.compareJumpOrder = [];
+// Names still waiting for their CSV to be read and parsed (queueCompareData()),
+// and whether the loop draining them is running.
+state.compareLoadQueue = [];
+state.compareLoading = false;
 // Random hue offset, stable for the session so colors don't flicker between
 // re-opens but feel different each page load.
 state.compareHueOffset = Math.random() * 360;
@@ -67,9 +69,10 @@ const COMPARE_CLIP_TAIL_SEC = 3;
 
 const COMPARE_TABLE_TIMES = [0, 5, 10, 15, 20, 25, 30];
 
-// Collapse state for this list's day groups — deliberately separate from the
-// sidebar's 'flysight_collapsed_days'.
+// Collapse state for this list's day and year groups — deliberately separate
+// from the sidebar's 'flysight_collapsed_days' / 'flysight_collapsed_years'.
 const COMPARE_COLLAPSED_DAYS_KEY = 'flysight_compare_collapsed_days';
+const COMPARE_COLLAPSED_YEARS_KEY = 'flysight_compare_collapsed_years';
 
 function rebuildCompareColorMap(jumps) {
   state.compareJumpColors = new Map();
@@ -189,13 +192,68 @@ function buildCompareJumpData(jump) {
   };
 }
 
-function getCompareData(jump) {
-  if (state.compareDataCache.has(jump.name)) {
-    return state.compareDataCache.get(jump.name);
+// A jump is usable until its data has been built and came back null. Jumps not
+// loaded yet count as usable, so the list can render from the jump index alone
+// without reading a single CSV.
+function compareUsable(name) {
+  return state.compareDataCache.get(name) !== null;
+}
+
+// Read and parse the given jumps in the background, one per task, so the modal
+// opens at once and stays responsive however many jumps are selected. Already
+// built (or known unusable) jumps are skipped. The views refresh as data
+// arrives, at most every COMPARE_LOAD_RENDER_MS, and once more at the end.
+const COMPARE_LOAD_RENDER_MS = 400;
+function queueCompareData(names) {
+  names.forEach(name => {
+    if (!state.compareDataCache.has(name) && state.compareLoadQueue.indexOf(name) < 0) {
+      state.compareLoadQueue.push(name);
+    }
+  });
+  if (!state.compareLoading && state.compareLoadQueue.length) drainCompareLoadQueue();
+}
+
+async function drainCompareLoadQueue() {
+  state.compareLoading = true;
+  let lastRender = performance.now();
+  try {
+    while (state.compareLoadQueue.length) {
+      const name = state.compareLoadQueue.shift();
+      // Deselected (or the modal closed) while waiting: leave it for later.
+      if (!state.compareSelected.has(name) || state.compareDataCache.has(name)) continue;
+      let built = null;
+      try {
+        const jump = await getJump(name);
+        built = jump ? buildCompareJumpData(jump) : null;
+      } catch (e) { built = null; }
+      // A delete or reupload during the await already dropped this name.
+      if (!state.compareSelected.has(name)) continue;
+      state.compareDataCache.set(name, built);
+      if (built === null) markCompareRowUnusable(name);
+      if (performance.now() - lastRender > COMPARE_LOAD_RENDER_MS) {
+        refreshCompareSelectionUi();
+        lastRender = performance.now();
+      }
+      // Yield so a click or a frame can get in between two parses.
+      await new Promise(r => setTimeout(r, 0));
+    }
+  } finally {
+    state.compareLoading = false;
   }
-  const built = buildCompareJumpData(jump);
-  state.compareDataCache.set(jump.name, built);
-  return built;
+  if (document.getElementById('compareModal').classList.contains('open')) {
+    refreshCompareSelectionUi();
+  }
+}
+
+// A jump whose data turned out unusable: drop it from the selection and grey
+// its row out, the way the list used to draw it up front.
+function markCompareRowUnusable(name) {
+  state.compareSelected.delete(name);
+  const listEl = document.getElementById('compareJumpsList');
+  if (!listEl) return;
+  const row = Array.from(listEl.querySelectorAll('.compare-jump-row')).find(r => r.dataset.jump === name);
+  if (row) applyCompareRowUsable(row, name, false);
+  syncCompareGroupCheckboxes();
 }
 
 async function openCompareModal() {
@@ -206,6 +264,7 @@ async function openCompareModal() {
   await syncCompareFromSidebar();
   await renderCompareJumpsList();
   renderCompareView();
+  queueCompareData(Array.from(state.compareSelected));
   // If the modal reopens on the 3D view (e.g. user closed and reopened),
   // setCompareView won't run its view-enter logic, so kick off rotation here.
   if (state.compareActiveView === 'view3d' && !state.compare3dAnimating) {
@@ -213,28 +272,36 @@ async function openCompareModal() {
   }
 }
 
-// Opening the modal mirrors the sidebar: the same days are collapsed, and the
-// selection is every usable jump in a day that is open there. A day the user
-// has folded away in the sidebar starts collapsed and unticked here. Changes
-// made inside the modal stay in the modal until the next open.
+// Opening the modal mirrors the sidebar: the same days and years are
+// collapsed, and the selection is every usable jump in a day that is open
+// there (inside an open year, once the list has year groups). A day or year
+// the user has folded away in the sidebar starts collapsed and unticked here.
+// Changes made inside the modal stay in the modal until the next open.
 async function syncCompareFromSidebar() {
-  const jumps = await getStoredJumps();
+  const jumps = await getJumpIndex();
   const sidebarCollapsed = getCollapsedDays();
+  const sidebarYears = getCollapsedYears();
   saveCollapsedDays(sidebarCollapsed, COMPARE_COLLAPSED_DAYS_KEY);
+  saveCollapsedYears(sidebarYears, COMPARE_COLLAPSED_YEARS_KEY);
 
   const { groups, undated } = buildJumpDayGroups(jumps, readJumpSort());
+  const years = [...new Set(groups.map(g => g.date.getUTCFullYear()))];
+  const newestYear = Math.max(...years);
+  const yearOpen = y => years.length < 2 || !isYearCollapsed(sidebarYears, y, newestYear);
   state.compareSelected.clear();
   const select = it => {
-    if (getCompareData(it.jump) !== null) state.compareSelected.add(it.jump.name);
+    if (compareUsable(it.jump.name)) state.compareSelected.add(it.jump.name);
   };
   groups.forEach(g => {
-    if (!sidebarCollapsed.has(g.dayKey)) g.items.forEach(select);
+    if (yearOpen(g.date.getUTCFullYear()) && !sidebarCollapsed.has(g.dayKey)) g.items.forEach(select);
   });
   undated.forEach(select);
 }
 
 function closeCompareModal() {
   document.getElementById('compareModal').classList.remove('open');
+  // Nothing is selected-and-waiting once closed; the next open queues afresh.
+  state.compareLoadQueue = [];
   if (state.compareMapInstance) {
     state.compareMapInstance.remove();
     state.compareMapInstance = null;
@@ -296,11 +363,16 @@ function setCompareView(view) {
 }
 
 function renderCompareView() {
-  // Empty-state placeholder is shared across all six views.
+  // Empty-state placeholder is shared across all views. While the selection
+  // is still loading it says so, rather than asking for a selection.
   const emptyEl = document.getElementById('compareEmpty');
   const hasSelection = state.compareSelected.size > 0
     && Array.from(state.compareSelected).some(n => state.compareDataCache.get(n));
   if (!hasSelection) {
+    const waiting = Array.from(state.compareSelected).filter(n => !state.compareDataCache.has(n)).length;
+    emptyEl.textContent = waiting
+      ? t('compare.loading', { done: state.compareSelected.size - waiting, total: state.compareSelected.size })
+      : t('compare.empty');
     emptyEl.classList.remove('hidden');
   } else {
     emptyEl.classList.add('hidden');
@@ -318,9 +390,12 @@ function renderCompareView() {
   }
 }
 
+// Built from the jump index (name, upload time, flight date), never from the
+// CSVs: reading every stored CSV, and parsing each one to find out whether it
+// could be compared, is what used to make opening this modal slow.
 async function renderCompareJumpsList() {
   const listEl = document.getElementById('compareJumpsList');
-  const jumps = await getStoredJumps();
+  const jumps = await getJumpIndex();
   rebuildCompareColorMap(jumps);
 
   let scores = {};
@@ -336,9 +411,7 @@ async function renderCompareJumpsList() {
   }
 
   listEl.innerHTML = '';
-  state.compareSelectableNames = jumps
-    .filter(j => getCompareData(j) !== null)
-    .map(j => j.name);
+  state.compareJumpOrder = [];
   if (jumps.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'compare-jump-row disabled';
@@ -350,15 +423,18 @@ async function renderCompareJumpsList() {
     return;
   }
 
-  // Same day grouping as the sidebar list (shared helpers in main.js), with its
-  // own collapse state so collapsing a day here doesn't disturb the sidebar.
+  // Same day and year grouping as the sidebar list (shared helpers in
+  // main.js), with its own collapse state so folding a day or year here
+  // doesn't disturb the sidebar.
   const sortMode = readJumpSort();
   const { groups, undated } = buildJumpDayGroups(jumps, sortMode);
   const collapsed = getCollapsedDays(COMPARE_COLLAPSED_DAYS_KEY);
-  state.compareJumpOrder = [];
+  // List order, for every jump, including those in a year not built yet.
+  groups.forEach(g => g.items.forEach(it => state.compareJumpOrder.push(it.jump.name)));
+  undated.forEach(it => state.compareJumpOrder.push(it.jump.name));
   setCompareSortToggle(sortMode);
 
-  groups.forEach(g => {
+  const appendDay = (target, g) => {
     const { group, header, jumpsWrap } = makeJumpDayGroup({
       date: g.date,
       dayKey: g.dayKey,
@@ -369,41 +445,63 @@ async function renderCompareJumpsList() {
     // Select-all sits left of the date. The sort toggle is in the select-all
     // bar above the list, not in the first header — the direction applies to
     // the whole list, so sitting inside one day read as that day's setting.
-    const dayCb = makeCompareDaySelectAll(group, g.items);
+    const dayCb = makeCompareGroupSelectAll(group, g.items.map(it => it.jump.name), t('compare.selectDay'));
     header.insertBefore(dayCb, header.firstChild);
     g.items.forEach(it => jumpsWrap.appendChild(makeCompareJumpRow(it.jump, scores)));
-    listEl.appendChild(group);
+    target.appendChild(group);
     // indeterminate must be set after the node is live, and always after
     // .checked, which clears it.
     syncCompareDayCheckbox(group);
-  });
+  };
+
+  // Year groups exactly when the sidebar has them: two or more years. A
+  // folded year builds its days only when opened (makeJumpYearGroup()).
+  const yearOf = g => g.date.getUTCFullYear();
+  const years = [...new Set(groups.map(yearOf))];
+  if (years.length >= 2) {
+    const newestYear = Math.max(...years);
+    const collapsedYears = getCollapsedYears(COMPARE_COLLAPSED_YEARS_KEY);
+    years.forEach(year => {
+      const yearDays = groups.filter(g => yearOf(g) === year);
+      const section = makeJumpYearGroup({
+        year: year,
+        count: yearDays.reduce((n, g) => n + g.items.length, 0),
+        collapsed: isYearCollapsed(collapsedYears, year, newestYear),
+        storageKey: COMPARE_COLLAPSED_YEARS_KEY,
+        fill: body => yearDays.forEach(g => appendDay(body, g))
+      });
+      const names = [];
+      yearDays.forEach(g => g.items.forEach(it => names.push(it.jump.name)));
+      const header = section.querySelector('.jump-year-header');
+      header.insertBefore(makeCompareGroupSelectAll(section, names, t('compare.selectYear')), header.firstChild);
+      listEl.appendChild(section);
+      syncCompareDayCheckbox(section);
+    });
+  } else {
+    groups.forEach(g => appendDay(listEl, g));
+  }
   // Undated jumps (unreadable CSV and no addedAt) fall back to a flat list.
   undated.forEach(it => listEl.appendChild(makeCompareJumpRow(it.jump, scores)));
   syncCompareSelectAll();
 }
 
 // One jump row: checkbox, color swatch, name (+ speed score when known).
-// Rows for jumps whose data can't be built are disabled.
+// Rows for jumps whose data turned out unusable are disabled.
 function makeCompareJumpRow(j, scores) {
-  const isSelected = state.compareSelected.has(j.name);
-  const built = getCompareData(j);
-  state.compareJumpOrder.push(j.name);
-
   const row = document.createElement('label');
-  row.className = 'compare-jump-row' + (built === null ? ' disabled' : '');
+  row.className = 'compare-jump-row';
   row.dataset.jump = j.name;
 
   const cb = document.createElement('input');
   cb.type = 'checkbox';
-  cb.checked = isSelected && built !== null;
-  cb.disabled = built === null;
+  cb.checked = state.compareSelected.has(j.name);
   cb.addEventListener('change', () => {
     if (cb.checked) state.compareSelected.add(j.name);
     else state.compareSelected.delete(j.name);
     applyCompareRowVisual(row, j.name, cb.checked);
-    // Ticking one jump can flip its day header to indeterminate.
-    const group = row.closest('.jump-day');
-    if (group) syncCompareDayCheckbox(group);
+    // Ticking one jump can flip its day and year headers to indeterminate.
+    syncCompareGroupCheckboxes();
+    if (cb.checked) queueCompareData([j.name]);
     refreshCompareSelectionUi();
   });
 
@@ -412,23 +510,33 @@ function makeCompareJumpRow(j, scores) {
 
   const name = document.createElement('span');
   name.className = 'compare-jump-name';
+  name.textContent = j.name;
   const score = scores[j.name];
-  const baseName = built === null ? j.name + ' ' + t('compare.insufficient') : j.name;
-  if (score && built !== null) {
-    name.textContent = baseName + ' ';
+  if (score) {
+    name.appendChild(document.createTextNode(' '));
     const scoreEl = document.createElement('span');
     scoreEl.className = 'score';
     scoreEl.textContent = '(' + score.toFixed(1) + ' km/h)';
     name.appendChild(scoreEl);
-  } else {
-    name.textContent = baseName;
   }
 
   row.appendChild(cb);
   row.appendChild(swatch);
   row.appendChild(name);
   applyCompareRowVisual(row, j.name, cb.checked);
+  if (!compareUsable(j.name)) applyCompareRowUsable(row, j.name, false);
   return row;
+}
+
+// Grey a row out once its jump turns out to have no usable data.
+function applyCompareRowUsable(row, name, usable) {
+  if (usable) return;
+  row.classList.add('disabled');
+  const cb = row.querySelector('input[type="checkbox"]');
+  if (cb) { cb.checked = false; cb.disabled = true; }
+  const nameEl = row.querySelector('.compare-jump-name');
+  if (nameEl) nameEl.textContent = name + ' ' + t('compare.insufficient');
+  applyCompareRowVisual(row, name, false);
 }
 
 // The swatch shows a jump's track color only while it's selected. Shared by the
@@ -445,35 +553,35 @@ function applyCompareRowVisual(rowEl, name, on) {
   }
 }
 
-// Tri-state select-all for one day: checked when every selectable jump that day
-// is selected, indeterminate when only some are. Days whose jumps all lack
-// usable data get a disabled box.
-function makeCompareDaySelectAll(groupEl, items) {
+// Tri-state select-all for one day or one year: checked when every usable jump
+// in it is selected, indeterminate when only some are. Groups whose jumps all
+// turned out unusable get a disabled box. The group keeps its names, not just
+// its rows, since a folded year has no rows yet.
+function makeCompareGroupSelectAll(groupEl, names, tip) {
   const cb = document.createElement('input');
   cb.type = 'checkbox';
   cb.className = 'compare-day-select';
-  const tip = t('compare.selectDay');
   cb.setAttribute('data-tip', tip);
   cb.setAttribute('aria-label', tip);
 
-  const selectable = items
-    .filter(it => getCompareData(it.jump) !== null)
-    .map(it => it.jump.name);
-  groupEl._compareSelectable = selectable;
+  groupEl._compareNames = names;
   groupEl._compareDayCb = cb;
-  cb.disabled = selectable.length === 0;
 
-  // The header's own click handler collapses the day — this must not.
+  // The header's own click handler collapses the group — this must not.
   cb.addEventListener('click', e => e.stopPropagation());
   cb.addEventListener('change', () => setCompareDaySelection(groupEl, cb.checked));
   return cb;
 }
 
-// Select or deselect a whole day, updating its rows in place rather than
-// re-rendering the list: keeps the list's scroll position, avoids an IndexedDB
-// round trip per click, and avoids re-entering an async render from a handler.
+function compareGroupSelectable(groupEl) {
+  return (groupEl._compareNames || []).filter(compareUsable);
+}
+
+// Select or deselect a whole day or year, updating its rows in place rather
+// than re-rendering the list: keeps the list's scroll position, and avoids
+// re-entering an async render from a handler.
 function setCompareDaySelection(groupEl, on) {
-  const selectable = groupEl._compareSelectable || [];
+  const selectable = compareGroupSelectable(groupEl);
   selectable.forEach(name => {
     if (on) state.compareSelected.add(name);
     else state.compareSelected.delete(name);
@@ -485,18 +593,26 @@ function setCompareDaySelection(groupEl, on) {
     if (rowCb) rowCb.checked = on;
     applyCompareRowVisual(row, name, on);
   });
-  syncCompareDayCheckbox(groupEl);
+  // A day box can change its year's, and a year box every day's inside it.
+  syncCompareGroupCheckboxes();
+  if (on) queueCompareData(selectable);
   refreshCompareSelectionUi();
 }
 
-// Recompute one day header checkbox from the live selection.
+// Recompute one day or year header checkbox from the live selection.
 function syncCompareDayCheckbox(groupEl) {
   const cb = groupEl._compareDayCb;
   if (!cb) return;
-  const selectable = groupEl._compareSelectable || [];
+  const selectable = compareGroupSelectable(groupEl);
   const on = selectable.filter(n => state.compareSelected.has(n)).length;
+  cb.disabled = selectable.length === 0;
   cb.checked = selectable.length > 0 && on === selectable.length;
   cb.indeterminate = on > 0 && on < selectable.length;
+}
+
+function syncCompareGroupCheckboxes() {
+  const listEl = document.getElementById('compareJumpsList');
+  if (listEl) listEl.querySelectorAll('.jump-day, .jump-year').forEach(syncCompareDayCheckbox);
 }
 
 // Mount (or clear, with a null mode) the date sort toggle in the select-all
@@ -509,10 +625,16 @@ function setCompareSortToggle(sortMode) {
   if (sortMode) slot.appendChild(makeJumpSortToggle(sortMode));
 }
 
-// Select or deselect every jump in the list, across all days. Same in-place
-// approach as the per-day box, for the same reasons.
+// Every jump the global select-all box toggles: the whole list, minus the
+// jumps already found unusable.
+function compareSelectableNames() {
+  return (state.compareJumpOrder || []).filter(compareUsable);
+}
+
+// Select or deselect every jump in the list, across all days and years. Same
+// in-place approach as the per-group box, for the same reasons.
 function setCompareAllSelection(on) {
-  const selectable = state.compareSelectableNames || [];
+  const selectable = compareSelectableNames();
   selectable.forEach(name => {
     if (on) state.compareSelected.add(name);
     else state.compareSelected.delete(name);
@@ -526,17 +648,18 @@ function setCompareAllSelection(on) {
       if (rowCb) rowCb.checked = on;
       applyCompareRowVisual(row, name, on);
     });
-    listEl.querySelectorAll('.jump-day').forEach(syncCompareDayCheckbox);
   }
+  syncCompareGroupCheckboxes();
+  if (on) queueCompareData(selectable);
   refreshCompareSelectionUi();
 }
 
-// Recompute the global select-all box (tri-state, like the per-day ones) and
+// Recompute the global select-all box (tri-state, like the per-group ones) and
 // its "selected / total" counter from the live selection.
 function syncCompareSelectAll() {
   const cb = document.getElementById('compareSelectAll');
   const countEl = document.getElementById('compareSelectCount');
-  const selectable = state.compareSelectableNames || [];
+  const selectable = compareSelectableNames();
   const on = selectable.filter(n => state.compareSelected.has(n)).length;
   if (cb) {
     cb.disabled = selectable.length === 0;
@@ -555,7 +678,8 @@ function refreshCompareSelectionUi() {
 }
 
 // Selected jumps in list order (not the order they were ticked in), so the
-// tables' baseline row and the graphs' dataset order are deterministic.
+// tables' baseline row and the graphs' dataset order are deterministic. Jumps
+// still loading are left out until their data arrives.
 function getSelectedCompareEntries() {
   const order = state.compareJumpOrder || [];
   const entries = [];

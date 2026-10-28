@@ -485,18 +485,20 @@ function saveCollapsedDays(set, key) {
   try { localStorage.setItem(key || COLLAPSED_DAYS_KEY, JSON.stringify([...set])); } catch (e) {}
 }
 
-// Per-year open/closed choices for the sidebar's year groups, persisted as
+// Per-year open/closed choices for a list's year groups, persisted as
 // { "2025": true (collapsed) | false (open) }. A year with no choice yet
 // follows the default: the newest year open, every older year collapsed.
+// The key is a parameter for the same reason as the day state: the compare
+// modal's list keeps its own.
 const COLLAPSED_YEARS_KEY = 'flysight_collapsed_years';
-function getCollapsedYears() {
+function getCollapsedYears(key) {
   try {
-    const v = JSON.parse(localStorage.getItem(COLLAPSED_YEARS_KEY) || '{}');
+    const v = JSON.parse(localStorage.getItem(key || COLLAPSED_YEARS_KEY) || '{}');
     return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   } catch (e) { return {}; }
 }
-function saveCollapsedYears(map) {
-  try { localStorage.setItem(COLLAPSED_YEARS_KEY, JSON.stringify(map)); } catch (e) {}
+function saveCollapsedYears(map, key) {
+  try { localStorage.setItem(key || COLLAPSED_YEARS_KEY, JSON.stringify(map)); } catch (e) {}
 }
 function isYearCollapsed(map, year, newestYear) {
   const v = map[year];
@@ -632,9 +634,11 @@ function makeJumpDayGroup(opts) {
   return { group: group, header: header, jumpsWrap: jumpsWrap };
 }
 
-// One collapsible year in the sidebar: a header line (the year, its jump
-// count, a caret) above that year's day cards. `fill(body)` builds the days;
-// it runs only once the year is open, so a folded year costs one line of DOM.
+// One collapsible year: a header line (the year, its jump count, a caret)
+// above that year's day cards. `fill(body)` builds the days; it runs only once
+// the year is open, so a folded year costs one line of DOM. Shared by the
+// sidebar and the compare modal's list: `storageKey` picks whose collapse
+// state it writes, and the compare list adds a select-all box to the header.
 function makeJumpYearGroup(opts) {
   const section = document.createElement('div');
   section.className = 'jump-year' + (opts.collapsed ? ' collapsed' : '');
@@ -668,9 +672,9 @@ function makeJumpYearGroup(opts) {
     const nowCollapsed = section.classList.toggle('collapsed');
     header.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
     if (!nowCollapsed) fillOnce();
-    const map = getCollapsedYears();
+    const map = getCollapsedYears(opts.storageKey);
     map[opts.year] = nowCollapsed;
-    saveCollapsedYears(map);
+    saveCollapsedYears(map, opts.storageKey);
   });
 
   section.appendChild(header);

@@ -1336,6 +1336,13 @@ canvas { width: 100% !important; }
   margin: 0;
 }
 .compare-jumps-list .compare-day-select:disabled { cursor: not-allowed; }
+/* Year groups reuse the sidebar's .jump-year markup. The days inside keep the
+   list's 10px gap, and the header is padded so its select-all box lines up
+   with the day boxes below it (12px padding + the day card's 1px border). */
+.compare-jumps-list .jump-year,
+.compare-jumps-list .jump-year-days { gap: 10px; }
+.compare-jumps-list .jump-year-header { padding: 6px 13px; }
+.compare-jumps-list .jump-year.collapsed > .jump-year-header { padding: 8px 12px; }
 .compare-jump-row {
   display: flex;
   align-items: center;
