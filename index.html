@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v58">
+<meta name="app-build" content="flysight-v59">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -301,22 +301,24 @@
           <input type="file" id="videoFileInput" accept="video/*,.avi,.mts,.m2ts,.ts,.mkv,.lrv,.lrf">
         </div>
 
-        <!-- Shown only when the dropped file uses a codec this browser cannot
-             decode but ffmpeg.wasm can (H.265/HEVC in practice). Populated and
-             toggled from scripts/convert.js. -->
+        <!-- Shown only when the dropped file uses a codec or container this
+             browser cannot play but ffmpeg.wasm can convert. Populated and
+             toggled from scripts/convert.js, which finds its parts by data-vc. -->
         <div class="video-convert" id="videoConvertPanel" style="display:none;">
-          <p class="video-convert-msg" id="videoConvertMsg"></p>
-          <p class="video-convert-eta" id="videoConvertEta" style="display:none;"></p>
-          <p class="video-convert-note" data-i18n="convert.note">The conversion runs entirely on your computer, nothing is uploaded.</p>
-          <p class="video-convert-note" id="videoConvertTip" data-i18n="convert.tipH264">Tip: most cameras can record H.264 instead of H.265, which avoids this step entirely.</p>
-          <div class="video-convert-actions" id="videoConvertActions">
-            <button class="trim-btn" id="videoConvertBtn" onclick="startVideoConvert()" data-i18n="convert.btn">Convert to H.264</button>
-            <button class="export-cancel-btn" id="videoConvertDismissBtn" onclick="hideVideoConvertOffer()" data-i18n="convert.dismiss">Dismiss</button>
+          <p class="video-convert-msg" data-vc="msg"></p>
+          <p class="video-convert-eta" data-vc="eta" style="display:none;"></p>
+          <div class="video-convert-opts">
+            <label><span data-i18n="video.infoResolution">Resolution</span> <select class="export-res-select" data-vc="res"></select></label>
+            <label><span data-i18n="video.infoQuality">Quality</span> <select class="export-res-select" data-vc="quality"></select></label>
           </div>
-          <div id="videoConvertProgress" style="display:none;">
-            <div class="progress-bar"><div class="progress-fill" id="videoConvertFill"></div></div>
-            <span class="video-convert-status" id="videoConvertStatus"></span>
-            <button class="export-cancel-btn" id="videoConvertCancelBtn" onclick="cancelVideoConvert()" data-i18n="convert.cancel">Cancel</button>
+          <p class="video-convert-note" data-i18n="convert.note">The conversion runs entirely on your computer, nothing is uploaded.</p>
+          <div class="video-convert-actions" data-vc="actions">
+            <button class="trim-btn" data-vc="go" onclick="startVideoConvert()" data-i18n="convert.btn">Convert</button>
+          </div>
+          <div data-vc="progress" style="display:none;">
+            <div class="progress-bar"><div class="progress-fill" data-vc="fill"></div></div>
+            <span class="video-convert-status" data-vc="status"></span>
+            <button class="export-cancel-btn" data-vc="cancel" onclick="cancelVideoConvert()" data-i18n="convert.cancel">Cancel</button>
           </div>
           <details class="video-convert-manual">
             <summary data-i18n="convert.manualTitle">Prefer to convert it yourself?</summary>
@@ -329,6 +331,25 @@
       <div id="videoStep2" style="display:none;">
         <div class="video-step2-grid">
           <div class="video-step2-left">
+            <!-- Offered when the loaded video is above 1080p: a smaller copy
+                 makes scrubbing and exporting faster. Same parts as
+                 #videoConvertPanel, driven by scripts/convert.js. -->
+            <div class="video-convert video-hires" id="videoHiresPanel" style="display:none;">
+              <p class="video-convert-msg" data-vc="msg"></p>
+              <div class="video-convert-opts">
+                <label><span data-i18n="video.infoResolution">Resolution</span> <select class="export-res-select" data-vc="res"></select></label>
+                <label><span data-i18n="video.infoQuality">Quality</span> <select class="export-res-select" data-vc="quality"></select></label>
+              </div>
+              <div class="video-convert-actions" data-vc="actions">
+                <button class="trim-btn" data-vc="go" onclick="startVideoConvert()" data-i18n="convert.btn">Convert</button>
+                <button class="trim-btn secondary" data-vc="keep" onclick="hideVideoHiresOffer()"></button>
+              </div>
+              <div data-vc="progress" style="display:none;">
+                <div class="progress-bar"><div class="progress-fill" data-vc="fill"></div></div>
+                <span class="video-convert-status" data-vc="status"></span>
+                <button class="export-cancel-btn" data-vc="cancel" onclick="cancelVideoConvert()" data-i18n="convert.cancel">Cancel</button>
+              </div>
+            </div>
             <div class="video-preview-row">
               <div class="video-preview-wrapper">
                 <video id="videoPreview" muted></video>
@@ -447,14 +468,19 @@
                      refreshExportFormatInfo() in scripts/video.js. -->
                 <dl class="export-info">
                   <dt data-i18n="video.cropRangeLabel">Export range</dt><dd id="exportRangeText"></dd>
-                  <dt data-i18n="video.infoResolution">Resolution</dt><dd id="exportResText"></dd>
+                  <dt data-i18n="video.infoResolution">Resolution</dt>
+                  <dd><select id="exportResSelect" class="export-res-select" aria-label="Resolution" data-i18n-aria="video.infoResolution"></select></dd>
+                  <dt data-i18n="video.infoFps">Frame rate</dt>
+                  <dd><select id="exportFpsSelect" class="export-res-select" aria-label="Frame rate" data-i18n-aria="video.infoFps"></select></dd>
+                  <dt data-i18n="video.infoQuality">Quality</dt>
+                  <dd><select id="exportQualitySelect" class="export-res-select" aria-label="Quality" data-i18n-aria="video.infoQuality"></select></dd>
+                  <dt><label for="exportAudioToggle" data-i18n="video.includeAudio">Include audio</label></dt>
+                  <dd><input type="checkbox" id="exportAudioToggle" class="export-check"></dd>
+                  <dt><label for="directRenderToggle" data-i18n="video.directRender">Direct render (for fast PCs)</label><span class="beta-tag" data-i18n="video.beta">Beta</span><button type="button" class="stat-info" data-tip="Records the video while it plays instead of frame by frame." data-i18n-tip="video.directRenderInfo" aria-label="About Direct render" data-i18n-aria="video.directRenderInfoAria">i</button></dt>
+                  <dd><input type="checkbox" id="directRenderToggle" class="export-check"></dd>
                   <dt data-i18n="video.infoFormat">Format</dt><dd id="exportFormatText"></dd>
                   <dt data-i18n="video.infoSize">Estimated size</dt><dd id="exportSizeText"></dd>
                 </dl>
-                <label class="export-mode-toggle">
-                  <input type="checkbox" id="reliableModeToggle">
-                  <span data-i18n="video.reliableMode">Reliable mode (slow machines)</span>
-                </label>
                 <button class="trim-btn" id="exportBtn" onclick="startExport()" data-i18n="video.exportBtn">Export video with overlay</button>
                 <div id="exportProgress" style="display:none;">
                   <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>

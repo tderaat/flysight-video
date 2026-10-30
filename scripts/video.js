@@ -34,6 +34,10 @@ function closeVideoModal() {
 
   if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
   state.videoObjectURL = null;
+  state.videoFileName = null;
+  state.videoFile = null;
+  state.videoSourceFps = null;
+  state.videoHasAudio = null;
 
   state.videoExitTime = null;
   state.videoCropStart = null;
@@ -233,6 +237,81 @@ function readMp4DurationSec(file) {
   });
 }
 
+// Child boxes of an ISO-BMFF container box, as { type, start, end } over the
+// box bodies (start is past the header).
+function mp4ChildBoxes(bytes, start, end) {
+  var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  var out = [];
+  var p = start;
+  while (p + 8 <= end) {
+    var size = dv.getUint32(p);
+    var header = 8;
+    if (size === 1) {
+      if (p + 16 > end) break;
+      size = dv.getUint32(p + 8) * 4294967296 + dv.getUint32(p + 12);
+      header = 16;
+    } else if (size === 0) {
+      size = end - p;
+    }
+    if (size < header || p + size > end) break;
+    out.push({ type: fourccAt(bytes, p + 4), start: p + header, end: p + size });
+    p += size;
+  }
+  return out;
+}
+
+// What the browser does not tell us about an MP4/MOV: the video track's
+// frame rate (from mdhd's timescale over stts's sample durations), its stored
+// size (from the stsd sample entry, which also works on a file the browser
+// cannot decode) and whether there is a sound track at all. Resolves to
+// { width, height, fps, hasAudio } with null for anything unreadable, or null
+// for a file that is not ISO-BMFF.
+function readMp4TrackInfo(file) {
+  return readMoovBytes(file).then(function(moov) {
+    if (!moov) return null;
+    var dv = new DataView(moov.buffer, moov.byteOffset, moov.byteLength);
+    var child = function(box, type) {
+      return mp4ChildBoxes(moov, box.start, box.end).find(function(b) { return b.type === type; }) || null;
+    };
+    var info = { width: null, height: null, fps: null, hasAudio: false };
+    var traks = mp4ChildBoxes(moov, 0, moov.length).filter(function(b) { return b.type === 'trak'; });
+    for (var i = 0; i < traks.length; i++) {
+      var mdia = child(traks[i], 'mdia');
+      var hdlr = mdia && child(mdia, 'hdlr');
+      if (!hdlr || hdlr.start + 12 > hdlr.end) continue;
+      var handler = fourccAt(moov, hdlr.start + 8);
+      if (handler === 'soun') { info.hasAudio = true; continue; }
+      if (handler !== 'vide' || info.width) continue;
+      var stbl = child(mdia, 'minf');
+      stbl = stbl && child(stbl, 'stbl');
+      var stsd = stbl && child(stbl, 'stsd');
+      // stsd body: version/flags (4), entry_count (4), then the sample entry:
+      // size + fourcc (8), 24 bytes of VisualSampleEntry fields, width, height.
+      if (stsd && stsd.start + 44 <= stsd.end) {
+        info.width = dv.getUint16(stsd.start + 40);
+        info.height = dv.getUint16(stsd.start + 42);
+      }
+      var mdhd = child(mdia, 'mdhd');
+      var stts = stbl && child(stbl, 'stts');
+      if (mdhd && stts && stts.start + 8 <= stts.end) {
+        var timescale = dv.getUint32(mdhd.start + (moov[mdhd.start] === 1 ? 20 : 12));
+        var entries = dv.getUint32(stts.start + 4);
+        var samples = 0, ticks = 0;
+        for (var e = 0, p = stts.start + 8; e < entries && p + 8 <= stts.end; e++, p += 8) {
+          var count = dv.getUint32(p);
+          samples += count;
+          ticks += count * dv.getUint32(p + 4);
+        }
+        if (timescale && samples && ticks) {
+          var fps = timescale * samples / ticks;
+          if (fps > 1 && fps < 1000) info.fps = fps;
+        }
+      }
+    }
+    return info;
+  }).catch(function() { return null; });
+}
+
 // ── Containers the <video> element does not open ──
 // AVI and MPEG-TS (AVCHD's .mts/.m2ts) are not played by any browser, whatever
 // codec they carry, so those files go straight to the ffmpeg.wasm converter
@@ -309,6 +388,9 @@ function sniffAvi(bytes) {
         var comp = asciiAt(bytes, body + 16, 4).toUpperCase();
         var handler = info.handler.toUpperCase();
         info.fourcc = AVI_FOURCC_MAP[comp] || AVI_FOURCC_MAP[handler] || comp.trim().toLowerCase() || null;
+        // BITMAPINFOHEADER biWidth / biHeight; a negative height means top-down.
+        info.width = Math.abs(dv.getInt32(body + 4, true)) || null;
+        info.height = Math.abs(dv.getInt32(body + 8, true)) || null;
         return true;
       }
       p = body + size + (size & 1);
@@ -554,10 +636,27 @@ function handleVideoFile(file) {
   });
 }
 
-function loadVideoIntoPreview(file) {
+// opts.keepSync: the file is a converted copy of the one already loaded (same
+// timeline), so the marked exit, the crop and the open step are kept.
+function loadVideoIntoPreview(file, opts) {
+  const keepSync = !!(opts && opts.keepSync) && state.videoExitTime !== null;
+  const kept = keepSync
+    ? { exit: state.videoExitTime, cropStart: state.videoCropStart, cropEnd: state.videoCropEnd, step: state.videoStep }
+    : null;
   if (state.videoObjectURL) URL.revokeObjectURL(state.videoObjectURL);
   state.videoObjectURL = URL.createObjectURL(file);
+  state.videoFileName = file.name;
+  state.videoFile = file;
+  // Filled in below from the file's own headers; null means unknown.
+  state.videoSourceFps = null;
+  state.videoHasAudio = null;
   const video = document.getElementById('videoPreview');
+  readMp4TrackInfo(file).then(info => {
+    if (state.videoFile !== file || !info) return;
+    if (info.fps) state.videoSourceFps = info.fps;
+    state.videoHasAudio = info.hasAudio;
+    refreshExportFormatInfo();
+  });
 
   // Kick off the widget-layout restore in parallel with video loading. Doing it
   // here (rather than inside loadedmetadata) avoids any race with the loadeddata
@@ -609,24 +708,41 @@ function loadVideoIntoPreview(file) {
         return;
       }
 
-      video.currentTime = 0;
       document.getElementById('videoDuration').textContent = '/ ' + formatVideoTimecode(video.duration);
       document.getElementById('videoStep1').style.display = 'none';
       document.getElementById('videoStep2').style.display = 'block';
-      // Reset exit; the crop covers the whole video until the exit is marked.
-      state.videoExitTime = null;
-      state.videoCropStart = 0;
-      state.videoCropEnd = video.duration;
-      document.getElementById('videoExitTimecode').textContent = t('video.notSet');
-      state.videoStep = 1;
+      if (kept) {
+        state.videoExitTime = kept.exit;
+        state.videoCropStart = Math.min(kept.cropStart, video.duration);
+        state.videoCropEnd = Math.min(kept.cropEnd, video.duration);
+        document.getElementById('videoExitTimecode').textContent = formatVideoTimecode(kept.exit);
+        state.videoStep = kept.step;
+        video.currentTime = kept.exit;
+      } else {
+        video.currentTime = 0;
+        // Reset exit; the crop covers the whole video until the exit is marked.
+        state.videoExitTime = null;
+        state.videoCropStart = 0;
+        state.videoCropEnd = video.duration;
+        document.getElementById('videoExitTimecode').textContent = t('video.notSet');
+        state.videoStep = 1;
+      }
       refreshVideoSteps();
+      renderVideoTimeline(true);
       // Redraw — by now any in-flight restore has likely landed, and even if not,
       // drawOverlayPreview will re-fire from the loadeddata listener.
       drawOverlayPreview();
+      // Above 1080p, offer a smaller copy: decoding 4K is what makes scrubbing
+      // and exporting slow. Not for our own converted output.
+      if (Math.min(video.videoWidth, video.videoHeight) > EXPORT_RES_AUTO_CAP && !file.flysightConverted &&
+          typeof showVideoHiresOffer === 'function') {
+        showVideoHiresOffer(file, video.videoWidth, video.videoHeight);
+      }
+      measureSourceFps(video, file);
       // Start playing straight away so finding the exit is just a matter of
       // pausing on it. The preview is muted, so browsers allow the autoplay;
       // if one refuses anyway the button simply stays on "Play".
-      video.play().catch(() => {});
+      if (!kept) video.play().catch(() => {});
     });
   });
   // A load that fails outright fires a bare `error` event; reportVideoLoadError()
@@ -747,9 +863,7 @@ function renderVideoTimeline(rebuildMarkers) {
     document.getElementById('vtDimEnd').style.width = (dur ? (dur - e) / dur * 100 : 0) + '%';
     const rangeEl = document.getElementById('exportRangeText');
     if (rangeEl) rangeEl.textContent = formatVideoTimecode(s) + ' – ' + formatVideoTimecode(e) + ' (' + (e - s).toFixed(1) + ' s)';
-    // Bitrate is a target, so the size is an estimate.
-    const sizeEl = document.getElementById('exportSizeText');
-    if (sizeEl) sizeEl.textContent = '≈ ' + Math.max(1, Math.round((e - s) * EXPORT_BITRATE / 8 / 1e6)) + ' MB';
+    renderExportSize();
   }
 
   if (!rebuildMarkers) return;
@@ -957,59 +1071,314 @@ function refreshVideoSteps() {
   refreshExportFormatInfo();
 }
 
-// Resolution and format rows in card 3. Reliable mode probes WebCodecs, which
-// is async, so the result is cached per frame size; exportFormatSeq drops a stale
-// probe that resolves after a newer refresh.
+// The settings rows in card 3 (resolution, frame rate, quality, audio) and the
+// format and size lines they produce. The format comes from probing WebCodecs,
+// which is async, so the result is cached per frame size; exportFormatSeq
+// drops a stale probe that resolves after a newer refresh.
 let exportFormatSeq = 0;
 const webCodecsPickCache = new Map();
+const webCodecsAudioCache = new Map();
 function refreshExportFormatInfo() {
   const video = document.getElementById('videoPreview');
-  const resEl = document.getElementById('exportResText');
   const fmtEl = document.getElementById('exportFormatText');
-  if (!resEl || !fmtEl) return;
-  const w = video.videoWidth, h = video.videoHeight;
-  resEl.textContent = w && h ? w + ' × ' + h : '';
-  const tail = ', ' + EXPORT_FPS + ' fps, ' + t('video.noAudio');
+  if (!fmtEl) return;
+  renderExportResSelect(video.videoWidth, video.videoHeight);
+  renderExportFpsSelect();
+  renderExportAudioToggle();
+  // The probe and the label describe the output, which may be scaled down.
+  const { width: w, height: h } = exportOutputSize(video);
+  renderExportQualitySelect(w, h);
+  renderExportSize();
+  const wantAudio = exportWantsAudio();
   const seq = ++exportFormatSeq;
-  const reliable = document.getElementById('reliableModeToggle');
-  const webCodecs = typeof window.VideoEncoder === 'function' && typeof window.VideoFrame === 'function';
-  if (!(reliable && reliable.checked && webCodecs && w && h)) {
-    fmtEl.textContent = realtimeExportFormat().label + tail;
+  if (!w || !h) { fmtEl.textContent = ''; return; }
+  if (getDirectRenderPref()) {
+    const f = realtimeExportFormat(wantAudio);
+    fmtEl.textContent = f.label + ', ' + (f.audio ? t('video.audioCodec', { codec: f.audio }) : t('video.noAudio'));
     return;
   }
+  if (!webCodecsExportAvailable()) { fmtEl.textContent = t('video.formatUnsupported'); return; }
   const key = w + 'x' + h;
   if (!webCodecsPickCache.has(key)) webCodecsPickCache.set(key, pickWebCodecsCodec(w, h));
   webCodecsPickCache.get(key).then(pick => {
+    if (!pick) return null;
+    if (!wantAudio) return { pick, audio: null };
+    if (!webCodecsAudioCache.has(pick.container)) webCodecsAudioCache.set(pick.container, pickWebCodecsAudio(pick.container, 2));
+    return webCodecsAudioCache.get(pick.container).then(audio => ({ pick, audio }));
+  }).then(r => {
     if (seq !== exportFormatSeq) return;
-    const label = !pick ? realtimeExportFormat().label : pick.container === 'mp4' ? 'MP4 (H.264)' : 'WebM (VP9)';
-    fmtEl.textContent = label + tail;
+    if (!r) { fmtEl.textContent = t('video.formatUnsupported'); return; }
+    const label = r.pick.container === 'mp4' ? 'MP4 (H.264)' : 'WebM (VP9)';
+    fmtEl.textContent = label + ', ' + (r.audio ? t('video.audioCodec', { codec: r.audio.label }) : t('video.noAudio'));
   });
+}
+
+// The export encodes with WebCodecs and muxes with mp4-muxer or webm-muxer;
+// without them this browser cannot export at all.
+function webCodecsExportAvailable() {
+  return typeof window.VideoEncoder === 'function' &&
+    typeof window.VideoFrame === 'function' &&
+    (typeof window.Mp4Muxer !== 'undefined' || typeof window.WebMMuxer !== 'undefined');
+}
+
+// ── Export resolution ──
+// Drawing, holding and encoding every frame at 4K is what exhausts an
+// integrated GPU (it shares system RAM), so the export can be scaled down.
+// The cap applies to the short side, so a portrait video is handled the same
+// way. 'auto' caps at 1080p, so a 4K source exports at 1080p unless the user
+// asks for more. Widgets are laid out as fractions of the frame, so they
+// scale with it. Persisted in flysight_export_res.
+const EXPORT_RES_CAPS = [1080, 720];
+const EXPORT_RES_AUTO_CAP = 1080;
+function getExportResPref() {
+  try { return localStorage.getItem('flysight_export_res') || 'auto'; } catch { return 'auto'; }
+}
+function setExportResPref(v) {
+  try { localStorage.setItem('flysight_export_res', v); } catch {}
+}
+
+// Short-side cap 'auto' resolves to for a w×h source, 0 for no scaling.
+function autoExportCap(w, h) {
+  return Math.min(w, h) > EXPORT_RES_AUTO_CAP ? EXPORT_RES_AUTO_CAP : 0;
+}
+
+// Short-side cap for a w×h source under the current setting, 0 for no scaling.
+function resolveExportCap(w, h) {
+  const pref = getExportResPref();
+  if (pref === 'original') return 0;
+  if (pref === 'auto') return autoExportCap(w, h);
+  const cap = Number(pref);
+  return cap && Math.min(w, h) > cap ? cap : 0;
+}
+
+// w×h scaled so its short side is cap, rounded to even sizes (H.264 needs them).
+function scaleToCap(w, h, cap) {
+  const shortSide = Math.min(w, h);
+  if (!cap || shortSide <= cap) return { width: w, height: h };
+  const k = cap / shortSide;
+  const even = n => Math.max(2, Math.round(n * k / 2) * 2);
+  return { width: even(w), height: even(h) };
+}
+
+function exportOutputSize(video) {
+  const w = video.videoWidth, h = video.videoHeight;
+  return scaleToCap(w, h, resolveExportCap(w, h));
+}
+
+function addSelectOption(sel, value, label) {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label;
+  sel.appendChild(opt);
+}
+
+// Rebuilds the options for this source: auto, original, then each cap below it.
+// Automatic is only listed when it differs from Original (a source above
+// 1080p); otherwise the two would be the same size twice. The
+// stored 'auto' preference is kept either way, so it applies again as soon as
+// Automatic means something.
+function renderExportResSelect(w, h) {
+  const sel = document.getElementById('exportResSelect');
+  if (!sel) return;
+  sel.innerHTML = '';
+  if (!w || !h) { sel.disabled = true; return; }
+  sel.disabled = false;
+  const dims = size => size.width + ' × ' + size.height;
+  if (autoExportCap(w, h)) addSelectOption(sel, 'auto', t('video.resAuto', { res: dims(scaleToCap(w, h, autoExportCap(w, h))) }));
+  addSelectOption(sel, 'original', t('video.resOriginal', { res: dims({ width: w, height: h }) }));
+  for (const cap of EXPORT_RES_CAPS) {
+    if (Math.min(w, h) > cap) addSelectOption(sel, String(cap), cap + 'p (' + dims(scaleToCap(w, h, cap)) + ')');
+  }
+  // A cap the source is already below exports at the source size.
+  const pref = getExportResPref();
+  sel.value = sel.querySelector('option[value="' + pref + '"]') ? pref : 'original';
+}
+
+// ── Export frame rate ──
+// 'original' keeps the source's frame rate (read from the MP4 header, or
+// measured during playback), capped at EXPORT_FPS_MAX; '30' halves a 60 fps
+// source for a smaller, lighter export. Persisted in flysight_export_fps.
+const EXPORT_FPS_DEFAULT = 30;
+const EXPORT_FPS_MAX = 60;
+function getExportFpsPref() {
+  try { return localStorage.getItem('flysight_export_fps') || 'original'; } catch { return 'original'; }
+}
+function setExportFpsPref(v) {
+  try { localStorage.setItem('flysight_export_fps', v); } catch {}
+}
+
+// The frame rate an export renders at. An unknown source rate falls back to 30.
+function exportFps() {
+  const src = state.videoSourceFps;
+  if (getExportFpsPref() === '30' || !src) return Math.min(EXPORT_FPS_DEFAULT, src || EXPORT_FPS_DEFAULT);
+  return Math.min(src, EXPORT_FPS_MAX);
+}
+
+function formatFps(fps) {
+  return String(Math.round(fps * 100) / 100);
+}
+
+function renderExportFpsSelect() {
+  const sel = document.getElementById('exportFpsSelect');
+  if (!sel) return;
+  const src = state.videoSourceFps;
+  sel.innerHTML = '';
+  if (!src) addSelectOption(sel, 'original', t('video.fpsOriginalPlain'));
+  else if (src > EXPORT_FPS_MAX + 0.5) addSelectOption(sel, 'original', t('video.fpsValue', { fps: EXPORT_FPS_MAX }));
+  else addSelectOption(sel, 'original', t('video.fpsOriginal', { fps: formatFps(src) }));
+  // A source at 30 fps or below has nothing to halve.
+  if (!src || src > EXPORT_FPS_DEFAULT + 0.5) addSelectOption(sel, '30', t('video.fpsValue', { fps: EXPORT_FPS_DEFAULT }));
+  const pref = getExportFpsPref();
+  sel.value = sel.querySelector('option[value="' + pref + '"]') ? pref : 'original';
+}
+
+// A WebM (or a file whose header we cannot read) tells us nothing, so the
+// rate is measured from the decoded frames' media times while the preview
+// autoplays, then snapped to the nearest common camera rate.
+const COMMON_FPS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 100, 119.88, 120];
+function measureSourceFps(video, file) {
+  if (!('requestVideoFrameCallback' in video)) return;
+  const times = [];
+  const onFrame = (now, meta) => {
+    if (state.videoFile !== file || state.videoSourceFps) return;
+    times.push(meta.mediaTime);
+    if (times.length < 16) { video.requestVideoFrameCallback(onFrame); return; }
+    const deltas = [];
+    for (let i = 1; i < times.length; i++) if (times[i] > times[i - 1]) deltas.push(times[i] - times[i - 1]);
+    if (deltas.length < 8) return;
+    deltas.sort((a, b) => a - b);
+    const raw = 1 / deltas[Math.floor(deltas.length / 2)];
+    const snap = COMMON_FPS.reduce((best, f) => Math.abs(f - raw) < Math.abs(best - raw) ? f : best, COMMON_FPS[0]);
+    state.videoSourceFps = Math.abs(snap - raw) / raw < 0.03 ? snap : raw;
+    refreshExportFormatInfo();
+  };
+  video.requestVideoFrameCallback(onFrame);
+}
+
+// ── Export quality ──
+// Sets the video bitrate. Standard is the long-standing 5 Mbps at 1080p30,
+// scaled by pixel count, and sub-linearly by frame rate (consecutive frames at
+// 60 fps differ less, so they need less than double). Low halves it, High
+// doubles it. Persisted in flysight_export_quality.
+const EXPORT_BITRATE_REF = 5_000_000;   // standard at 1920×1080, 30 fps
+const EXPORT_QUALITY_MUL = { low: 0.5, standard: 1, high: 2 };
+const EXPORT_QUALITIES = ['low', 'standard', 'high'];
+const EXPORT_BITRATE_MAX = 80_000_000;
+const EXPORT_AUDIO_BITRATE = 128_000;
+function getExportQualityPref() {
+  try {
+    const v = localStorage.getItem('flysight_export_quality');
+    return EXPORT_QUALITY_MUL[v] ? v : 'standard';
+  } catch { return 'standard'; }
+}
+function setExportQualityPref(v) {
+  try { localStorage.setItem('flysight_export_quality', v); } catch {}
+}
+
+// Rounded to 0.5 Mbps, so the label shows a tidy figure that is also exact.
+function exportBitrate(w, h, fps, quality) {
+  const raw = EXPORT_BITRATE_REF * (w * h) / (1920 * 1080) * Math.pow(fps / 30, 0.7) * EXPORT_QUALITY_MUL[quality];
+  return Math.min(EXPORT_BITRATE_MAX, Math.max(500_000, Math.round(raw / 500_000) * 500_000));
+}
+
+function formatMbps(bps) {
+  return String(Math.round(bps / 1e5) / 10);
+}
+
+function renderExportQualitySelect(w, h) {
+  const sel = document.getElementById('exportQualitySelect');
+  if (!sel) return;
+  sel.innerHTML = '';
+  const fps = exportFps();
+  for (const q of EXPORT_QUALITIES) {
+    const label = t('video.quality_' + q) + (w && h ? ' (' + formatMbps(exportBitrate(w, h, fps, q)) + ' Mbps)' : '');
+    addSelectOption(sel, q, label);
+  }
+  sel.value = getExportQualityPref();
+}
+
+// ── Export audio ──
+// On by default; the checkbox is disabled, with a tooltip, when the source
+// has no sound track at all. Persisted in flysight_export_audio.
+function getExportAudioPref() {
+  try { return localStorage.getItem('flysight_export_audio') !== '0'; } catch { return true; }
+}
+function setExportAudioPref(on) {
+  try { localStorage.setItem('flysight_export_audio', on ? '1' : '0'); } catch {}
+}
+
+function exportWantsAudio() {
+  return getExportAudioPref() && state.videoHasAudio !== false;
+}
+
+function renderExportAudioToggle() {
+  const box = document.getElementById('exportAudioToggle');
+  if (!box) return;
+  const none = state.videoHasAudio === false;
+  box.checked = getExportAudioPref() && !none;
+  box.disabled = none;
+  const cell = box.parentElement;
+  if (none) cell.setAttribute('data-tip', t('video.audioNone'));
+  else cell.removeAttribute('data-tip');
+}
+
+// Bitrates are targets, so the size is an estimate.
+function renderExportSize() {
+  const sizeEl = document.getElementById('exportSizeText');
+  const video = document.getElementById('videoPreview');
+  if (!sizeEl || state.videoCropEnd === null || !video.videoWidth) return;
+  const { width: w, height: h } = exportOutputSize(video);
+  const bps = exportBitrate(w, h, exportFps(), getExportQualityPref()) + (exportWantsAudio() ? EXPORT_AUDIO_BITRATE : 0);
+  const secs = state.videoCropEnd - state.videoCropStart;
+  sizeEl.textContent = '≈ ' + Math.max(1, Math.round(secs * bps / 8 / 1e6)) + ' MB';
+}
+
+// Wires the settings rows: each change is persisted and the rows re-rendered.
+(function() {
+  const wire = (id, set, value) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => { set(value(el)); refreshExportFormatInfo(); });
+  };
+  wire('exportResSelect', setExportResPref, el => el.value);
+  wire('exportFpsSelect', setExportFpsPref, el => el.value);
+  wire('exportQualitySelect', setExportQualityPref, el => el.value);
+  wire('exportAudioToggle', setExportAudioPref, el => el.checked);
+})();
+
+// ── Failure messages ──
+// Every export failure ends with a short "Things to try" list, holding only
+// the tips that apply to this export: turning Direct render off (it drops
+// frames and stalls on slower machines), a smaller resolution above 720p, the
+// 1080p converter for a source above 1080p (decoding 4K is heavy even for a
+// smaller export), and closing other tabs when the error points at the
+// graphics chip.
+const GPU_ERROR_RE = /tainted|gpu|context lost|out of memory|EncodingError|OperationError/i;
+function exportFailureTips(width, height, cause, direct) {
+  const video = document.getElementById('videoPreview');
+  const tips = [];
+  if (direct) tips.push(t('video.tipDirectOff'));
+  const shortSide = Math.min(width, height);
+  if (shortSide > EXPORT_RES_AUTO_CAP) tips.push(t('video.tipRes1080or720'));
+  else if (shortSide > 720) tips.push(t('video.tipRes720'));
+  if (Math.min(video.videoWidth, video.videoHeight) > EXPORT_RES_AUTO_CAP &&
+      typeof canRunVideoConvert === 'function' && canRunVideoConvert()) {
+    tips.push(t('video.tipConvert1080'));
+  }
+  if (cause != null && GPU_ERROR_RE.test(String(cause))) tips.push(t('video.tipCloseTabs'));
+  return tips;
+}
+
+function withExportTips(message, width, height, cause, direct) {
+  const tips = exportFailureTips(width, height, cause, direct);
+  if (!tips.length) return message;
+  return message + '\n\n' + t('video.tipsTitle') + '\n' + tips.map(s => '• ' + s).join('\n');
 }
 
 // ── Export pipeline ──
 
-// Persisted "reliable mode" preference (synchronous localStorage, matching the
-// flysight_scores / flysight_exit_overrides convention).
-function getReliableExportPref() {
-  try { return localStorage.getItem('flysight_reliable_export') === '1'; } catch { return false; }
-}
-function setReliableExportPref(on) {
-  try { localStorage.setItem('flysight_reliable_export', on ? '1' : '0'); } catch {}
-}
-
-// Restore + persist the reliable-mode toggle.
-(function() {
-  const toggle = document.getElementById('reliableModeToggle');
-  if (!toggle) return;
-  toggle.checked = getReliableExportPref();
-  toggle.addEventListener('change', () => {
-    setReliableExportPref(toggle.checked);
-    refreshExportFormatInfo();
-  });
-})();
-
 // Render every placed widget onto ctx for the given flight-data index.
-// Shared by both export paths (the on-screen preview keeps its own copy in
+// Used by the export (the on-screen preview keeps its own copy in
 // widgets/core.js because it also draws selection handles + content translate).
 function drawExportWidgets(ctx, contentRect, dataIdx) {
   for (const widget of state.widgets) {
@@ -1071,7 +1440,7 @@ function seekVideoTo(video, t, opts) {
   });
 }
 
-// Called by the Cancel button (#exportCancelBtn). The active export path
+// Called by the Cancel button (#exportCancelBtn). The running export
 // registers its teardown on state.activeExportCancel during startExport.
 function cancelExport() {
   if (state.activeExportCancel) state.activeExportCancel();
@@ -1081,6 +1450,8 @@ function startExport() {
   if (state.videoExitTime === null) { alert(t('video.errMarkExit')); return; }
   if (!state.currentFlightData) { alert(t('video.errNoFlightData')); return; }
   if (state.widgets.length === 0) { alert(t('video.errNoWidgets')); return; }
+  const direct = getDirectRenderPref();
+  if (!direct && !webCodecsExportAvailable()) { alert(t('video.errNoWebCodecs')); return; }
 
   // Deselect widget and block UI during export
   state.selectedWidgetId = null;
@@ -1099,11 +1470,16 @@ function startExport() {
 
   state.videoExporting = true;
 
+  // Scaled per the Resolution setting; drawImage() resizes each video frame.
+  const outSize = exportOutputSize(video);
   const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = outSize.width;
+  canvas.height = outSize.height;
   const ctx = canvas.getContext('2d');
   const contentRect = { width: canvas.width, height: canvas.height };
+  const fps = exportFps();
+  const bitrate = exportBitrate(canvas.width, canvas.height, fps, getExportQualityPref());
+  const wantAudio = exportWantsAudio();
 
   const progressEl = document.getElementById('exportProgress');
   const fillEl = document.getElementById('progressFill');
@@ -1111,7 +1487,7 @@ function startExport() {
   const btnEl = document.getElementById('exportBtn');
   const cancelBtnEl = document.getElementById('exportCancelBtn');
 
-  // The active export registers a cancel handler here; the Cancel button calls
+  // The export registers a cancel handler here; the Cancel button calls
   // cancelExport(), which invokes it. Reset on every start and cleared by restoreUI.
   state.activeExportCancel = null;
   if (cancelBtnEl) { cancelBtnEl.disabled = false; cancelBtnEl.textContent = t('video.cancel'); }
@@ -1121,6 +1497,8 @@ function startExport() {
     btnEl.disabled = false;
     state.activeExportCancel = null;
     state.videoExporting = false;
+    // Direct render unmutes the video to record its sound.
+    video.muted = true;
     setVideoPlayButton(!video.paused);
     modalBody.style.pointerEvents = '';
     modalBody.style.opacity = '';
@@ -1138,10 +1516,11 @@ function startExport() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     restoreUI();
   }
-  function failExport(message) {
+  // cause: the underlying error, if any, so a graphics failure gets its tip.
+  function failExport(message, cause) {
     try { if (!video.paused) video.pause(); } catch {}
     restoreUI();
-    alert(message);
+    alert(withExportTips(message, canvas.width, canvas.height, cause, direct));
   }
   // Cancellation: tear down quietly with no download and no alert.
   function abortExport() {
@@ -1153,52 +1532,111 @@ function startExport() {
   btnEl.disabled = true;
   setProgress(0, t('video.preparing'));
 
-  const opts = { video, canvas, ctx, contentRect, trimStart, trimEnd, setProgress, finishExport, failExport, abortExport };
-
-  const toggle = document.getElementById('reliableModeToggle');
-  const wantReliable = !!(toggle && toggle.checked);
-  const webCodecsAvailable =
-    typeof window.VideoEncoder === 'function' &&
-    typeof window.VideoFrame === 'function' &&
-    (typeof window.Mp4Muxer !== 'undefined' || typeof window.WebMMuxer !== 'undefined');
-
-  if (wantReliable && webCodecsAvailable) {
-    exportWithWebCodecs(opts);
-  } else {
-    if (wantReliable && !webCodecsAvailable) {
-      setProgress(0, t('video.reliableUnavailable'));
-    }
+  const opts = {
+    video, canvas, ctx, contentRect, trimStart, trimEnd, fps, bitrate, wantAudio,
+    file: state.videoFile, setProgress, finishExport, failExport, abortExport,
+  };
+  if (direct) {
+    // Created here, inside the click, so the browser lets the audio start.
+    if (wantAudio) getExportAudioGraph(video);
     exportRealtime(opts);
+  } else {
+    exportWithWebCodecs(opts);
   }
 }
 
-// Both export paths render at EXPORT_FPS with a EXPORT_BITRATE target.
-const EXPORT_FPS = 30;
-const EXPORT_BITRATE = 5_000_000;
-
-// Container the real-time path records into: MP4 where MediaRecorder can
-// (Chrome, Edge, Safari), WebM otherwise (Firefox).
-function realtimeExportFormat() {
-  const ok = type => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type);
-  if (ok('video/mp4')) return { mimeType: 'video/mp4', fileExt: '.mp4', label: 'MP4' + (ok('video/mp4;codecs=avc1') ? ' (H.264)' : '') };
-  if (ok('video/webm;codecs=vp9')) return { mimeType: 'video/webm;codecs=vp9', fileExt: '.webm', label: 'WebM (VP9)' };
-  return { mimeType: 'video/webm', fileExt: '.webm', label: 'WebM' };
+// "m:ss" for the time left in the progress line.
+function formatExportEta(secs) {
+  const s = Math.max(0, Math.round(secs));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
-// Real-time path: canvas.captureStream + MediaRecorder driven by playback.
-// Fast on capable machines; hardened so a decode stall surfaces a message and
-// delivers a partial file instead of hanging silently.
-function exportRealtime(opts) {
-  const { video, canvas, ctx, contentRect, trimStart, trimEnd, setProgress, finishExport, failExport, abortExport } = opts;
+// ── Direct render (beta) ──
+// Opt-in, for fast machines: records the canvas while the video plays in real
+// time (canvas.captureStream + MediaRecorder) instead of seeking frame by
+// frame. Much faster where the machine keeps up, but a slow one drops frames
+// or stalls, and MediaRecorder loses roughly the first 0.75 s of the range
+// while it starts. Persisted in flysight_direct_render ('1'/'0', default off).
+function getDirectRenderPref() {
+  try { return localStorage.getItem('flysight_direct_render') === '1'; } catch { return false; }
+}
+function setDirectRenderPref(on) {
+  try { localStorage.setItem('flysight_direct_render', on ? '1' : '0'); } catch {}
+}
 
-  const { mimeType, fileExt } = realtimeExportFormat();
+(function() {
+  const toggle = document.getElementById('directRenderToggle');
+  if (!toggle) return;
+  toggle.checked = getDirectRenderPref();
+  toggle.addEventListener('change', () => {
+    setDirectRenderPref(toggle.checked);
+    refreshExportFormatInfo();
+  });
+})();
+
+// Container Direct render records into: MP4 where MediaRecorder can (Chrome,
+// Edge, Safari), WebM otherwise (Firefox). With sound, the first type that
+// also takes an audio codec wins; `audio` names that codec, or is null when
+// the recording will be silent.
+const REALTIME_AUDIO_TYPES = [
+  { mimeType: 'video/mp4;codecs=avc1,mp4a.40.2', fileExt: '.mp4', label: 'MP4 (H.264)', audio: 'AAC' },
+  { mimeType: 'video/mp4;codecs=avc1,opus', fileExt: '.mp4', label: 'MP4 (H.264)', audio: 'Opus' },
+  { mimeType: 'video/webm;codecs=vp9,opus', fileExt: '.webm', label: 'WebM (VP9)', audio: 'Opus' },
+  { mimeType: 'video/webm;codecs=vp8,opus', fileExt: '.webm', label: 'WebM (VP8)', audio: 'Opus' },
+];
+function realtimeExportFormat(withAudio) {
+  const ok = type => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type);
+  if (withAudio) {
+    const hit = REALTIME_AUDIO_TYPES.find(f => ok(f.mimeType));
+    if (hit) return hit;
+  }
+  if (ok('video/mp4')) return { mimeType: 'video/mp4', fileExt: '.mp4', label: 'MP4' + (ok('video/mp4;codecs=avc1') ? ' (H.264)' : ''), audio: null };
+  if (ok('video/webm;codecs=vp9')) return { mimeType: 'video/webm;codecs=vp9', fileExt: '.webm', label: 'WebM (VP9)', audio: null };
+  return { mimeType: 'video/webm', fileExt: '.webm', label: 'WebM', audio: null };
+}
+
+// Direct render records the video element's sound through Web Audio:
+// element -> MediaStreamAudioDestinationNode -> an audio track added to the
+// canvas stream. It is deliberately not connected to the speakers, so the
+// export stays silent while the element is unmuted for it. An element can only
+// be given one MediaElementSource, so the graph is built once and reused.
+let exportAudioGraph = null;
+function getExportAudioGraph(video) {
+  if (!exportAudioGraph) {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      const src = ctx.createMediaElementSource(video);
+      const dest = ctx.createMediaStreamDestination();
+      src.connect(dest);
+      exportAudioGraph = { ctx, track: dest.stream.getAudioTracks()[0] };
+    } catch (e) {
+      console.warn('[FlySight] could not route the video sound for export', e);
+      return null;
+    }
+  }
+  exportAudioGraph.ctx.resume().catch(() => {});
+  return exportAudioGraph;
+}
+
+// Hardened so a decode stall surfaces a message and delivers a partial file
+// instead of hanging silently.
+function exportRealtime(opts) {
+  const { video, canvas, ctx, contentRect, trimStart, trimEnd, fps, bitrate, setProgress, finishExport, failExport, abortExport } = opts;
+
+  const graph = opts.wantAudio ? getExportAudioGraph(video) : null;
+  const { mimeType, fileExt, audio } = realtimeExportFormat(!!graph);
+  const withAudio = !!(graph && audio);
 
   let stream, recorder;
   try {
-    stream = canvas.captureStream(EXPORT_FPS);
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: EXPORT_BITRATE });
+    stream = canvas.captureStream(fps);
+    if (withAudio) stream.addTrack(graph.track);
+    const recOpts = { mimeType, videoBitsPerSecond: bitrate };
+    if (withAudio) recOpts.audioBitsPerSecond = EXPORT_AUDIO_BITRATE;
+    recorder = new MediaRecorder(stream, recOpts);
   } catch (e) {
-    failExport(t('video.errRecorder', { msg: (e && e.message ? e.message : e) }));
+    failExport(t('video.errRecorder', { msg: (e && e.message ? e.message : e) }), e);
     return;
   }
 
@@ -1225,9 +1663,9 @@ function exportRealtime(opts) {
   }
   function onVideoEnded() {
     // Natural end of a short video (the crop ends at the very end of the
-    // footage, and the last frame may never reach trimEnd). Once the
-    // video ends, requestVideoFrameCallback stops firing, so renderFrame can't
-    // catch this itself — deliver whatever we captured.
+    // footage, and the last frame may never reach trimEnd). Once the video
+    // ends, requestVideoFrameCallback stops firing, so renderFrame can't
+    // catch this itself; deliver whatever we captured.
     if (finished || aborted) return;
     stopRecording();
   }
@@ -1236,7 +1674,7 @@ function exportRealtime(opts) {
     aborted = true;
     cleanupListeners();
     try { recorder.stop(); } catch {}
-    failExport(t('video.errPlayback'));
+    failExport(t('video.errPlayback'), video.error && video.error.message);
   }
 
   recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
@@ -1244,7 +1682,7 @@ function exportRealtime(opts) {
     if (finished || aborted) return;
     aborted = true;
     cleanupListeners();
-    failExport(t('video.errRecording', { msg: (e && e.error && e.error.message ? e.error.message : 'unknown error') }));
+    failExport(t('video.errRecording', { msg: (e && e.error && e.error.message ? e.error.message : 'unknown error') }), e && e.error);
   };
   recorder.onstop = () => {
     cleanupListeners();
@@ -1255,7 +1693,7 @@ function exportRealtime(opts) {
     const blob = new Blob(chunks, { type: mimeType });
     finishExport(blob, fileExt);
     if (stalledChecks > 0) {
-      alert(t('video.errStalled'));
+      alert(withExportTips(t('video.errStalled'), canvas.width, canvas.height, null, true));
     }
   };
 
@@ -1281,8 +1719,9 @@ function exportRealtime(opts) {
     const dataIdx = videoTimeToDataIndex(video.currentTime);
     drawExportWidgets(ctx, contentRect, dataIdx);
 
+    // Plays in real time, so the time left is simply what is left of the range.
     const pct = ((video.currentTime - trimStart) / (trimEnd - trimStart)) * 100;
-    setProgress(pct, t('video.exportingPct', { pct: Math.round(pct) }));
+    setProgress(pct, t('video.exportingPctEta', { pct: Math.round(pct), left: formatExportEta(trimEnd - video.currentTime) }));
 
     if ('requestVideoFrameCallback' in video) {
       video.requestVideoFrameCallback(renderFrame);
@@ -1291,16 +1730,19 @@ function exportRealtime(opts) {
     }
   }
 
-  video.muted = true;
+  // Muted elements feed silence into Web Audio, so the sound needs the
+  // element unmuted; restoreUI() mutes it again.
+  video.muted = !withAudio;
   seekVideoTo(video, trimStart).then(() => {
     if (aborted) return;
-    try { recorder.start(); } catch (e) { failExport(t('video.errRecorderStart', { msg: (e && e.message ? e.message : e) })); return; }
-    video.play();
+    try { recorder.start(); } catch (e) { failExport(t('video.errRecorderStart', { msg: (e && e.message ? e.message : e) }), e); return; }
+    // A pause from Cancel or a stall rejects play(); the watchdog handles both.
+    video.play().catch(() => {});
     lastTime = video.currentTime;
 
-    // Watchdog: a stalled (but not "paused") video is the silent-hang case —
-    // requestVideoFrameCallback simply stops firing. Detect no progress and
-    // either nudge playback once or stop with whatever we captured.
+    // Watchdog: a stalled (but not "paused") video is the silent-hang case,
+    // where requestVideoFrameCallback simply stops firing. Detect no progress
+    // and either nudge playback once or stop with whatever we captured.
     watchdog = setInterval(() => {
       if (finished || aborted) return;
       // Reaching trimEnd is the normal finish; if rVFC didn't fire to catch it
@@ -1309,7 +1751,7 @@ function exportRealtime(opts) {
       if (Math.abs(video.currentTime - lastTime) < 1e-3) {
         stalledChecks++;
         if (stalledChecks === 1) {
-          try { video.play(); } catch {}
+          video.play().catch(() => {});
         } else {
           stopRecording();
         }
@@ -1324,11 +1766,11 @@ function exportRealtime(opts) {
     } else {
       requestAnimationFrame(renderFrame);
     }
-  }).catch(e => failExport(t('video.errSeek', { msg: (e && e.message ? e.message : e) })));
+  }).catch(e => failExport(t('video.errSeek', { msg: (e && e.message ? e.message : e) }), e));
 }
 
-// Codec for the reliable path at this frame size, or null when WebCodecs has
-// no usable config (the export then falls back to the real-time path).
+// Video codec at this frame size, or null when WebCodecs has no usable config
+// (the export then stops with video.errNoEncoder).
 // Prefer Constrained Baseline H.264 (profile_idc 66 + constraint_set1):
 // Baseline forbids B-frames by spec, so the encoder cannot reorder frames.
 // High profile (avc1.640028) lets Firefox's encoder emit B-frames, which come
@@ -1355,36 +1797,136 @@ async function pickWebCodecsCodec(width, height) {
   return null;
 }
 
-// Reliable path: WebCodecs VideoEncoder, frame-by-frame. Decoupled from
-// real-time playback, so a slow CPU only makes it take longer — it never
-// stalls and the output timing is frame-accurate (explicit timestamps).
-async function exportWithWebCodecs(opts) {
-  const { video, canvas, ctx, contentRect, trimStart, trimEnd, setProgress, finishExport, failExport, abortExport } = opts;
+// Audio codec for the export: AAC in MP4 where the browser has an AAC
+// encoder (Chrome, Edge), Opus otherwise (Firefox only encodes Opus, which
+// MP4 carries too). WebM is always Opus. null when there is no AudioEncoder.
+const EXPORT_AUDIO_RATE = 48000;
+async function pickWebCodecsAudio(container, channels) {
+  if (typeof window.AudioEncoder !== 'function') return null;
+  const cands = container === 'mp4'
+    ? [{ codec: 'mp4a.40.2', mux: 'aac', label: 'AAC' }, { codec: 'opus', mux: 'opus', label: 'Opus' }]
+    : [{ codec: 'opus', mux: 'A_OPUS', label: 'Opus' }];
+  for (const c of cands) {
+    try {
+      const s = await window.AudioEncoder.isConfigSupported({
+        codec: c.codec, sampleRate: EXPORT_AUDIO_RATE, numberOfChannels: channels, bitrate: EXPORT_AUDIO_BITRATE,
+      });
+      if (s && s.supported) return c;
+    } catch {}
+  }
+  return null;
+}
 
-  const FPS = EXPORT_FPS;
+// decodeAudioData needs the whole file in memory, so a very large file is
+// exported without sound rather than risk running the tab out of memory.
+const AUDIO_DECODE_MAX_BYTES = 1.5 * 1024 * 1024 * 1024;
+
+// The export cannot record the element's sound (it seeks frame by frame), so the sound is decoded from the file itself, cut to the export
+// range and encoded with WebCodecs, all before the video frames. Resolves to
+// { config, chunks: [{ chunk, meta }] } for the muxer, or throws with a reason
+// the user is shown.
+async function encodeExportAudio(file, container, trimStart, trimEnd, isCancelled) {
+  if (!file) throw new Error('no file');
+  if (file.size > AUDIO_DECODE_MAX_BYTES) throw new Error(t('video.audioTooLarge'));
+  const decodeCtx = new OfflineAudioContext(1, 1, EXPORT_AUDIO_RATE);
+  const buffer = await decodeCtx.decodeAudioData(await file.arrayBuffer());
+  if (isCancelled()) return null;
+  const channels = Math.min(2, buffer.numberOfChannels);
+  const pick = await pickWebCodecsAudio(container, channels);
+  if (!pick) throw new Error(t('video.audioNoEncoder'));
+
+  const first = Math.max(0, Math.round(trimStart * EXPORT_AUDIO_RATE));
+  const last = Math.min(buffer.length, Math.round(trimEnd * EXPORT_AUDIO_RATE));
+  const planes = [];
+  for (let c = 0; c < channels; c++) planes.push(buffer.getChannelData(c).subarray(first, last));
+  const frames = last - first;
+
+  const chunks = [];
+  let error = null;
+  const encoder = new window.AudioEncoder({
+    output: (chunk, meta) => chunks.push({ chunk, meta }),
+    error: e => { error = e; },
+  });
+  encoder.configure({ codec: pick.codec, sampleRate: EXPORT_AUDIO_RATE, numberOfChannels: channels, bitrate: EXPORT_AUDIO_BITRATE });
+  // One-second blocks, planar: each channel's samples back to back.
+  for (let off = 0; off < frames && !isCancelled(); off += EXPORT_AUDIO_RATE) {
+    const n = Math.min(EXPORT_AUDIO_RATE, frames - off);
+    const data = new Float32Array(n * channels);
+    for (let c = 0; c < channels; c++) data.set(planes[c].subarray(off, off + n), c * n);
+    const audioData = new window.AudioData({
+      format: 'f32-planar', sampleRate: EXPORT_AUDIO_RATE, numberOfFrames: n, numberOfChannels: channels,
+      timestamp: Math.round(off / EXPORT_AUDIO_RATE * 1e6), data,
+    });
+    encoder.encode(audioData);
+    audioData.close();
+    if (error) throw error;
+  }
+  await encoder.flush();
+  encoder.close();
+  if (error) throw error;
+  if (!chunks.length) throw new Error('no audio data');
+  return { config: { codec: pick.mux, numberOfChannels: channels, sampleRate: EXPORT_AUDIO_RATE }, chunks };
+}
+
+// The export: WebCodecs VideoEncoder, frame by frame. Decoupled from
+// real-time playback, so a slow CPU only makes it take longer; it never
+// stalls and the output timing is frame-accurate (explicit timestamps).
+// The default. It used to be the opt-in "Reliable mode"; the real-time path
+// is now the opt-in one, as Direct render (beta), above.
+async function exportWithWebCodecs(opts) {
+  const { video, canvas, ctx, contentRect, trimStart, trimEnd, fps, bitrate, setProgress, finishExport, failExport, abortExport } = opts;
+
+  const FPS = fps;
   const width = canvas.width;
   const height = canvas.height;
+  let cancelled = false;
+  state.activeExportCancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    document.getElementById('progressText').textContent = t('video.cancelling');
+    document.getElementById('exportCancelBtn').disabled = true;
+  };
 
   try {
     let muxer, target, codec, fileExt, mimeType;
 
     const pick = await pickWebCodecsCodec(width, height);
-    const h264Codec = pick && pick.container === 'mp4' ? pick.codec : null;
-    if (h264Codec) {
-      codec = h264Codec;
+    if (!pick) {
+      failExport(t('video.errNoEncoder', { res: width + ' × ' + height }));
+      return;
+    }
+
+    // Sound first: it decides the muxer's audio track. A failure here costs
+    // only the sound, never the export; the user is told afterwards.
+    let audio = null;
+    let audioSkipped = null;
+    if (opts.wantAudio) {
+      setProgress(0, t('video.preparingAudio'));
+      try {
+        audio = await encodeExportAudio(opts.file, pick.container, trimStart, trimEnd, () => cancelled);
+      } catch (e) {
+        console.warn('[FlySight] exporting without sound', e);
+        audioSkipped = (e && e.message) || String(e);
+      }
+    }
+    if (cancelled) { abortExport(); return; }
+
+    if (pick.container === 'mp4') {
+      codec = pick.codec;
       fileExt = '.mp4';
       mimeType = 'video/mp4';
       target = new window.Mp4Muxer.ArrayBufferTarget();
       muxer = new window.Mp4Muxer.Muxer({
         target,
         video: { codec: 'avc', width, height },
+        audio: audio ? audio.config : undefined,
         fastStart: 'in-memory',
         // Firefox stamps canvas-built VideoFrames document-relative (ignoring our
         // explicit timestamp), so the first chunk isn't at 0. 'offset' normalizes
         // all timestamps to a zero base. No-op on Chrome (first chunk already 0).
         firstTimestampBehavior: 'offset',
       });
-    } else if (pick && pick.container === 'webm') {
+    } else {
       codec = pick.codec;
       fileExt = '.webm';
       mimeType = 'video/webm';
@@ -1392,15 +1934,22 @@ async function exportWithWebCodecs(opts) {
       muxer = new window.WebMMuxer.Muxer({
         target,
         video: { codec: 'V_VP9', width, height, frameRate: FPS },
+        audio: audio ? audio.config : undefined,
         // See note above: normalize Firefox's non-zero first timestamp to 0.
         firstTimestampBehavior: 'offset',
       });
-    } else {
-      // No usable WebCodecs config here — fall back to the real-time path.
-      setProgress(0, t('video.reliableUnavailable'));
-      exportRealtime(opts);
-      return;
     }
+
+    // Audio chunks are handed to the muxer interleaved with the video, each
+    // once the frames have caught up with it, which both muxers expect.
+    let audioIdx = 0;
+    const addAudioUpTo = us => {
+      if (!audio) return;
+      while (audioIdx < audio.chunks.length && audio.chunks[audioIdx].chunk.timestamp <= us) {
+        const { chunk, meta } = audio.chunks[audioIdx++];
+        muxer.addAudioChunk(chunk, meta);
+      }
+    };
 
     let encoderError = null;
     const encoder = new window.VideoEncoder({
@@ -1410,19 +1959,17 @@ async function exportWithWebCodecs(opts) {
     // 'realtime' hints the encoder to avoid frame reordering. Firefox ignores it
     // for H.264 (hence the Baseline-profile codec choice above, which forbids
     // B-frames outright), but it's harmless and helps encoders that do honor it.
-    encoder.configure({ codec, width, height, bitrate: EXPORT_BITRATE, framerate: FPS, latencyMode: 'realtime' });
+    encoder.configure({ codec, width, height, bitrate, framerate: FPS, latencyMode: 'realtime' });
 
     const totalFrames = Math.max(1, Math.ceil((trimEnd - trimStart) * FPS));
+    // Time left, from the average time per frame so far, smoothed so it does
+    // not jitter. Held back for the first seconds, when one slow seek would
+    // throw the figure off wildly.
+    const loopStart = performance.now();
+    let etaSmoothed = null;
+    const keyEvery = Math.max(1, Math.round(FPS));
     video.muted = true;
     try { if (!video.paused) video.pause(); } catch {}
-
-    let cancelled = false;
-    state.activeExportCancel = () => {
-      if (cancelled) return;
-      cancelled = true;
-      document.getElementById('progressText').textContent = t('video.cancelling');
-      document.getElementById('exportCancelBtn').disabled = true;
-    };
 
     for (let i = 0; i < totalFrames; i++) {
       if (cancelled) break;
@@ -1442,15 +1989,24 @@ async function exportWithWebCodecs(opts) {
       const dataIdx = videoTimeToDataIndex(video.currentTime);
       drawExportWidgets(ctx, contentRect, dataIdx);
 
+      const timestamp = Math.round((i / FPS) * 1e6);
+      addAudioUpTo(timestamp);
       const frame = new window.VideoFrame(canvas, {
-        timestamp: Math.round((i / FPS) * 1e6),
+        timestamp,
         duration: Math.round(1e6 / FPS),
       });
-      encoder.encode(frame, { keyFrame: i % FPS === 0 });
+      encoder.encode(frame, { keyFrame: i % keyEvery === 0 });
       frame.close();
 
       const pct = ((i + 1) / totalFrames) * 100;
-      setProgress(pct, t('video.exportingFrame', { i: i + 1, total: totalFrames }));
+      const elapsed = (performance.now() - loopStart) / 1000;
+      if (elapsed >= 3 && i >= 4) {
+        const raw = elapsed / (i + 1) * (totalFrames - i - 1);
+        etaSmoothed = etaSmoothed == null ? raw : etaSmoothed * 0.9 + raw * 0.1;
+      }
+      setProgress(pct, etaSmoothed == null
+        ? t('video.exportingFrame', { i: i + 1, total: totalFrames })
+        : t('video.exportingFrameEta', { i: i + 1, total: totalFrames, left: formatExportEta(etaSmoothed) }));
 
       // Backpressure: let the encoder drain so memory stays bounded.
       while (encoder.encodeQueueSize > FPS * 2 && !cancelled) {
@@ -1467,11 +2023,13 @@ async function exportWithWebCodecs(opts) {
 
     await encoder.flush();
     if (encoderError) throw encoderError;
+    addAudioUpTo(Infinity);
     muxer.finalize();
     const blob = new Blob([target.buffer], { type: mimeType });
     finishExport(blob, fileExt);
+    if (audioSkipped) alert(t('video.audioSkipped', { msg: audioSkipped }));
   } catch (e) {
-    failExport(t('video.errReliable', { msg: (e && e.message ? e.message : e) }));
+    failExport(t('video.errExport', { msg: (e && e.message ? e.message : e) }), e);
   }
 }
 

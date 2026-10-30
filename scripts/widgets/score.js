@@ -46,11 +46,13 @@ function renderScoreWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
       else ctx.rect(x, y, p.boxW, p.boxH);
       ctx.stroke();
 
-      const note = t('overlay.scoreHidden');
+      // fillText() ignores '\n', so the note's lines are drawn one by one and
+      // the widest of them is what has to fit the box.
+      const lines = t('overlay.scoreHidden').split('\n');
       let noteSize = p.labelFontSize;
       ctx.font = '600 ' + noteSize + 'px "Segoe UI", system-ui, sans-serif';
       const fit = p.boxW - p.padding * 2;
-      const noteW = ctx.measureText(note).width;
+      const noteW = Math.max(...lines.map(l => ctx.measureText(l).width));
       if (noteW > fit) {
         noteSize *= fit / noteW;
         ctx.font = '600 ' + noteSize + 'px "Segoe UI", system-ui, sans-serif';
@@ -62,7 +64,9 @@ function renderScoreWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
       ctx.fillStyle = 'rgba(248, 250, 252, 0.85)';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(note, x + p.boxW / 2, y + p.boxH / 2);
+      const lineH = noteSize * 1.25;
+      const firstY = y + p.boxH / 2 - (lines.length - 1) * lineH / 2;
+      lines.forEach((l, i) => ctx.fillText(l, x + p.boxW / 2, firstY + i * lineH));
       ctx.restore();
     }
     return;

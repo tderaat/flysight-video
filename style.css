@@ -1662,6 +1662,15 @@ canvas { width: 100% !important; }
 .video-convert-note { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 2px; }
 .video-convert-note:last-of-type { margin-bottom: 12px; }
 .video-convert-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Resolution and quality selects of both convert panels. */
+.video-convert-opts {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+  margin-bottom: 10px; font-size: 0.85rem; color: var(--text-muted);
+}
+.video-convert-opts label { display: inline-flex; align-items: center; gap: 6px; }
+/* The above-1080p offer sits over the preview, in step 2. */
+.video-convert.video-hires { margin: 0 0 12px; }
+.video-hires .video-convert-msg { margin-bottom: 8px; }
 /* .export-cancel-btn carries a top margin for its use inside #exportProgress. */
 .video-convert-actions .export-cancel-btn { margin-top: 0; }
 .video-convert-status {
@@ -1738,8 +1747,27 @@ canvas { width: 100% !important; }
   display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px;
   margin: 0 0 12px; font-size: 0.8rem;
 }
-.export-info dt { color: var(--text-muted); white-space: nowrap; }
-.export-info dd { margin: 0; color: var(--text-strong); text-align: right; font-variant-numeric: tabular-nums; }
+/* Labels on the left, values and controls on the right; flex so a checkbox
+   lines up with its label. */
+.export-info dt { color: var(--text-muted); white-space: nowrap; display: flex; align-items: center; min-height: 20px; }
+.export-info dd {
+  margin: 0; color: var(--text-strong); text-align: right; font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; justify-content: flex-end; min-height: 20px;
+}
+.export-info dt label { cursor: pointer; }
+.export-check { accent-color: var(--accent); margin: 0; width: 14px; height: 14px; cursor: pointer; }
+.export-check:disabled { cursor: not-allowed; }
+/* Marks an option that is still being tried out (Direct render). */
+.beta-tag {
+  margin-left: 6px; padding: 0 5px; border-radius: 4px;
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.5;
+  color: var(--accent); background: var(--accent-strong); border: 1px solid var(--accent);
+}
+.export-res-select {
+  max-width: 100%; font: inherit; font-variant-numeric: tabular-nums;
+  color: var(--text-strong); background: var(--bg-stronger);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; cursor: pointer;
+}
 
 /* ── Step 2 two-column grid ── */
 .video-step2-grid {
@@ -1852,12 +1880,6 @@ canvas { width: 100% !important; }
 }
 .export-cancel-btn:hover { background: #526180; }
 .export-cancel-btn:disabled { opacity: 0.5; cursor: default; }
-
-.export-mode-toggle {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 0.8rem; color: #94a3b8; margin-bottom: 10px; cursor: pointer;
-}
-.export-mode-toggle input { cursor: pointer; }
 
 /* ── Map hover tooltip (path-hover sync) ── */
 .leaflet-tooltip.map-hover-tooltip {

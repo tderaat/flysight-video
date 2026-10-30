@@ -4,11 +4,15 @@
 // Release id. Must equal the app-build meta tag in index.html and
 // CACHE_VERSION in sw.js; index.html reloads once when they disagree, which
 // means the page and its scripts came from different releases.
-var APP_BUILD = 'flysight-v58';
+var APP_BUILD = 'flysight-v59';
 
 var state = {
   // Video overlay
   videoObjectURL: null,
+  videoFileName: null,   // name of the loaded video
+  videoFile: null,       // the loaded video File; the Reliable export decodes its sound
+  videoSourceFps: null,  // source frame rate (MP4 header, or measured), null = unknown
+  videoHasAudio: null,   // false only when the header says there is no sound track
   videoExitTime: null,
   videoStep: 1, // open step card: 1 mark exit, 2 add widgets, 3 export
   videoCropStart: null, // export crop in video seconds (null = no video loaded)

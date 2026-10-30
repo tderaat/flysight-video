@@ -37,6 +37,15 @@ function clearExitOverride(name) {
 // raw extremes are -57 and +76) flattens everything that matters.
 var ACCEL_AXIS_MIN = -2, ACCEL_AXIS_MAX = 10;
 
+// Chart.js runs mouse events one animation frame late, so an event queued just
+// before destroy() can land on the destroyed chart, where the legend plugin
+// throws ("reading 'handleEvent'"). destroy() nulls chart.canvas, so cancel
+// those events. Registered globally: the season and compare charts need it too.
+Chart.register({
+  id: 'skipDestroyedChartEvents',
+  beforeEvent(chart) { if (!chart.canvas) return false; },
+});
+
 // ── Chart series on/off persistence ──
 // Which datasets the user has toggled via the chart legend, persisted globally
 // (not per-jump) as a map of dataset label -> visible boolean. Tiny + synchronous,

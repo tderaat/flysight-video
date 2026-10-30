@@ -270,7 +270,9 @@ async function openSeasonModal() {
   setSeasonLoading(false);
   seasonAllEntries = all;
   const years = seasonYears();
-  if (seasonYear !== SEASON_ALL && years.indexOf(seasonYear) < 0) seasonYear = years[0] || SEASON_ALL;
+  // Opens on "All seasons" when that tab exists, else on the only season.
+  if (years.length < 2) seasonYear = years[0] || SEASON_ALL;
+  else if (seasonYear !== SEASON_ALL && years.indexOf(seasonYear) < 0) seasonYear = SEASON_ALL;
   renderSeasonView();
 }
 
