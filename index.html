@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v62">
+<meta name="app-build" content="flysight-v63">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -336,21 +336,24 @@
           <div class="video-step2-left">
             <!-- Offered when the loaded video is above 1080p: a smaller copy
                  makes scrubbing and exporting faster. Same parts as
-                 #videoConvertPanel, driven by scripts/convert.js. -->
+                 #videoConvertPanel, driven by scripts/convert.js. Folded to one
+                 line with a link until the user opens it ([data-vc="more"]). -->
             <div class="video-convert video-hires" id="videoHiresPanel" style="display:none;">
               <p class="video-convert-msg" data-vc="msg"></p>
-              <div class="video-convert-opts">
-                <label><span data-i18n="video.infoResolution">Resolution</span> <select class="export-res-select" data-vc="res"></select></label>
-                <label><span data-i18n="video.infoQuality">Quality</span> <select class="export-res-select" data-vc="quality"></select></label>
-              </div>
-              <div class="video-convert-actions" data-vc="actions">
-                <button class="trim-btn" data-vc="go" onclick="startVideoConvert()" data-i18n="convert.btn">Convert</button>
-                <button class="trim-btn secondary" data-vc="keep" onclick="hideVideoHiresOffer()"></button>
-              </div>
-              <div data-vc="progress" style="display:none;">
-                <div class="progress-bar"><div class="progress-fill" data-vc="fill"></div></div>
-                <span class="video-convert-status" data-vc="status"></span>
-                <button class="export-cancel-btn" data-vc="cancel" onclick="cancelVideoConvert()" data-i18n="convert.cancel">Cancel</button>
+              <div data-vc="more" style="display:none;">
+                <div class="video-convert-opts">
+                  <label><span data-i18n="video.infoResolution">Resolution</span> <select class="export-res-select" data-vc="res"></select></label>
+                  <label><span data-i18n="video.infoQuality">Quality</span> <select class="export-res-select" data-vc="quality"></select></label>
+                </div>
+                <div class="video-convert-actions" data-vc="actions">
+                  <button class="trim-btn" data-vc="go" onclick="startVideoConvert()" data-i18n="convert.btn">Convert</button>
+                  <button class="trim-btn secondary" data-vc="keep" onclick="hideVideoHiresOffer()"></button>
+                </div>
+                <div data-vc="progress" style="display:none;">
+                  <div class="progress-bar"><div class="progress-fill" data-vc="fill"></div></div>
+                  <span class="video-convert-status" data-vc="status"></span>
+                  <button class="export-cancel-btn" data-vc="cancel" onclick="cancelVideoConvert()" data-i18n="convert.cancel">Cancel</button>
+                </div>
               </div>
             </div>
             <div class="video-preview-row">

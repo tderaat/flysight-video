@@ -1671,6 +1671,8 @@ canvas { width: 100% !important; }
 /* The above-1080p offer sits over the preview, in step 2. */
 .video-convert.video-hires { margin: 0 0 12px; }
 .video-hires .video-convert-msg { margin-bottom: 8px; }
+.video-hires .video-convert-msg:has(a) { margin-bottom: 0; }
+.video-hires .video-convert-msg a { color: var(--accent); }
 /* .export-cancel-btn carries a top margin for its use inside #exportProgress. */
 .video-convert-actions .export-cancel-btn { margin-top: 0; }
 .video-convert-status {

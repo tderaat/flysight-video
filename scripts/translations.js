@@ -66,6 +66,7 @@ var I18N = {
     'new.dismiss': 'Dismiss',
     'new.feedback': 'Missing something, or found a bug? Send feedback straight from here.',
     'new.season': 'New: the season overview shows the speed score of every jump over time, with your personal best.',
+    'new.video': 'New in the video overlay: more video formats, options to convert your video, more widget settings and many fixes.',
     'btn.createVideoOverlay': 'Create video overlay',
     'btn.scoringWindow': 'Scoring window',
     'btn.jumpOnly': 'Jump only',
@@ -323,6 +324,8 @@ var I18N = {
     'convert.remuxing': 'Repackaging as MP4...',
     'convert.keep': 'Keep {res}',
     'convert.hiresOffer': 'This video is {res}. A smaller copy makes scrubbing and exporting much faster.',
+    'convert.hiresShort': 'This video is {res}. {link}',
+    'convert.hiresLink': 'Make it smaller?',
     'convert.resOriginalPlain': 'Original',
 
     // Compare modal
@@ -449,6 +452,7 @@ var I18N = {
     'new.dismiss': 'Schließen',
     'new.feedback': 'Fehlt etwas oder einen Fehler gefunden? Sende dein Feedback direkt von hier.',
     'new.season': 'Neu: Die Saisonübersicht zeigt den Speed-Score jedes Sprungs im Zeitverlauf, mit deiner persönlichen Bestleistung.',
+    'new.video': 'Neu im Video-Overlay: mehr Videoformate, Optionen zum Umwandeln deines Videos, mehr Widget-Einstellungen und viele Fehlerbehebungen.',
     'btn.createVideoOverlay': 'Video-Overlay erstellen',
     'btn.scoringWindow': 'Wertungsfenster',
     'btn.jumpOnly': 'Nur Sprung',
@@ -706,6 +710,8 @@ var I18N = {
     'convert.remuxing': 'Wird als MP4 neu verpackt...',
     'convert.keep': '{res} behalten',
     'convert.hiresOffer': 'Dieses Video hat {res}. Eine kleinere Kopie macht das Spulen und Exportieren deutlich schneller.',
+    'convert.hiresShort': 'Dieses Video hat {res}. {link}',
+    'convert.hiresLink': 'Verkleinern?',
     'convert.resOriginalPlain': 'Original',
 
     // Compare modal
@@ -832,6 +838,7 @@ var I18N = {
     'new.dismiss': 'Sluiten',
     'new.feedback': 'Mis je iets of een bug gevonden? Geef hier direct feedback.',
     'new.season': 'Nieuw: het seizoensoverzicht toont de speedscore van elke sprong door de tijd, met je persoonlijk record.',
+    'new.video': 'Nieuw in de video-overlay: meer videoformaten, opties om je video om te zetten, meer widgetinstellingen en veel verbeteringen.',
     'btn.createVideoOverlay': 'Video-overlay maken',
     'btn.scoringWindow': 'Scorevenster',
     'btn.jumpOnly': 'Alleen sprong',
@@ -1089,6 +1096,8 @@ var I18N = {
     'convert.remuxing': 'Opnieuw verpakken als MP4...',
     'convert.keep': '{res} behouden',
     'convert.hiresOffer': 'Deze video is {res}. Met een kleinere kopie gaan scrollen en exporteren veel sneller.',
+    'convert.hiresShort': 'Deze video is {res}. {link}',
+    'convert.hiresLink': 'Verkleinen?',
     'convert.resOriginalPlain': 'Origineel',
 
     // Compare modal
@@ -1215,6 +1224,7 @@ var I18N = {
     'new.dismiss': 'Chiudi',
     'new.feedback': 'Manca qualcosa o hai trovato un bug? Invia un feedback direttamente da qui.',
     'new.season': 'Novità: la panoramica stagione mostra il punteggio speed di ogni lancio nel tempo, con il tuo record personale.',
+    'new.video': 'Novità nell\'overlay video: più formati video, opzioni per convertire il video, più impostazioni dei widget e molte correzioni.',
     'btn.createVideoOverlay': 'Crea overlay video',
     'btn.scoringWindow': 'Finestra di punteggio',
     'btn.jumpOnly': 'Solo lancio',
@@ -1472,6 +1482,8 @@ var I18N = {
     'convert.remuxing': 'Reimpacchettamento in MP4...',
     'convert.keep': 'Mantieni {res}',
     'convert.hiresOffer': 'Questo video è {res}. Una copia più piccola rende lo scorrimento e l\'esportazione molto più veloci.',
+    'convert.hiresShort': 'Questo video è {res}. {link}',
+    'convert.hiresLink': 'Ridurlo?',
     'convert.resOriginalPlain': 'Originale',
 
     // Compare modal
@@ -1598,6 +1610,7 @@ var I18N = {
     'new.dismiss': 'Stäng',
     'new.feedback': 'Saknar du något eller har du hittat en bugg? Skicka feedback direkt härifrån.',
     'new.season': 'Nytt: säsongsöversikten visar speedpoängen för varje hopp över tid, med ditt personbästa.',
+    'new.video': 'Nytt i videoöverlägget: fler videoformat, alternativ för att konvertera videon, fler widgetinställningar och många rättelser.',
     'btn.createVideoOverlay': 'Skapa videooverlay',
     'btn.scoringWindow': 'Poängfönster',
     'btn.jumpOnly': 'Bara hoppet',
@@ -1855,6 +1868,8 @@ var I18N = {
     'convert.remuxing': 'Paketerar om som MP4...',
     'convert.keep': 'Behåll {res}',
     'convert.hiresOffer': 'Den här videon är {res}. En mindre kopia gör det mycket snabbare att spola och exportera.',
+    'convert.hiresShort': 'Den här videon är {res}. {link}',
+    'convert.hiresLink': 'Göra den mindre?',
     'convert.resOriginalPlain': 'Original',
 
     // Compare modal
@@ -1981,6 +1996,7 @@ var I18N = {
     'new.dismiss': 'Cerrar',
     'new.feedback': '¿Echas algo en falta o has encontrado un error? Envía tus comentarios desde aquí.',
     'new.season': 'Novedad: el resumen de temporada muestra la puntuación speed de cada salto a lo largo del tiempo, con tu mejor marca personal.',
+    'new.video': 'Novedad en la superposición de vídeo: más formatos de vídeo, opciones para convertir tu vídeo, más ajustes de widgets y muchas correcciones.',
     'btn.createVideoOverlay': 'Crear superposición de vídeo',
     'btn.scoringWindow': 'Ventana de puntuación',
     'btn.jumpOnly': 'Solo el salto',
@@ -2238,6 +2254,8 @@ var I18N = {
     'convert.remuxing': 'Reempaquetando como MP4...',
     'convert.keep': 'Mantener {res}',
     'convert.hiresOffer': 'Este vídeo es {res}. Una copia más pequeña hace que avanzar y exportar sea mucho más rápido.',
+    'convert.hiresShort': 'Este vídeo es {res}. {link}',
+    'convert.hiresLink': '¿Reducirlo?',
     'convert.resOriginalPlain': 'Original',
 
     // Compare modal
@@ -2364,6 +2382,7 @@ var I18N = {
     'new.dismiss': 'Zamknij',
     'new.feedback': 'Czegoś brakuje albo trafił się błąd? Wyślij opinię prosto stąd.',
     'new.season': 'Nowość: podsumowanie sezonu pokazuje wynik speed każdego skoku w czasie, razem z Twoim rekordem życiowym.',
+    'new.video': 'Nowość w nakładce wideo: więcej formatów wideo, opcje konwersji filmu, więcej ustawień widżetów i wiele poprawek.',
     'btn.createVideoOverlay': 'Utwórz nakładkę wideo',
     'btn.scoringWindow': 'Okno punktacji',
     'btn.jumpOnly': 'Tylko skok',
@@ -2621,6 +2640,8 @@ var I18N = {
     'convert.remuxing': 'Przepakowywanie do MP4...',
     'convert.keep': 'Zachowaj {res}',
     'convert.hiresOffer': 'Ten film ma rozdzielczość {res}. Mniejsza kopia znacznie przyspiesza przewijanie i eksport.',
+    'convert.hiresShort': 'Ten film ma rozdzielczość {res}. {link}',
+    'convert.hiresLink': 'Zmniejszyć?',
     'convert.resOriginalPlain': 'Oryginalna',
 
     // Compare modal

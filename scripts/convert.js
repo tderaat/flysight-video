@@ -423,8 +423,11 @@ function startConvertOffer(panel, kind, file, info) {
     panel: panel, kind: kind, file: file,
     codec: { fourcc: info.fourcc, codecName: info.codecName, container: info.container || null },
     srcW: info.width || null, srcH: info.height || null,
-    durationSec: null, rate: null,
+    durationSec: null, rate: null, expanded: false,
   };
+  // The hires banner starts folded to its one-line message.
+  var more = vcPart(panel, 'more');
+  if (more) more.style.display = 'none';
   renderConvertOptions();
   renderConvertOfferText();
   vcPart(panel, 'actions').style.display = '';
@@ -520,7 +523,22 @@ function renderConvertOfferText() {
   var eta = vcPart(job.panel, 'eta');
   var c = job.codec;
   if (job.kind === 'hires') {
-    msg.textContent = t('convert.hiresOffer', { res: convertSizeLabel(job.srcW, job.srcH) });
+    var res = convertSizeLabel(job.srcW, job.srcH);
+    if (job.expanded) {
+      msg.textContent = t('convert.hiresOffer', { res: res });
+      return;
+    }
+    // Folded: "This video is 3840 × 2160. Make it smaller?", the question a
+    // link that opens the options. Split on {link} like the HEVC tip.
+    var parts = t('convert.hiresShort', { res: res }).split('{link}');
+    var a = document.createElement('a');
+    a.href = '#';
+    a.textContent = t('convert.hiresLink');
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      expandVideoHiresOffer();
+    });
+    msg.replaceChildren(document.createTextNode(parts[0] || ''), a, document.createTextNode(parts[1] || ''));
     return;
   }
   renderHevcExtensionTip(job);
@@ -589,6 +607,16 @@ function hideVideoConvertOffer() {
   convertJob = null;
   hideConvertPanel(document.getElementById('videoConvertPanel'));
   hideConvertPanel(document.getElementById('videoHiresPanel'));
+}
+
+// The hires banner's "Make it smaller?" link: shows resolution, quality and
+// the buttons, and the full explanation in place of the short line.
+function expandVideoHiresOffer() {
+  var job = convertJob;
+  if (!job || job.kind !== 'hires') return;
+  job.expanded = true;
+  vcPart(job.panel, 'more').style.display = '';
+  renderConvertOfferText();
 }
 
 // The hires banner's "Keep 3840 × 2160" button.
