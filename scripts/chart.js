@@ -614,6 +614,7 @@ async function renderCurrentJump(view) {
       <div class="stat-label">${t('stat.maxVertSpeed')}</div>
       <div class="stat-value alt">${maxSpeedKmh} km/h / ${(maxFallSpeed * 2.23694).toFixed(0)} mph</div>
     </div>
+    ${avgAccelHtml}
     <div class="stat-card">
       <div class="stat-label">${t('stat.speedWindow')}</div>
       ${perfWindowStartAlt !== null
@@ -625,7 +626,6 @@ async function renderCurrentJump(view) {
       <div class="stat-label">${t('stat.groundElevation')}</div>
       <div class="stat-value alt">${groundAlt.toFixed(0)} m / ${(groundAlt * 3.28084).toFixed(0)} ft</div>
     </div>
-    ${avgAccelHtml}
     <div class="stat-card"${localStart ? ` data-tip="${t('tip.localStart', { time: localStart })}"` : ''}>
       <div class="stat-label">${t('stat.utcStart')}</div>
       <div class="stat-detail alt compact">${utcStart.date} ${utcStart.time}</div>
