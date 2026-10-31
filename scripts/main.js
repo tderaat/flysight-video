@@ -719,6 +719,8 @@ function buildJumpDayGroups(jumps, sortMode) {
 function makeJumpDayGroup(opts) {
   const group = document.createElement('div');
   group.className = 'jump-day' + (opts.collapsed ? ' collapsed' : '');
+  // Read back by makeJumpYearGroup(), which unfolds every day of a year it opens.
+  group.dataset.dayKey = opts.dayKey;
   const header = document.createElement('div');
   header.className = 'jump-day-header';
   header.setAttribute('aria-expanded', opts.collapsed ? 'false' : 'true');
@@ -757,8 +759,9 @@ function makeJumpDayGroup(opts) {
 // One collapsible year: a header line (the year, its jump count, a caret)
 // above that year's day cards. `fill(body)` builds the days; it runs only once
 // the year is open, so a folded year costs one line of DOM. Shared by the
-// sidebar and the compare modal's list: `storageKey` picks whose collapse
-// state it writes, and the compare list adds a select-all box to the header.
+// sidebar and the compare modal's list: `storageKey` / `dayStorageKey` pick
+// whose year and day collapse state it writes, and the compare list adds a
+// select-all box to the header. Opening a year unfolds all of its days.
 function makeJumpYearGroup(opts) {
   const section = document.createElement('div');
   section.className = 'jump-year' + (opts.collapsed ? ' collapsed' : '');
@@ -791,7 +794,16 @@ function makeJumpYearGroup(opts) {
   header.addEventListener('click', function() {
     const nowCollapsed = section.classList.toggle('collapsed');
     header.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
-    if (!nowCollapsed) fillOnce();
+    if (!nowCollapsed) {
+      fillOnce();
+      const days = getCollapsedDays(opts.dayStorageKey);
+      body.querySelectorAll('.jump-day.collapsed').forEach(day => {
+        day.classList.remove('collapsed');
+        day.querySelector('.jump-day-header').setAttribute('aria-expanded', 'true');
+        days.delete(day.dataset.dayKey);
+      });
+      saveCollapsedDays(days, opts.dayStorageKey);
+    }
     const map = getCollapsedYears(opts.storageKey);
     map[opts.year] = nowCollapsed;
     saveCollapsedYears(map, opts.storageKey);

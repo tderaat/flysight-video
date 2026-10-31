@@ -471,6 +471,7 @@ async function renderCompareJumpsList() {
         count: yearDays.reduce((n, g) => n + countOf(g.items), 0),
         collapsed: isYearCollapsed(collapsedYears, year, newestYear),
         storageKey: COMPARE_COLLAPSED_YEARS_KEY,
+        dayStorageKey: COMPARE_COLLAPSED_DAYS_KEY,
         fill: body => yearDays.forEach(g => appendDay(body, g))
       });
       const names = [];
