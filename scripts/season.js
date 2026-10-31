@@ -156,10 +156,13 @@ async function analyseJumpInBackground(csv, override) {
 // season view opens from cache. Only with a worker: on the main thread it
 // would make the page stutter for as long as the batch takes, and the season
 // view does the same work with a progress line when opened. Runs are queued,
-// and each row is merged into the cache as it lands.
+// and each row is merged into the cache as it lands, after which onRow(name)
+// is called if given (the jump list refreshes its scores as they arrive).
+// Resolves true once this run has written a row, else false.
 let seasonWarmQueue = Promise.resolve();
-function warmSeasonCache(names) {
-  if (!getAnalysisWorker()) return;
+function warmSeasonCache(names, onRow) {
+  if (!getAnalysisWorker()) return Promise.resolve(false);
+  let wrote = false;
   seasonWarmQueue = seasonWarmQueue.then(async () => {
     for (const name of names) {
       const j = await getJump(name);
@@ -173,8 +176,11 @@ function warmSeasonCache(names) {
       const cache = readSeasonCache();
       cache[j.name] = { v: ANALYSIS_VERSION, key, override, summary: s };
       writeSeasonCache(cache);
+      wrote = true;
+      if (onRow) { try { onRow(j.name); } catch (e) { /* ignore */ } }
     }
   }).catch(e => console.warn('Season: background analysis failed', e));
+  return seasonWarmQueue.then(() => wrote);
 }
 
 // Analyse every stored jump, reusing the cache where it is still valid.
@@ -434,13 +440,15 @@ function seasonTrend() {
 function seasonLegendItems() {
   const best = seasonBest();
   const off = getSeasonLegendOff();
-  const accent = getThemeColor('accent') || '#38bdf8';
+  // Valid jumps and their trend: the accent, except where it is too close to
+  // the red of an invalid exit (dark-red). See --season-jump.
+  const jumpColor = getThemeColor('season-jump') || getThemeColor('accent') || '#38bdf8';
   const items = [];
   const item = (key, kind, color, text) => items.push({ key, kind, color, text, off: off.has(key) });
-  if (seasonKindsPresent.has('jump')) item('jump', 'dot', accent, t('season.legendJump'));
+  if (seasonKindsPresent.has('jump')) item('jump', 'dot', jumpColor, t('season.legendJump'));
   if (seasonKindsPresent.has('invalid')) item('invalid', 'dot', SEASON_INVALID_COLOR, t('season.legendInvalid'));
   if (seasonKindsPresent.has('slow')) item('slow', 'dot', SEASON_SLOW_COLOR, t('season.legendSlow', { max: SEASON_SLOW_KMH }));
-  if (seasonTrend()) item('trend', 'line', accent, t('season.legendTrend'));
+  if (seasonTrend()) item('trend', 'line', jumpColor, t('season.legendTrend'));
   if (best) item('pb', 'dash', '#94a3b8', t('season.legendPb', { score: best.score.toFixed(2) }));
   return items;
 }
@@ -479,7 +487,7 @@ function renderSeasonChart() {
   if (!seasonEntries.length) return;
   const canvas = document.getElementById('seasonChart');
 
-  const accent = getThemeColor('accent') || '#38bdf8';
+  const jumpColor = getThemeColor('season-jump') || getThemeColor('accent') || '#38bdf8';
   const themeBgCard = getThemeColor('bg-card') || '#1e293b';
   const themeBorder = getThemeColor('border') || '#334155';
   const themeText = getThemeColor('text') || '#cbd5e1';
@@ -510,7 +518,7 @@ function renderSeasonChart() {
   } else {
     dayStarts.forEach(i => xTicks.set(i, seasonDayLabel(entries[i].exitMs)));
   }
-  const kindColor = { jump: accent, invalid: SEASON_INVALID_COLOR, slow: SEASON_SLOW_COLOR };
+  const kindColor = { jump: jumpColor, invalid: SEASON_INVALID_COLOR, slow: SEASON_SLOW_COLOR };
   const pointColors = entries.map(e => kindColor[seasonDotKind(e)]);
   const trend = seasonTrend();
   // Both lines sit under the dots. The personal best is an annotation and the
@@ -555,7 +563,7 @@ function renderSeasonChart() {
         const px = scales.x.getPixelForValue(p.x), py = scales.y.getPixelForValue(p.y);
         if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
       });
-      ctx.strokeStyle = hexToRgba(accent, 0.75);
+      ctx.strokeStyle = hexToRgba(jumpColor, 0.75);
       ctx.lineWidth = 2;
       ctx.lineJoin = 'round';
       ctx.stroke();

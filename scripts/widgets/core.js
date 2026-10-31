@@ -42,23 +42,36 @@ function buildConfigRow(label, children) {
   return row;
 }
 
-// Checkbox list. defaultOn keys read `!== false` so widgets from a layout saved
-// before the setting existed still get it (the drop shadow).
+// A toggle switch (.switch in style.css): a role="switch" checkbox over a track
+// and knob. Returns the wrapper and the checkbox, which events attach to.
+function makeConfigSwitch(checked) {
+  const wrap = document.createElement('span');
+  wrap.className = 'switch';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.setAttribute('role', 'switch');
+  cb.checked = checked;
+  wrap.appendChild(cb);
+  wrap.appendChild(document.createElement('span'));
+  return { wrap, cb };
+}
+
+// Toggle list, each the label then its switch. defaultOn keys read `!== false`
+// so widgets from a layout saved before the setting existed still get it (the
+// drop shadow).
 function buildConfigChecks(widget, items) {
   const checks = document.createElement('div');
   checks.className = 'widget-config-checks';
   items.forEach(({ key, label, defaultOn }) => {
     const lbl = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = defaultOn ? widget.config[key] !== false : !!widget.config[key];
+    const { wrap, cb } = makeConfigSwitch(defaultOn ? widget.config[key] !== false : !!widget.config[key]);
     cb.addEventListener('change', () => {
       widget.config[key] = cb.checked;
       drawOverlayPreview();
       state.scheduleSaveWidgetLayout();
     });
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(' ' + label));
+    lbl.appendChild(document.createTextNode(label));
+    lbl.appendChild(wrap);
     checks.appendChild(lbl);
   });
   return checks;
@@ -76,17 +89,15 @@ function buildConfigSection(title, children) {
   return sec;
 }
 
-// Section whose heading is a checkbox; the body only shows while it is ticked.
+// Section whose heading is a label and switch; the body only shows while it is on.
 function buildToggleSection(widget, key, label, body, defaultOn) {
   const sec = document.createElement('div');
   sec.className = 'widget-config-section';
   const head = document.createElement('label');
   head.className = 'widget-config-section-head';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = defaultOn ? widget.config[key] !== false : !!widget.config[key];
-  head.appendChild(cb);
-  head.appendChild(document.createTextNode(' ' + label));
+  const { wrap, cb } = makeConfigSwitch(defaultOn ? widget.config[key] !== false : !!widget.config[key]);
+  head.appendChild(document.createTextNode(label));
+  head.appendChild(wrap);
   body.classList.add('widget-config-section-body');
   body.hidden = !cb.checked;
   cb.addEventListener('change', () => {

@@ -12,9 +12,12 @@ var SCORE_WINDOW_SEC = 3;                   // fastest exactly-3-second window
 var SCORE_TIME_DELTA = 0.005;               // sample-time tolerance for that window
 var EXIT_MIN_AGL = 3962;                    // 13,000 ft
 var EXIT_MAX_AGL = 4267;                    // 14,000 ft
+var VALIDATION_WINDOW_HEIGHT = 3300 * 0.3048; // 3,300 ft above the window end
+var SACC_MAX = 3;                           // m/s, every sample in it must be below
 
 // Bump when anything below changes the result, so cached season scores recompute.
-var ANALYSIS_VERSION = 1;
+// 2: the summary gained maxSAcc / accValid (GPS accuracy check).
+var ANALYSIS_VERSION = 2;
 
 // Performance window over exit-relative arrays (seconds, m MSL, m/s down).
 // The start is interpolated between the two samples bracketing 10 m/s.
@@ -88,6 +91,27 @@ function isExitAltitudeValid(exitAltAGL) {
   return exitAltAGL >= EXIT_MIN_AGL && exitAltAGL <= EXIT_MAX_AGL;
 }
 
+// Worst speed accuracy in the validation window. FAI rules (2026, sections 2.6
+// and 4.1): the validation window is the 1006 m (3,300 ft) above the end of the
+// performance window, and every sample in it must have a speed accuracy (sAcc)
+// below 3 m/s, or a re-jump is given. The rules set no limit on vertical
+// accuracy (vAcc). Takes exit-relative times, m MSL altitudes and the sAcc
+// column (strings or numbers, same length). Null when there is no sAcc column
+// or the window end wasn't found.
+function computeMaxSpeedAcc(times, altitudes, sAccs, win) {
+  if (win.perfWindowEndTime === null || !isFinite(win.perfWindowEndTime)) return null;
+  const validationTopAlt = win.perfWindowEndAlt + VALIDATION_WINDOW_HEIGHT;
+  let maxSAcc = null;
+  for (let i = 0; i < times.length; i++) {
+    if (times[i] < 0 || times[i] > win.perfWindowEndTime) continue;
+    if (altitudes[i] > validationTopAlt) continue;
+    const s = parseFloat(sAccs[i]);
+    if (!isFinite(s)) continue;
+    if (maxSAcc === null || s > maxSAcc) maxSAcc = s;
+  }
+  return maxSAcc;
+}
+
 // Index of the sample nearest a recording-relative time (a manual exit override).
 function nearestSampleIndex(allTimes, sec) {
   let best = 0, bestDiff = Infinity;
@@ -100,8 +124,9 @@ function nearestSampleIndex(allTimes, sec) {
 
 // The figures the season view needs for one stored jump, computed exactly as
 // renderCurrentJump() does on its default view: { score (km/h or null),
-// exitAglM, exitValid, exitMs (UTC epoch ms of the exit) }. Null when the file
-// has too little data to analyse.
+// exitAglM, exitValid, exitMs (UTC epoch ms of the exit), maxSAcc (m/s or
+// null), accValid (null when maxSAcc is) }. Null when the file has too little
+// data to analyse.
 function analyseJumpSummary(csv, exitOverrideSec) {
   const data = parseFlySightCSV(csv);
   if (data.length < 50) return null;
@@ -120,21 +145,25 @@ function analyseJumpSummary(csv, exitOverrideSec) {
   let endIdx = allTimes.findIndex(t => t >= allTimes[canopyIdx] + 5);
   if (startIdx < 0) startIdx = 0;
   if (endIdx < 0) endIdx = data.length - 1;
-  const times = [], altitudes = [], vertSpeeds = [];
+  const times = [], altitudes = [], vertSpeeds = [], sAccs = [];
   for (let i = startIdx; i <= endIdx; i++) {
     times.push(allTimes[i] - exitTime);
     altitudes.push(allAlts[i]);
     vertSpeeds.push(allVelD[i]);
+    sAccs.push(data[i].sAcc);
   }
 
   const groundAlt = allAlts[landingIdx];
   const win = computePerformanceWindow(times, altitudes, vertSpeeds, groundAlt);
   const { speedScore } = computeSpeedScore(times, altitudes, groundAlt, win);
   const exitAglM = allAlts[exitIdx] - groundAlt;
+  const maxSAcc = computeMaxSpeedAcc(times, altitudes, sAccs, win);
   return {
     score: speedScore,
     exitAglM,
     exitValid: isExitAltitudeValid(exitAglM),
-    exitMs: firstT + exitTime * 1000
+    exitMs: firstT + exitTime * 1000,
+    maxSAcc,
+    accValid: maxSAcc === null ? null : maxSAcc < SACC_MAX
   };
 }

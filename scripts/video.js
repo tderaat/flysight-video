@@ -1175,11 +1175,10 @@ function addSelectOption(sel, value, label) {
   sel.appendChild(opt);
 }
 
-// Rebuilds the options for this source: auto, original, then each cap below it.
-// Automatic is only listed when it differs from Original (a source above
-// 1080p); otherwise the two would be the same size twice. The
-// stored 'auto' preference is kept either way, so it applies again as soon as
-// Automatic means something.
+// Rebuilds the options for this source: original first, then each cap below
+// it. There is no Automatic option (user's request): until the user picks one,
+// the stored 'auto' preference selects the size it resolves to (1080p for a
+// source above 1080p, else Original), and keeps doing so for the next video.
 function renderExportResSelect(w, h) {
   const sel = document.getElementById('exportResSelect');
   if (!sel) return;
@@ -1187,13 +1186,13 @@ function renderExportResSelect(w, h) {
   if (!w || !h) { sel.disabled = true; return; }
   sel.disabled = false;
   const dims = size => size.width + ' × ' + size.height;
-  if (autoExportCap(w, h)) addSelectOption(sel, 'auto', t('video.resAuto', { res: dims(scaleToCap(w, h, autoExportCap(w, h))) }));
   addSelectOption(sel, 'original', t('video.resOriginal', { res: dims({ width: w, height: h }) }));
   for (const cap of EXPORT_RES_CAPS) {
     if (Math.min(w, h) > cap) addSelectOption(sel, String(cap), cap + 'p (' + dims(scaleToCap(w, h, cap)) + ')');
   }
+  let pref = getExportResPref();
+  if (pref === 'auto') pref = autoExportCap(w, h) ? String(autoExportCap(w, h)) : 'original';
   // A cap the source is already below exports at the source size.
-  const pref = getExportResPref();
   sel.value = sel.querySelector('option[value="' + pref + '"]') ? pref : 'original';
 }
 
@@ -1320,7 +1319,7 @@ function renderExportAudioToggle() {
   const none = state.videoHasAudio === false;
   box.checked = getExportAudioPref() && !none;
   box.disabled = none;
-  const cell = box.parentElement;
+  const cell = box.closest('dd');
   if (none) cell.setAttribute('data-tip', t('video.audioNone'));
   else cell.removeAttribute('data-tip');
 }

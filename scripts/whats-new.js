@@ -20,6 +20,7 @@ var WHATS_NEW = [
   { id: 'feedback', added: '2026-10-27', target: '#feedbackBtn', text: 'new.feedback' },
   { id: 'season', added: '2026-10-27', target: '#seasonBtn', text: 'new.season' },
   { id: 'video', added: '2026-10-31', target: '#videoOverlayBtn', text: 'new.video' },
+  { id: 'jumpFilters', added: '2026-10-31', target: '#jumpFilterBtn', text: 'new.jumpFilters' },
 ];
 
 var WHATS_NEW_FIRST_SEEN_KEY = 'flysight_first_seen';

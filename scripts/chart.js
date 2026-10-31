@@ -485,24 +485,11 @@ async function renderCurrentJump(view) {
   const exitWarningHtml = exitValid ? '' : warningBlock(exitMessage);
 
   // ── GPS accuracy in the validation window ──
-  // FAI rules (2026, sections 2.6 and 4.1): the validation window is the 1006 m
-  // (3,300 ft) above the end of the performance window, and every sample in it
-  // must have a speed accuracy (sAcc) below 3 m/s, or a re-jump is given. The
-  // rules set no limit on vertical accuracy (vAcc). Null when the file has no
-  // sAcc column or the window end wasn't found, in which case nothing is shown.
-  const VALIDATION_WINDOW_HEIGHT = 3300 * 0.3048;
-  const SACC_MAX = 3;
-  let maxSAcc = null;
-  if (perfWindowEndTime !== null && isFinite(perfWindowEndTime)) {
-    const validationTopAlt = perfWindowEndAlt + VALIDATION_WINDOW_HEIGHT;
-    for (let i = 0; i < data.length; i++) {
-      if (chartTimes[i] < 0 || chartTimes[i] > perfWindowEndTime) continue;
-      if (chartAlts[i] > validationTopAlt) continue;
-      const s = parseFloat(data[i].sAcc);
-      if (!isFinite(s)) continue;
-      if (maxSAcc === null || s > maxSAcc) maxSAcc = s;
-    }
-  }
+  // computeMaxSpeedAcc() (analysis.js) holds the FAI rule, shared with the
+  // jump list's filter. Null when the file has no sAcc column or the window
+  // end wasn't found, in which case nothing is shown.
+  const maxSAcc = computeMaxSpeedAcc(chartTimes, chartAlts, data.map(r => r.sAcc),
+    { perfWindowEndTime, perfWindowEndAlt });
   // Shown as a row of the Avg Accel Down card: the exit check's green badge
   // (inline, with its hover tooltip) when it passes, the value in red plus the
   // permanent warning block when it doesn't. The label carries an info button
@@ -646,8 +633,8 @@ async function renderCurrentJump(view) {
   const themeAccent     = getThemeColor('accent')      || '#38bdf8';
   const themeAccentFill = getThemeColor('accent-fill') || hexToRgba(themeAccent, 0.08);
   // The altitude line and its y-axis follow the accent in every theme but
-  // dark-green, where the neon-green accent is indistinguishable from the
-  // (non-themeable) green Vertical Speed series. See --chart-altitude.
+  // dark-red, dark-green and dark-pink, whose accents would merge with the
+  // red, green or pink series. See --chart-altitude.
   const themeAlt        = getThemeColor('chart-altitude')      || themeAccent;
   const themeAltFill    = getThemeColor('chart-altitude-fill') || themeAccentFill;
   const themeBgCard     = getThemeColor('bg-card')     || '#1e293b';
@@ -656,6 +643,16 @@ async function renderCurrentJump(view) {
   const themeTextStrong = getThemeColor('text-strong') || '#f8fafc';
   const themeTextMuted  = getThemeColor('text-muted')  || '#94a3b8';
   const themeTextDim    = getThemeColor('text-dim')    || '#64748b';
+  // The other series keep the same colours in every theme but hc-light,
+  // which darkens them to read on white. See --chart-vspeed and friends.
+  const cVSpeed  = getThemeColor('chart-vspeed') || '#4ade80';
+  const cGround  = getThemeColor('chart-ground') || '#ef4444';
+  const cAngle   = getThemeColor('chart-angle')  || '#f472b6';
+  const cAccel   = getThemeColor('chart-accel')  || '#fb923c';
+  const cSats    = getThemeColor('chart-sats')   || '#a78bfa';
+  const cVAcc    = getThemeColor('chart-vacc')   || '#facc15';
+  const cMarker  = getThemeColor('chart-marker') || '#94a3b8';
+  const cBest3s  = getThemeColor('chart-best3s') || '#ffffff';
 
   // ── Chart ──
   if (state.chartInstance) state.chartInstance.destroy();
@@ -685,8 +682,8 @@ async function renderCurrentJump(view) {
           label: t('chart.vertSpeed'),
           seriesKey: 'vertSpeed',
           data: chartVertSpeeds.map(v => v * 3.6),
-          borderColor: '#4ade80',
-          backgroundColor: 'rgba(74,222,128,0.08)',
+          borderColor: cVSpeed,
+          backgroundColor: hexToRgba(cVSpeed, 0.08),
           fill: false,
           yAxisID: 'ySpeed',
           pointRadius: 0,
@@ -698,8 +695,8 @@ async function renderCurrentJump(view) {
           label: t('chart.groundSpeed'),
           seriesKey: 'groundSpeed',
           data: chartHorzSpeeds.map(v => v * 3.6),
-          borderColor: '#ef4444',
-          backgroundColor: 'rgba(239,68,68,0.08)',
+          borderColor: cGround,
+          backgroundColor: hexToRgba(cGround, 0.08),
           fill: false,
           yAxisID: 'ySpeed',
           pointRadius: 0,
@@ -711,8 +708,8 @@ async function renderCurrentJump(view) {
           label: t('chart.diveAngle'),
           seriesKey: 'diveAngle',
           data: chartDiveAngles,
-          borderColor: '#f472b6',
-          backgroundColor: 'rgba(244,114,182,0.08)',
+          borderColor: cAngle,
+          backgroundColor: hexToRgba(cAngle, 0.08),
           fill: false,
           yAxisID: 'yAngle',
           pointRadius: 0,
@@ -724,8 +721,8 @@ async function renderCurrentJump(view) {
           label: t('chart.accelDown'),
           seriesKey: 'accelDown',
           data: chartAccelDownWindow,
-          borderColor: '#fb923c',
-          backgroundColor: 'rgba(251,146,60,0.08)',
+          borderColor: cAccel,
+          backgroundColor: hexToRgba(cAccel, 0.08),
           fill: false,
           yAxisID: 'yAccel',
           pointRadius: 0,
@@ -738,8 +735,8 @@ async function renderCurrentJump(view) {
           label: t('chart.satellites'),
           seriesKey: 'satellites',
           data: chartNumSV,
-          borderColor: '#a78bfa',
-          backgroundColor: 'rgba(167,139,250,0.08)',
+          borderColor: cSats,
+          backgroundColor: hexToRgba(cSats, 0.08),
           fill: false,
           yAxisID: 'ySat',
           pointRadius: 0,
@@ -753,8 +750,8 @@ async function renderCurrentJump(view) {
           label: t('chart.vertAccuracy'),
           seriesKey: 'vertAccuracy',
           data: chartVAcc,
-          borderColor: '#facc15',
-          backgroundColor: 'rgba(250,204,21,0.08)',
+          borderColor: cVAcc,
+          backgroundColor: hexToRgba(cVAcc, 0.08),
           fill: false,
           yAxisID: 'yGpsAcc',
           pointRadius: 0,
@@ -805,15 +802,15 @@ async function renderCurrentJump(view) {
               type: 'line',
               xMin: 0,
               xMax: 0,
-              borderColor: '#94a3b8',
+              borderColor: cMarker,
               borderWidth: 2,
               borderDash: [6, 4],
               label: {
                 display: true,
                 content: t('annot.exit'),
                 position: 'start',
-                backgroundColor: 'rgba(148,163,184,0.15)',
-                color: '#94a3b8',
+                backgroundColor: hexToRgba(cMarker, 0.15),
+                color: cMarker,
                 font: { size: 11, weight: 'bold' },
                 padding: 4
               }
@@ -823,15 +820,15 @@ async function renderCurrentJump(view) {
                 type: 'line',
                 xMin: perfWindowEndTime,
                 xMax: perfWindowEndTime,
-                borderColor: '#94a3b8',
+                borderColor: cMarker,
                 borderWidth: 1.5,
                 borderDash: [4, 3],
                 label: {
                   display: true,
                   content: t('annot.windowEnd'),
                   position: 'start',
-                  backgroundColor: 'rgba(148,163,184,0.15)',
-                  color: '#94a3b8',
+                  backgroundColor: hexToRgba(cMarker, 0.15),
+                  color: cMarker,
                   font: { size: 10, weight: 'bold' },
                   padding: 3
                 }
@@ -849,15 +846,15 @@ async function renderCurrentJump(view) {
                 type: 'line',
                 xMin: groundVertT,
                 xMax: groundVertT,
-                borderColor: 'rgba(250,204,21,0.45)',
+                borderColor: hexToRgba(cVAcc, 0.45),
                 borderWidth: 1.5,
                 borderDash: [4, 3],
                 label: {
                   display: true,
                   content: t('annot.pastVert'),
                   position: 'center',
-                  backgroundColor: 'rgba(250,204,21,0.12)',
-                  color: 'rgba(250,204,21,0.9)',
+                  backgroundColor: hexToRgba(cVAcc, 0.12),
+                  color: hexToRgba(cVAcc, 0.9),
                   font: { size: 10, weight: 'bold' },
                   padding: 3
                 }
@@ -868,14 +865,14 @@ async function renderCurrentJump(view) {
                 type: 'box',
                 xMin: best3sStart,
                 xMax: best3sEnd,
-                backgroundColor: 'rgba(255,255,255,0.06)',
-                borderColor: 'rgba(255,255,255,0.15)',
+                backgroundColor: hexToRgba(cBest3s, 0.06),
+                borderColor: hexToRgba(cBest3s, 0.15),
                 borderWidth: 1,
                 label: {
                   display: true,
                   content: t('annot.best3s'),
                   position: { x: 'center', y: 'start' },
-                  color: 'rgba(255,255,255,0.5)',
+                  color: hexToRgba(cBest3s, 0.5),
                   font: { size: 9, weight: 'bold' },
                   padding: 3
                 }
@@ -956,7 +953,7 @@ async function renderCurrentJump(view) {
           max: viewMax,
           title: { display: true, text: t('axis.time'), color: themeTextMuted },
           ticks: { color: themeTextDim, callback: formatChartTickLabel },
-          grid: { color: 'rgba(148,163,184,0.08)' }
+          grid: { color: hexToRgba(cMarker, 0.08) }
         },
         yAlt: {
           type: 'linear',
@@ -972,8 +969,8 @@ async function renderCurrentJump(view) {
           position: 'right',
           min: ySpeedMin,
           max: ySpeedMax,
-          title: { display: true, text: t('axis.speed'), color: '#4ade80' },
-          ticks: { color: '#4ade80' },
+          title: { display: true, text: t('axis.speed'), color: cVSpeed },
+          ticks: { color: cVSpeed },
           grid: { drawOnChartArea: false }
         },
         yAngle: {
@@ -981,8 +978,8 @@ async function renderCurrentJump(view) {
           position: 'right',
           min: 0,
           max: 90,
-          title: { display: true, text: t('axis.diveAngle'), color: '#f472b6' },
-          ticks: { color: '#f472b6' },
+          title: { display: true, text: t('axis.diveAngle'), color: cAngle },
+          ticks: { color: cAngle },
           grid: { drawOnChartArea: false }
         },
         yAccel: {
@@ -991,8 +988,8 @@ async function renderCurrentJump(view) {
           display: 'auto',
           min: ACCEL_AXIS_MIN,
           max: ACCEL_AXIS_MAX,
-          title: { display: true, text: t('axis.accelDown'), color: '#fb923c' },
-          ticks: { color: '#fb923c' },
+          title: { display: true, text: t('axis.accelDown'), color: cAccel },
+          ticks: { color: cAccel },
           grid: { drawOnChartArea: false }
         },
         ySat: {
@@ -1001,8 +998,8 @@ async function renderCurrentJump(view) {
           display: 'auto',
           min: 0,
           max: maxSat + 2,
-          title: { display: true, text: t('axis.satellites'), color: '#a78bfa' },
-          ticks: { color: '#a78bfa', precision: 0, stepSize: 1 },
+          title: { display: true, text: t('axis.satellites'), color: cSats },
+          ticks: { color: cSats, precision: 0, stepSize: 1 },
           grid: { drawOnChartArea: false }
         },
         yGpsAcc: {
@@ -1011,8 +1008,8 @@ async function renderCurrentJump(view) {
           display: 'auto',
           min: vAccMin,
           max: vAccMax,
-          title: { display: true, text: t('axis.vertAccuracy'), color: '#facc15' },
-          ticks: { color: '#facc15' },
+          title: { display: true, text: t('axis.vertAccuracy'), color: cVAcc },
+          ticks: { color: cVAcc },
           grid: { drawOnChartArea: false }
         }
       }

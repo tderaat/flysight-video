@@ -305,7 +305,7 @@ async function handleFiles(files, opts) {
   }
 
   if (lastName) selectJump(lastName);
-  if (storedNames.length && typeof warmSeasonCache === 'function') warmSeasonCache(storedNames);
+  if (storedNames.length && typeof warmSeasonCache === 'function') warmSeasonCache(storedNames, scheduleJumpListRefresh);
 }
 
 // Large batches and folder imports. Same naming as handleFiles(), plus:
@@ -362,7 +362,7 @@ async function importBulk(csvFiles, folder) {
   if (folder) showImportToast(changed.length, unchanged, skipped);
   // Score the new and changed jumps in the background, so the season view
   // opens without a wait (warmSeasonCache in scripts/season.js).
-  if (changed.length && typeof warmSeasonCache === 'function') warmSeasonCache(changed);
+  if (changed.length && typeof warmSeasonCache === 'function') warmSeasonCache(changed, scheduleJumpListRefresh);
 }
 
 function importProgressText() {
@@ -506,12 +506,27 @@ function isYearCollapsed(map, year, newestYear) {
 }
 
 // ── Jump list sorting ──
-// The list is always sorted by date; only the direction is user-controlled, via
-// the small sort icon in the first day header. The choice persists in a cookie
-// (1-year), mirrored to localStorage as a fallback for file:// origins that drop
-// cookies — same pattern as theme/lang.
-const JUMP_SORTS = ['date-asc', 'date-desc'];
+// By date (newest or oldest first, in day cards) or by speed score (fastest or
+// slowest first, one ranked list), picked from the Order menu above the list.
+// The choice persists in a cookie (1-year), mirrored to localStorage as a
+// fallback for file:// origins that drop cookies — same pattern as theme/lang.
+const JUMP_SORTS = ['date-desc', 'date-asc', 'score-desc', 'score-asc'];
 const DEFAULT_JUMP_SORT = 'date-desc';   // newest first
+const JUMP_SORT_KEYS = {
+  'date-desc': 'sort.dateDesc', 'date-asc': 'sort.dateAsc',
+  'score-desc': 'sort.scoreDesc', 'score-asc': 'sort.scoreAsc'
+};
+
+function isScoreSort(mode) {
+  return mode === 'score-desc' || mode === 'score-asc';
+}
+
+// The compare modal's list is always by date: under a speed sort in the
+// sidebar it shows newest first.
+function readJumpDateSort() {
+  const mode = readJumpSort();
+  return isScoreSort(mode) ? DEFAULT_JUMP_SORT : mode;
+}
 
 function readJumpSort() {
   let v = null;
@@ -533,15 +548,102 @@ function writeJumpSort(v) {
   try { localStorage.setItem('flysight_jump_sort', v); } catch (e) {}
 }
 
-// Flip between oldest-first and newest-first, then re-render. The direction is
-// shared app-wide, so the compare modal's list re-renders too when it's open.
-function toggleJumpSort() {
-  writeJumpSort(readJumpSort() === 'date-asc' ? 'date-desc' : 'date-asc');
+// Store a sort and re-render. The date direction is shared app-wide, so the
+// compare modal's list re-renders too when it's open.
+function setJumpSort(mode) {
+  writeJumpSort(mode);
   renderJumpList();
   const cmp = document.getElementById('compareModal');
   if (cmp && cmp.classList.contains('open') && typeof renderCompareJumpsList === 'function') {
     try { renderCompareJumpsList(); } catch (e) {}
   }
+}
+
+// The compare list's arrow button: flip between oldest and newest first.
+function toggleJumpSort() {
+  setJumpSort(readJumpDateSort() === 'date-asc' ? 'date-desc' : 'date-asc');
+}
+
+// ── Jump list filters ──
+// Set in the Filter popover above the list (initJumpListTools()). Persisted in
+// localStorage like the sort, so a filter survives a reload; the badge and the
+// chips above the list keep it visible. Sidebar only: the compare list ignores it.
+const JUMP_FILTER_KEY = 'flysight_jump_filter';
+const JUMP_EXIT_FILTERS = ['any', 'valid', 'invalid', 'high', 'low'];
+const JUMP_EXIT_FILTER_KEYS = {
+  any: 'filter.exitAny', valid: 'filter.exitValid', invalid: 'filter.exitInvalid',
+  high: 'filter.exitHigh', low: 'filter.exitLow'
+};
+
+function emptyJumpFilter() {
+  return { above: null, below: null, none: false, exit: 'any', exitBelow: null, acc: false, notes: '' };
+}
+
+function readJumpFilter() {
+  const f = emptyJumpFilter();
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(JUMP_FILTER_KEY) || 'null'); } catch (e) {}
+  if (!raw || typeof raw !== 'object') return f;
+  if (Number.isFinite(raw.above)) f.above = raw.above;
+  if (Number.isFinite(raw.below)) f.below = raw.below;
+  if (Number.isFinite(raw.exitBelow)) f.exitBelow = raw.exitBelow;
+  if (typeof raw.notes === 'string') f.notes = raw.notes.trim();
+  f.none = raw.none === true;
+  f.acc = raw.acc === true;
+  if (JUMP_EXIT_FILTERS.indexOf(raw.exit) >= 0) f.exit = raw.exit;
+  return f;
+}
+
+function writeJumpFilter(f) {
+  try { localStorage.setItem(JUMP_FILTER_KEY, JSON.stringify(f)); } catch (e) {}
+}
+
+// "No score" shows only the unscored files and switches the km/h boxes off,
+// which need a score. The validity filters and the notes search apply to every
+// file, scored or not, so they combine with it: a ground recording has an
+// exit altitude too, and finding those is what "Exit lower than" is for.
+function jumpFilterCount(f) {
+  return (f.none ? 1 : (f.above !== null ? 1 : 0) + (f.below !== null ? 1 : 0)) +
+    (f.exit !== 'any' ? 1 : 0) + (f.exitBelow !== null ? 1 : 0) + (f.acc ? 1 : 0) +
+    (f.notes ? 1 : 0);
+}
+
+function jumpFilterNeedsValidity(f) {
+  return f.exit !== 'any' || f.exitBelow !== null || f.acc;
+}
+
+// A jump's speed score: km/h, 0 for a file without one, null when neither the
+// chart (flysight_scores) nor the season cache has analysed it yet.
+function jumpScoreOf(name, scores, seasonCache) {
+  if (name in scores) return scores[name] || 0;
+  const row = seasonCache[name];
+  if (!row) return null;
+  return (row.summary && row.summary.score) || 0;
+}
+
+// Exit altitude and GPS accuracy come from the season cache's summary
+// (analyseJumpSummary()); a jump without one, or from before the accuracy
+// check was added, doesn't match those filters until it has been analysed.
+// The notes search is case-insensitive and matches anywhere in the note.
+function jumpPassesFilter(f, score, summary, note) {
+  if (f.notes && !(note || '').toLowerCase().includes(f.notes.toLowerCase())) return false;
+  if (f.none) {
+    if (score !== 0) return false;
+  } else {
+    if (f.above !== null && !(score > f.above)) return false;
+    if (f.below !== null && !(score < f.below)) return false;
+  }
+  if (f.exit !== 'any' || f.exitBelow !== null) {
+    if (!summary || !Number.isFinite(summary.exitAglM)) return false;
+    if (f.exitBelow !== null && !(summary.exitAglM < f.exitBelow)) return false;
+  }
+  if (f.exit !== 'any') {
+    const exit = summary.exitAglM > EXIT_MAX_AGL ? 'high'
+      : summary.exitAglM < EXIT_MIN_AGL ? 'low' : 'valid';
+    if (f.exit === 'invalid' ? exit === 'valid' : exit !== f.exit) return false;
+  }
+  if (f.acc && !(summary && summary.accValid === false)) return false;
+  return true;
 }
 
 // Date comparator for the active direction. Undated jumps (unreadable CSV and
@@ -682,18 +784,15 @@ function makeJumpYearGroup(opts) {
   return section;
 }
 
-// The date sort toggle: an arrow pointing the way the dates run (↑ oldest
-// first / ↓ newest first). With `withLabel` the direction is also spelled out
-// before the arrow (the sidebar's bar above the days), so no tooltip is needed.
-// Click never collapses a day.
-function makeJumpSortToggle(mode, withLabel) {
+// The compare list's date sort toggle: an arrow pointing the way the dates run
+// (↑ oldest first / ↓ newest first). Click never collapses a day.
+function makeJumpSortToggle(mode) {
   const btn = document.createElement('button');
   btn.className = 'jump-sort-toggle';
   btn.type = 'button';
-  const arrow = mode === 'date-desc' ? '↓' : '↑';
+  btn.textContent = mode === 'date-desc' ? '↓' : '↑';
   const tip = t(mode === 'date-desc' ? 'sort.dateDesc' : 'sort.dateAsc');
-  btn.textContent = withLabel ? tip + ' ' + arrow : arrow;
-  if (!withLabel) btn.setAttribute('data-tip', tip);
+  btn.setAttribute('data-tip', tip);
   btn.setAttribute('aria-label', tip);
   btn.addEventListener('click', function(e) {
     e.stopPropagation();
@@ -711,24 +810,320 @@ const TRASH_ICON_SVG = '<svg viewBox="0 0 24 24" width="12" height="12" fill="no
   'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" ' +
   'aria-hidden="true"><path d="' + TRASH_ICON_PATH + '"/></svg>';
 
+// ── Order and filter buttons above the list (#jumpListBar in index.html) ──
+// The markup is static, so typing in a filter box survives the list's
+// re-render; renderJumpList() calls updateJumpListBar() to sync it.
+
+// A km/h box's value as a number, accepting a decimal comma; null when empty.
+function parseJumpFilterNumber(v) {
+  const s = String(v).trim().replace(',', '.');
+  if (s === '') return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function updateJumpListBar(total, shown, sortMode, filter) {
+  const bar = document.getElementById('jumpListBar');
+  if (!bar) return;
+  bar.hidden = total === 0;
+
+  const sortBtn = document.getElementById('jumpSortBtn');
+  document.getElementById('jumpSortLabel').textContent = t(JUMP_SORT_KEYS[sortMode]);
+  sortBtn.classList.toggle('is-set', sortMode !== DEFAULT_JUMP_SORT);
+  document.querySelectorAll('#jumpSortMenu [data-sort]').forEach(item => {
+    const on = item.dataset.sort === sortMode;
+    item.setAttribute('aria-checked', on ? 'true' : 'false');
+    item.querySelector('.check').textContent = on ? '✓' : '';
+  });
+
+  const n = jumpFilterCount(filter);
+  const filterBtn = document.getElementById('jumpFilterBtn');
+  filterBtn.classList.toggle('is-set', n > 0);
+  filterBtn.setAttribute('aria-label', n ? t('filter.buttonOn', { count: n }) : t('filter.button'));
+  const badge = document.getElementById('jumpFilterBadge');
+  badge.hidden = n === 0;
+  badge.textContent = String(n);
+
+  // Controls: values written back only when not being typed in.
+  // Only the km/h boxes need a score, so only they are off under No score.
+  const setNum = (id, v, disabled) => {
+    const el = document.getElementById(id);
+    if (document.activeElement !== el) el.value = v === null ? '' : String(v);
+    el.disabled = disabled;
+  };
+  setNum('jumpFilterAbove', filter.above, filter.none);
+  setNum('jumpFilterBelow', filter.below, filter.none);
+  setNum('jumpFilterExitBelow', filter.exitBelow, false);
+  const notesBox = document.getElementById('jumpFilterNotes');
+  if (document.activeElement !== notesBox) notesBox.value = filter.notes;
+  document.getElementById('jumpFilterNone').checked = filter.none;
+  const exit = document.getElementById('jumpFilterExit');
+  exit.value = filter.exit;
+  const acc = document.getElementById('jumpFilterAcc');
+  acc.checked = filter.acc;
+  document.getElementById('jumpFilterShown').textContent = t('filter.shown', { shown: shown, total: total });
+  document.getElementById('jumpFilterClear').hidden = n === 0;
+
+  // Chips: every filter that is on, each removable, after the count.
+  const chips = document.getElementById('jumpFilterChips');
+  chips.innerHTML = '';
+  chips.hidden = n === 0;
+  if (!n) return;
+  const count = document.createElement('span');
+  count.className = 'jump-filter-count';
+  count.textContent = t('filter.shown', { shown: shown, total: total });
+  chips.appendChild(count);
+  const add = (key, label) => {
+    const chip = document.createElement('span');
+    chip.className = 'jump-filter-chip';
+    chip.textContent = label;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.dataset.filter = key;
+    x.textContent = '×';
+    x.setAttribute('aria-label', t('filter.remove', { label: label }));
+    chip.appendChild(x);
+    chips.appendChild(chip);
+  };
+  if (filter.notes) add('notes', t('filter.chipNotes', { value: filter.notes }));
+  if (filter.none) add('none', t('filter.none'));
+  else if (filter.above !== null) add('above', t('filter.chipAbove', { value: filter.above }));
+  if (!filter.none && filter.below !== null) add('below', t('filter.chipBelow', { value: filter.below }));
+  if (filter.exit !== 'any') add('exit', t('filter.chipExit', { value: t(JUMP_EXIT_FILTER_KEYS[filter.exit]) }));
+  if (filter.exitBelow !== null) add('exitBelow', t('filter.chipExitBelow', { value: filter.exitBelow }));
+  if (filter.acc) add('acc', t('filter.acc'));
+}
+
+function setJumpFilter(f) {
+  writeJumpFilter(f);
+  renderJumpList();
+}
+
+function clearJumpFilter() {
+  setJumpFilter(emptyJumpFilter());
+}
+
+// Open one popover (closing the other), or close both with null. Focus moves
+// into the popover on open (the ticked order, or the filter dialog itself)
+// and back to its button on close.
+let openJumpTool = null;
+function setJumpToolOpen(which, restoreFocus) {
+  const tools = { sort: ['jumpSortBtn', 'jumpSortMenu'], filter: ['jumpFilterBtn', 'jumpFilterPop'] };
+  const was = openJumpTool;
+  openJumpTool = which;
+  Object.keys(tools).forEach(k => {
+    document.getElementById(tools[k][0]).setAttribute('aria-expanded', k === which ? 'true' : 'false');
+    document.getElementById(tools[k][1]).hidden = k !== which;
+  });
+  if (which === 'sort') {
+    const item = document.querySelector('#jumpSortMenu [aria-checked="true"]') ||
+      document.querySelector('#jumpSortMenu [data-sort]');
+    if (item) item.focus();
+  } else if (which === 'filter') {
+    // The dialog itself takes focus, not its first box (user's request), so
+    // Tab starts at the top and Esc still works.
+    document.getElementById('jumpFilterPop').focus();
+  } else if (was && restoreFocus) {
+    document.getElementById(tools[was][0]).focus();
+  }
+}
+
+function initJumpListTools() {
+  // The list reaches 14 px into the column gap (style.css); pad back what its
+  // scrollbar doesn't take, so the day cards line up with the dropzone with an
+  // overlay scrollbar (no width) and a classic one alike.
+  const list = document.getElementById('jumpList');
+  if (list && typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => {
+      const bar = list.offsetWidth - list.clientWidth;
+      list.style.setProperty('--jump-list-pad', Math.max(0, 14 - bar) + 'px');
+    }).observe(list);
+  }
+
+  const bar = document.getElementById('jumpListBar');
+  if (!bar) return;
+  document.getElementById('jumpSortBtn').addEventListener('click', () => {
+    setJumpToolOpen(openJumpTool === 'sort' ? null : 'sort');
+  });
+  document.getElementById('jumpFilterBtn').addEventListener('click', () => {
+    setJumpToolOpen(openJumpTool === 'filter' ? null : 'filter');
+  });
+
+  // Order menu: a pick applies and closes; arrow keys move between items.
+  const menu = document.getElementById('jumpSortMenu');
+  menu.addEventListener('click', e => {
+    const item = e.target.closest('[data-sort]');
+    if (!item) return;
+    setJumpToolOpen(null, true);
+    setJumpSort(item.dataset.sort);
+  });
+  menu.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const items = Array.from(menu.querySelectorAll('[data-sort]'));
+    const i = items.indexOf(document.activeElement);
+    const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+    items[next].focus();
+  });
+
+  // Filters apply as they change; typing is debounced so a 300-jump list
+  // isn't rebuilt per keystroke.
+  let typing = null;
+  const onNumber = (id, key) => {
+    document.getElementById(id).addEventListener('input', e => {
+      clearTimeout(typing);
+      const v = parseJumpFilterNumber(e.target.value);
+      typing = setTimeout(() => {
+        const f = readJumpFilter();
+        f[key] = v;
+        setJumpFilter(f);
+      }, 150);
+    });
+  };
+  onNumber('jumpFilterAbove', 'above');
+  onNumber('jumpFilterBelow', 'below');
+  onNumber('jumpFilterExitBelow', 'exitBelow');
+  document.getElementById('jumpFilterNotes').addEventListener('input', e => {
+    clearTimeout(typing);
+    const v = e.target.value.trim();
+    typing = setTimeout(() => {
+      const f = readJumpFilter();
+      f.notes = v;
+      setJumpFilter(f);
+    }, 150);
+  });
+  document.getElementById('jumpFilterNone').addEventListener('change', e => {
+    const f = readJumpFilter();
+    f.none = e.target.checked;
+    setJumpFilter(f);
+  });
+  document.getElementById('jumpFilterExit').addEventListener('change', e => {
+    const f = readJumpFilter();
+    f.exit = e.target.value;
+    setJumpFilter(f);
+  });
+  document.getElementById('jumpFilterAcc').addEventListener('change', e => {
+    const f = readJumpFilter();
+    f.acc = e.target.checked;
+    setJumpFilter(f);
+  });
+  document.getElementById('jumpFilterClear').addEventListener('click', () => {
+    clearTimeout(typing);
+    document.getElementById('jumpFilterAbove').value = '';
+    document.getElementById('jumpFilterBelow').value = '';
+    document.getElementById('jumpFilterExitBelow').value = '';
+    document.getElementById('jumpFilterNotes').value = '';
+    clearJumpFilter();
+  });
+  document.getElementById('jumpFilterChips').addEventListener('click', e => {
+    const x = e.target.closest('[data-filter]');
+    if (!x) return;
+    const f = readJumpFilter();
+    const key = x.dataset.filter;
+    if (key === 'exit') f.exit = 'any';
+    else if (key === 'none' || key === 'acc') f[key] = false;
+    else if (key === 'notes') f.notes = '';
+    else f[key] = null;
+    setJumpFilter(f);
+  });
+
+  // A click outside or Esc closes an open popover.
+  document.addEventListener('click', e => {
+    if (openJumpTool && !e.target.closest('.jump-tools')) setJumpToolOpen(null);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && openJumpTool) {
+      e.stopPropagation();
+      setJumpToolOpen(null, true);
+    }
+  }, true);
+}
+
+// The day and year counts leave out files without a speed score: a FlySight
+// left on in the aircraft or switched on on the ground. Known from the score
+// the chart cached when the jump was opened, else from the season cache. A
+// file neither has analysed yet still counts (null here) until it has been.
+function jumpIsCounted(name, scores, seasonCache) {
+  const score = jumpScoreOf(name, scores, seasonCache);
+  return score === null ? null : !!score;
+}
+const countWarmQueued = new Set();
+
+// Re-render the list shortly after a background score lands: at most once per
+// 400 ms (a throttle, not a debounce, which would wait out a whole import), so
+// the scores fill in while the batch runs without rebuilding the list per jump.
+let jumpListRefreshTimer = null;
+function scheduleJumpListRefresh() {
+  if (jumpListRefreshTimer) return;
+  jumpListRefreshTimer = setTimeout(() => {
+    jumpListRefreshTimer = null;
+    renderJumpList();
+  }, 400);
+}
+
 async function renderJumpList() {
   const list = document.getElementById('jumpList');
-  const jumps = await getJumpIndex();
+  const allJumps = await getJumpIndex();
   let scores = {};
   try { scores = JSON.parse(localStorage.getItem('flysight_scores') || '{}'); } catch (e) {}
+  const seasonCache = typeof readSeasonCache === 'function' ? readSeasonCache() : {};
+  const scoreOf = new Map(allJumps.map(j => [j.name, jumpScoreOf(j.name, scores, seasonCache)]));
+  const counted = new Map(allJumps.map(j => [j.name, scoreOf.get(j.name) === null ? null : !!scoreOf.get(j.name)]));
   const hasLoading = state.loadingJumps.size > 0 || !!state.importProgress;
-  document.body.classList.toggle('has-jumps', jumps.length > 0 || hasLoading);
+  document.body.classList.toggle('has-jumps', allJumps.length > 0 || hasLoading);
   // Read back by the inline script after <body> to pick the dropzone size before paint.
-  try { localStorage.setItem('flysight_has_jumps', jumps.length > 0 ? '1' : '0'); } catch (e) {}
-  updateDownloadAllLabel(jumps.length);
+  try { localStorage.setItem('flysight_has_jumps', allJumps.length > 0 ? '1' : '0'); } catch (e) {}
+  updateDownloadAllLabel(allJumps.length);
+  // The list scrolls on its own; emptying it would snap it back to the top.
+  const keepScroll = list.scrollTop;
   list.innerHTML = '';
-  const storedNames = new Set(jumps.map(j => j.name));
+  const storedNames = new Set(allJumps.map(j => j.name));
+
+  // The filter decides which jumps are listed; under "No score" the counts
+  // count what is shown, since they would otherwise all read 0.
+  const filter = readJumpFilter();
+  const summaryOf = name => (seasonCache[name] && seasonCache[name].summary) || null;
+  const notes = filter.notes ? getJumpNotes() : {};
+  const jumps = allJumps.filter(j => jumpPassesFilter(filter, scoreOf.get(j.name), summaryOf(j.name), notes[j.name]));
+  const countOf = filter.none
+    ? items => items.length
+    : items => items.filter(it => counted.get(it.jump.name) !== false).length;
+  const sortMode = readJumpSort();
+  updateJumpListBar(allJumps.length, jumps.length, sortMode, filter);
 
   // Sort by date in the user's chosen direction and group same-day jumps into
-  // collapsible days (shared with the compare modal's list).
-  const sortMode = readJumpSort();
-  const { groups, undated } = buildJumpDayGroups(jumps, sortMode);
+  // collapsible days (shared with the compare modal's list). A speed sort
+  // builds no days (see below), so its groups only supply the dates.
+  const { groups, undated } = buildJumpDayGroups(jumps, isScoreSort(sortMode) ? DEFAULT_JUMP_SORT : sortMode);
   const collapsed = getCollapsedDays();
+
+  // A ranked chip (speed sort) carries its place and its flight date, and
+  // takes its score from the season cache too, so jumps never opened show one.
+  const appendRankedJump = (target, it, rank) => {
+    const j = it.jump;
+    if (state.loadingJumps.has(j.name)) {
+      target.appendChild(makeLoadingChip(j.name));
+      return;
+    }
+    const score = scoreOf.get(j.name);
+    const chip = document.createElement('div');
+    chip.className = 'jump-chip' + (j.name === state.currentJumpName ? ' active' : '');
+    chip.dataset.name = j.name;
+    chip.dataset.counted = counted.get(j.name) === false ? '0' : '1';
+    const safeName = j.name.replace(/'/g, "\\'");
+    chip.setAttribute('onclick', `selectJump('${safeName}')`);
+    chip.innerHTML = `
+      <span class="jump-rank-no">${rank === null ? '' : rank}</span>
+      <span class="jump-rank-name">
+        <span>${j.name}${score ? ` <span class="score">(${score.toFixed(1)} km/h)</span>` : ''}</span>
+        <span class="jump-rank-date">${it.date ? formatJumpDayHeader(it.date) : ''}</span>
+      </span>
+      <button class="edit-btn" onclick="event.stopPropagation(); openRenameModal('${safeName}')" data-tip="${t('tip.rename')}">&#x270E;</button>
+      <button class="download-btn" onclick="event.stopPropagation(); downloadJump('${safeName}')" data-tip="${t('tip.downloadCsv')}">&#x2913;</button>
+      <button class="delete-btn" onclick="event.stopPropagation(); deleteJump('${safeName}')" data-tip="${t('tip.remove')}" aria-label="${t('tip.remove')}">${TRASH_ICON_SVG}</button>
+    `;
+    target.appendChild(chip);
+  };
 
   const appendJump = (target, j) => {
     // If a stored jump is being reprocessed (same filename re-dropped), show
@@ -741,7 +1136,10 @@ async function renderJumpList() {
     const chip = document.createElement('div');
     chip.className = 'jump-chip' + (j.name === state.currentJumpName ? ' active' : '');
     chip.dataset.name = j.name;
-    const score = scores[j.name];
+    chip.dataset.counted = counted.get(j.name) === false ? '0' : '1';
+    // The chart's score once opened, else the background analysis's, so an
+    // imported jump shows its score without being opened first.
+    const score = scoreOf.get(j.name);
     const scoreLabel = score ? ` <span class="score">(${score.toFixed(1)} km/h)</span>` : '';
     const safeName = j.name.replace(/'/g, "\\'");
     chip.setAttribute('onclick', `selectJump('${safeName}')`);
@@ -754,20 +1152,11 @@ async function renderJumpList() {
     target.appendChild(chip);
   };
 
-  // The sort toggle sits in its own bar above the days: it orders the whole
-  // list, and inside the first day header it read as that day's setting.
-  if (groups.length > 0) {
-    const bar = document.createElement('div');
-    bar.className = 'jump-list-bar';
-    bar.appendChild(makeJumpSortToggle(sortMode, true));
-    list.appendChild(bar);
-  }
-
   const appendDay = (target, g) => {
     const { group, header, jumpsWrap } = makeJumpDayGroup({
       date: g.date,
       dayKey: g.dayKey,
-      count: g.items.length,
+      count: countOf(g.items),
       collapsed: collapsed.has(g.dayKey)
     });
     // Trash button before the caret: deletes the whole day, with one undo.
@@ -792,14 +1181,41 @@ async function renderJumpList() {
   // Groups are date-sorted, so each year's days are one contiguous run.
   const yearOf = g => g.date.getUTCFullYear();
   const years = [...new Set(groups.map(yearOf))];
-  if (years.length >= 2) {
+  if (allJumps.length > 0 && jumps.length === 0) {
+    // Nothing matches the filter.
+    const empty = document.createElement('div');
+    empty.className = 'jump-list-empty';
+    const msg = document.createElement('span');
+    msg.textContent = t('filter.empty');
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'jump-filter-clear';
+    clear.textContent = t('filter.clear');
+    clear.addEventListener('click', () => clearJumpFilter());
+    empty.appendChild(msg);
+    empty.appendChild(clear);
+    list.appendChild(empty);
+  } else if (isScoreSort(sortMode)) {
+    // Speed sort: one ranked card instead of days. Unscored and not yet
+    // analysed files sink to the bottom without a place, newest first.
+    const items = groups.flatMap(g => g.items).concat(undated);
+    const dir = sortMode === 'score-desc' ? -1 : 1;
+    const ranked = items.filter(it => scoreOf.get(it.jump.name))
+      .sort((a, b) => dir * (scoreOf.get(a.jump.name) - scoreOf.get(b.jump.name)));
+    const rest = items.filter(it => !scoreOf.get(it.jump.name));
+    const card = document.createElement('div');
+    card.className = 'jump-rank';
+    ranked.forEach((it, i) => appendRankedJump(card, it, i + 1));
+    rest.forEach(it => appendRankedJump(card, it, null));
+    list.appendChild(card);
+  } else if (years.length >= 2) {
     const newestYear = Math.max(...years);
     const collapsedYears = getCollapsedYears();
     years.forEach(year => {
       const yearDays = groups.filter(g => yearOf(g) === year);
       list.appendChild(makeJumpYearGroup({
         year: year,
-        count: yearDays.reduce((n, g) => n + g.items.length, 0),
+        count: yearDays.reduce((n, g) => n + countOf(g.items), 0),
         collapsed: isYearCollapsed(collapsedYears, year, newestYear),
         fill: body => yearDays.forEach(g => appendDay(body, g))
       }));
@@ -809,7 +1225,7 @@ async function renderJumpList() {
   }
   // Undated jumps (unreadable CSV and no addedAt — none in practice) fall back
   // to the flat list at the bottom.
-  undated.forEach(it => appendJump(list, it.jump));
+  if (!isScoreSort(sortMode)) undated.forEach(it => appendJump(list, it.jump));
 
   // Append loading chips for filenames that haven't landed in IndexedDB yet
   // (i.e. brand-new uploads, not re-uploads of an existing jump). They have no
@@ -822,6 +1238,22 @@ async function renderJumpList() {
     const chip = makeLoadingChip(importProgressText());
     chip.id = 'importProgressChip';
     list.appendChild(chip);
+  }
+
+  list.scrollTop = keepScroll;
+
+  // Files not analysed yet: score them in the background (worker only) and
+  // recount once any lands. A failed analysis is cached too, so this settles.
+  // Each name is queued once per page load: the list re-renders often. The
+  // exit and GPS accuracy filters also need every row at the current
+  // ANALYSIS_VERSION, so with one of those on, older rows are redone too.
+  const validity = jumpFilterNeedsValidity(filter);
+  const needsWork = j => counted.get(j.name) === null ||
+    (validity && (seasonCache[j.name] || {}).v !== ANALYSIS_VERSION);
+  const unknown = allJumps.filter(j => needsWork(j) && !countWarmQueued.has(j.name)).map(j => j.name);
+  unknown.forEach(n => countWarmQueued.add(n));
+  if (unknown.length && typeof warmSeasonCache === 'function') {
+    warmSeasonCache(unknown, scheduleJumpListRefresh).then(wrote => { if (wrote) renderJumpList(); });
   }
 }
 
@@ -843,8 +1275,14 @@ function markActiveJumpChip(name) {
 function updateJumpChipScore(name, score) {
   const chip = findJumpChip(name);
   if (!chip) return;
+  // Opening a file showed it has no score (or has one after all): recount.
+  if (chip.dataset.counted !== (score ? '1' : '0')) { renderJumpList(); return; }
+  let el = chip.querySelector('.score');
+  const text = score ? '(' + score.toFixed(1) + ' km/h)' : '';
+  if ((el ? el.textContent : '') === text) return;
+  // A new score can move the jump under a speed sort or a score filter.
+  if (isScoreSort(readJumpSort()) || jumpFilterCount(readJumpFilter()) > 0) { renderJumpList(); return; }
   const label = chip.querySelector(':scope > span');
-  let el = label.querySelector('.score');
   if (!score) { if (el) el.remove(); return; }
   if (!el) {
     el = document.createElement('span');
@@ -1387,6 +1825,8 @@ renderWidgetPreviews();
     if (!handle || !target) return;
     var STORE_KEY = opts.storeKey;
     var MIN = opts.minHeight;
+    var MAX = opts.maxHeight;
+    function clamp(px) { return Math.min(MAX, Math.max(MIN, px)); }
     var re = new RegExp('(?:^|;\\s*)' + STORE_KEY + '=([^;]+)');
 
     function save(px) {
@@ -1406,16 +1846,17 @@ renderWidgetPreviews();
     }
     function apply(px) { opts.onApply(target, px); }
 
-    // Restore saved height (if any); otherwise the CSS default applies.
+    // Restore saved height (if any); otherwise the CSS default applies. A height
+    // saved before the maximum existed comes back at the maximum.
     var saved = read();
-    if (Number.isFinite(saved) && saved >= MIN) apply(saved);
+    if (Number.isFinite(saved) && saved >= MIN) apply(clamp(saved));
 
     var dragging = false, startY = 0, startH = 0;
 
     function onMove(e) {
       if (!dragging) return;
       var clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      apply(Math.max(MIN, Math.round(startH + (clientY - startY))));
+      apply(clamp(Math.round(startH + (clientY - startY))));
       e.preventDefault();
     }
     function onUp() {
@@ -1448,7 +1889,7 @@ renderWidgetPreviews();
 
   makeResizable({
     handleId: 'chartResizeHandle', targetId: 'chartCanvasWrap',
-    storeKey: 'flysight_chart_height', minHeight: 300,
+    storeKey: 'flysight_chart_height', minHeight: 300, maxHeight: 800,
     onApply: function(t, px) {
       t.style.aspectRatio = 'auto';
       t.style.height = px + 'px';
@@ -1457,7 +1898,7 @@ renderWidgetPreviews();
   });
   makeResizable({
     handleId: 'mapResizeHandle', targetId: 'map',
-    storeKey: 'flysight_map_height', minHeight: 500,
+    storeKey: 'flysight_map_height', minHeight: 500, maxHeight: 800,
     onApply: function(t, px) {
       t.style.height = px + 'px';
       if (state.mapInstance) state.mapInstance.invalidateSize();
@@ -1467,6 +1908,7 @@ renderWidgetPreviews();
   // The map can't be shorter than the stats column beside it, or the grid row
   // stretches the map card and leaves an empty strip under the map. An inline
   // min-height beats the inline height the drag sets, so the drag stops there.
+  // It also beats the 800 px maximum when the stats column is taller.
   (function() {
     var map = document.getElementById('map');
     var stats = document.getElementById('stats');
@@ -1486,13 +1928,15 @@ renderWidgetPreviews();
 
   // Horizontal splitter on the map's right edge: drags the map/stats column ratio.
   // Stored as the map's fraction of the row (0.45–0.85) in a cookie (default 0.8 = "4fr 1fr").
+  // The stats column's narrowest is 15 % of the row plus STATS_EXTRA_PX, so its
+  // cards keep a little more room (user's request).
   (function() {
     var handle = document.getElementById('mapSplitHandle');
     var row = document.querySelector('.map-stats-row');
     if (!handle || !row) return;
     var KEY = 'flysight_map_split';
     var re = new RegExp('(?:^|;\\s*)' + KEY + '=([^;]+)');
-    var MINF = 0.45, MAXF = 0.85, GAP = 16;
+    var MINF = 0.45, MAXF = 0.85, GAP = 16, STATS_EXTRA_PX = 50;
     var mq = window.matchMedia('(max-width: 900px)');
     var lastF = 0.8;
 
@@ -1511,7 +1955,13 @@ renderWidgetPreviews();
       if (v == null) { try { v = localStorage.getItem(KEY); } catch (e) {} }
       return parseFloat(v);
     }
+    // Largest map fraction at the row's current width.
+    function maxFrac() {
+      var w = row.getBoundingClientRect().width - GAP;
+      return w > 0 ? MAXF - STATS_EXTRA_PX / w : MAXF;
+    }
     function apply(f) {
+      f = Math.min(f, maxFrac());
       lastF = f;
       // Below 900px the layout stacks into one column (media query) — leave it alone.
       if (mq.matches) { row.style.gridTemplateColumns = ''; return; }
@@ -1528,7 +1978,7 @@ renderWidgetPreviews();
     function fracAt(clientX) {
       var rect = row.getBoundingClientRect();
       var f = (clientX - rect.left) / (rect.width - GAP);
-      return Math.max(MINF, Math.min(MAXF, f));
+      return Math.max(MINF, Math.min(maxFrac(), f));
     }
 
     var dragging = false;
@@ -1568,6 +2018,7 @@ renderWidgetPreviews();
 // ── Init ──
 (async () => {
   initJumpNotes();
+  initJumpListTools();
   await renderJumpList();
   const jumps = await getJumpIndex();
   if (jumps.length === 0) return;
@@ -1576,4 +2027,13 @@ renderWidgetPreviews();
   let last = null;
   try { last = localStorage.getItem(LAST_JUMP_KEY); } catch (e) {}
   selectJump(jumps.some(j => j.name === last) ? last : jumps[jumps.length - 1].name);
+  // The reopened jump can sit far down the scrolling list: bring its chip into
+  // view. The list's own scrollTop rather than scrollIntoView(), which would
+  // also scroll the page in the stacked layout, where the list doesn't scroll.
+  const list = document.getElementById('jumpList');
+  const chip = list.querySelector('.jump-chip.active');
+  if (chip && list.scrollHeight > list.clientHeight) {
+    const top = chip.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+    list.scrollTop = Math.max(0, top - list.clientHeight / 2);
+  }
 })();

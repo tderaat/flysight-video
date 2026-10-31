@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v63">
+<meta name="app-build" content="flysight-v64">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -25,7 +25,7 @@
   // Apply the persisted theme before paint to avoid a flash. Full
   // dropdown wiring is in scripts/theme.js (loaded later).
   (function() {
-    var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green', 'dark-pink'];
+    var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green', 'dark-pink', 'hc-dark', 'hc-light'];
     var t = null;
     try {
       var m = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
@@ -196,6 +196,81 @@
     <p data-i18n="sidebar.dropSubtitle">Files are stored locally in your browser</p>
     <input type="file" id="fileInput" accept=".csv,.CSV" multiple>
   </div>
+</div>
+
+<!-- Order and filter for the jump list: two labelled buttons, each opening its
+     own popover. Built once; renderJumpList() updates the labels, badge, chips
+     and count. See "Jump list sorting" and "Jump list filters". -->
+<div class="jump-list-bar" id="jumpListBar" hidden>
+  <div class="jump-tools">
+    <button type="button" class="jump-tool-btn" id="jumpSortBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="jumpSortMenu">
+      <span id="jumpSortLabel"></span>
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 16 4 4 4-4M7 20V4M21 8l-4-4-4 4M17 4v16"/></svg>
+    </button>
+    <button type="button" class="jump-tool-btn" id="jumpFilterBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="jumpFilterPop">
+      <span data-i18n="filter.button">Filter</span>
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+      <span class="jump-tool-badge" id="jumpFilterBadge" hidden></span>
+    </button>
+    <div class="jump-tool-pop jump-sort-menu" id="jumpSortMenu" role="menu" hidden>
+      <h4 data-i18n="sort.title">Order</h4>
+      <button type="button" role="menuitemradio" data-sort="date-desc"><span class="check" aria-hidden="true"></span><span data-i18n="sort.dateDesc">Newest first</span><span class="hint" data-i18n="sort.default">default</span></button>
+      <button type="button" role="menuitemradio" data-sort="date-asc"><span class="check" aria-hidden="true"></span><span data-i18n="sort.dateAsc">Oldest first</span></button>
+      <hr>
+      <button type="button" role="menuitemradio" data-sort="score-desc"><span class="check" aria-hidden="true"></span><span data-i18n="sort.scoreDesc">Fastest first</span></button>
+      <button type="button" role="menuitemradio" data-sort="score-asc"><span class="check" aria-hidden="true"></span><span data-i18n="sort.scoreAsc">Slowest first</span></button>
+    </div>
+    <div class="jump-tool-pop jump-filter-pop" id="jumpFilterPop" role="dialog" tabindex="-1" data-i18n-aria="filter.title" aria-label="Filter jumps" hidden>
+      <div class="jump-filter-sec">
+        <h4 data-i18n="filter.score">Score</h4>
+        <div class="jump-filter-row">
+          <label for="jumpFilterAbove" data-i18n="filter.above">Higher than</label>
+          <span class="ctl"><input type="text" inputmode="decimal" id="jumpFilterAbove" class="jump-filter-num" autocomplete="off"><span class="unit">km/h</span></span>
+        </div>
+        <div class="jump-filter-row">
+          <label for="jumpFilterBelow" data-i18n="filter.below">Lower than</label>
+          <span class="ctl"><input type="text" inputmode="decimal" id="jumpFilterBelow" class="jump-filter-num" autocomplete="off"><span class="unit">km/h</span></span>
+        </div>
+        <div class="jump-filter-row">
+          <label for="jumpFilterNone" data-i18n="filter.none">No score</label>
+          <span class="ctl"><span class="switch"><input type="checkbox" role="switch" id="jumpFilterNone"><span></span></span></span>
+        </div>
+      </div>
+      <div class="jump-filter-sec">
+        <h4 data-i18n="filter.validity">Validity</h4>
+        <div class="jump-filter-row">
+          <label for="jumpFilterExit"><span data-i18n="filter.exit">Exit altitude</span><small data-i18n="filter.exitHint">FAI window 3,962 to 4,267 m AGL</small></label>
+          <span class="ctl"><select id="jumpFilterExit" class="jump-filter-select">
+            <option value="any" data-i18n="filter.exitAny">Any</option>
+            <option value="valid" data-i18n="filter.exitValid">Valid</option>
+            <option value="invalid" data-i18n="filter.exitInvalid">Invalid</option>
+            <option value="high" data-i18n="filter.exitHigh">Too high</option>
+            <option value="low" data-i18n="filter.exitLow">Too low</option>
+          </select></span>
+        </div>
+        <div class="jump-filter-row">
+          <label for="jumpFilterExitBelow" data-i18n="filter.exitBelow">Exit lower than</label>
+          <span class="ctl"><input type="text" inputmode="decimal" id="jumpFilterExitBelow" class="jump-filter-num" autocomplete="off"><span class="unit">m</span></span>
+        </div>
+        <div class="jump-filter-row">
+          <label for="jumpFilterAcc"><span data-i18n="filter.acc">GPS accuracy failed</span><small data-i18n="filter.accHint">Speed accuracy 3 m/s or worse</small></label>
+          <span class="ctl"><span class="switch"><input type="checkbox" role="switch" id="jumpFilterAcc"><span></span></span></span>
+        </div>
+      </div>
+      <div class="jump-filter-sec">
+        <h4 data-i18n="filter.notes">Notes</h4>
+        <div class="jump-filter-row">
+          <label for="jumpFilterNotes" data-i18n="filter.notesContain">Contains</label>
+          <span class="ctl ctl-wide"><input type="search" id="jumpFilterNotes" class="jump-filter-text" autocomplete="off" spellcheck="false"></span>
+        </div>
+      </div>
+      <div class="jump-filter-foot">
+        <span id="jumpFilterShown"></span>
+        <button type="button" class="jump-filter-clear" id="jumpFilterClear" data-i18n="filter.clear">Clear all</button>
+      </div>
+    </div>
+  </div>
+  <div class="jump-filter-chips" id="jumpFilterChips" hidden></div>
 </div>
 
 <div class="jump-list" id="jumpList"></div>
@@ -481,9 +556,9 @@
                   <dt data-i18n="video.infoQuality">Quality</dt>
                   <dd><select id="exportQualitySelect" class="export-res-select" aria-label="Quality" data-i18n-aria="video.infoQuality"></select></dd>
                   <dt><label for="exportAudioToggle" data-i18n="video.includeAudio">Include audio</label></dt>
-                  <dd><input type="checkbox" id="exportAudioToggle" class="export-check"></dd>
+                  <dd><span class="switch"><input type="checkbox" role="switch" id="exportAudioToggle"><span></span></span></dd>
                   <dt><label for="directRenderToggle" data-i18n="video.directRender">Direct render (for fast PCs)</label><span class="beta-tag" data-i18n="video.beta">Beta</span><button type="button" class="stat-info" data-tip="Records the video while it plays instead of frame by frame." data-i18n-tip="video.directRenderInfo" aria-label="About Direct render" data-i18n-aria="video.directRenderInfoAria">i</button></dt>
-                  <dd><input type="checkbox" id="directRenderToggle" class="export-check"></dd>
+                  <dd><span class="switch"><input type="checkbox" role="switch" id="directRenderToggle"><span></span></span></dd>
                   <dt data-i18n="video.infoFormat">Format</dt><dd id="exportFormatText"></dd>
                   <dt data-i18n="video.infoSize">Estimated size</dt><dd id="exportSizeText"></dd>
                 </dl>

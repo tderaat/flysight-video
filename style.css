@@ -24,11 +24,25 @@
   --accent-mid: rgba(56, 189, 248, 0.10);
   --accent-strong: rgba(56, 189, 248, 0.15);
   /* Altitude line + its y-axis on the main chart. Follows the accent by
-     default; dark-green and dark-pink override it because their accents
-     would clash with the (non-themeable) green Vertical Speed and pink
-     Dive Angle series. */
+     default; dark-red, dark-green and dark-pink override it because their
+     accents would clash with the red Ground Speed, green Vertical Speed and
+     pink Dive Angle series. */
   --chart-altitude: var(--accent);
   --chart-altitude-fill: var(--accent-fill);
+  /* Valid-jump dots and the trend line in the Season overview. Follow the
+     accent except in dark-red, where it would match the red invalid-exit dots. */
+  --season-jump: var(--accent);
+  /* The other chart series, the annotations and the best-3 s box. Fixed in
+     the dark themes; light and hc-light darken them to read on white. Hex only:
+     chart.js derives the translucent fills with hexToRgba(). */
+  --chart-vspeed: #4ade80;
+  --chart-ground: #ef4444;
+  --chart-angle: #f472b6;
+  --chart-accel: #fb923c;
+  --chart-sats: #a78bfa;
+  --chart-vacc: #facc15;
+  --chart-marker: #94a3b8;
+  --chart-best3s: #ffffff;
   --backdrop: rgba(0, 0, 0, 0.85);
   --page-drop-bg: rgba(15, 23, 42, 0.85);
   --tooltip-bg: rgba(15, 23, 42, 0.92);
@@ -51,14 +65,24 @@
   --text-strong: #0f172a;
   --text-mid: #334155;
   --text-muted: #475569;
-  --text-dim: #64748b;
-  --accent: #0284c7;
-  --accent-hover: #0369a1;
+  --text-dim: #556274;
+  --accent: #0369a1;
+  --accent-hover: #075985;
   --accent-on: #ffffff;
-  --accent-weak: rgba(2, 132, 199, 0.06);
-  --accent-fill: rgba(2, 132, 199, 0.10);
-  --accent-mid: rgba(2, 132, 199, 0.12);
-  --accent-strong: rgba(2, 132, 199, 0.20);
+  --accent-weak: rgba(3, 105, 161, 0.06);
+  --accent-fill: rgba(3, 105, 161, 0.10);
+  --accent-mid: rgba(3, 105, 161, 0.12);
+  --accent-strong: rgba(3, 105, 161, 0.20);
+  /* The bright default series and markers are close to invisible on white;
+     the same darkened set as hc-light, all 4.9:1 or better. */
+  --chart-vspeed: #15803d;
+  --chart-ground: #b91c1c;
+  --chart-angle: #a21caf;
+  --chart-accel: #c2410c;
+  --chart-sats: #6d28d9;
+  --chart-vacc: #a16207;
+  --chart-marker: #64748b;
+  --chart-best3s: #0f172a;
   --backdrop: rgba(15, 23, 42, 0.45);
   --page-drop-bg: rgba(248, 250, 252, 0.85);
   --tooltip-bg: rgba(255, 255, 255, 0.95);
@@ -68,14 +92,22 @@
   --shadow-soft: rgba(15, 23, 42, 0.12);
 }
 
+/* A pure red as light as it has to be to read as text on the cards (4.6:1);
+   any deeper red drops below 4.5:1. Filled buttons take dark red text, since
+   white only reaches 3.3:1 on it. */
 [data-theme="dark-red"] {
-  --accent: #b91c1c;
-  --accent-hover: #dc2626;
-  --accent-on: #fff5f5;
-  --accent-weak: rgba(185, 28, 28, 0.10);
-  --accent-fill: rgba(185, 28, 28, 0.12);
-  --accent-mid: rgba(185, 28, 28, 0.18);
-  --accent-strong: rgba(185, 28, 28, 0.24);
+  --accent: #ff5252;
+  --accent-hover: #ff7a7a;
+  --accent-on: #450a0a;
+  --accent-weak: rgba(255, 82, 82, 0.08);
+  --accent-fill: rgba(255, 82, 82, 0.12);
+  --accent-mid: rgba(255, 82, 82, 0.16);
+  --accent-strong: rgba(255, 82, 82, 0.22);
+  /* A red altitude line would merge with the red Ground Speed series, so it
+     takes the same grey-tinted light blue as dark-green and dark-pink. */
+  --chart-altitude: #9ab4c4;
+  --chart-altitude-fill: rgba(154, 180, 196, 0.10);
+  --season-jump: #9ab4c4;
 }
 
 [data-theme="dark-green"] {
@@ -94,17 +126,117 @@
 }
 
 [data-theme="dark-pink"] {
-  --accent: #ec4899;
-  --accent-hover: #f472b6;
+  --accent: #f472b6;
+  --accent-hover: #f9a8d4;
   --accent-on: #500724;
-  --accent-weak: rgba(236, 72, 153, 0.08);
-  --accent-fill: rgba(236, 72, 153, 0.12);
-  --accent-mid: rgba(236, 72, 153, 0.16);
-  --accent-strong: rgba(236, 72, 153, 0.22);
+  --accent-weak: rgba(244, 114, 182, 0.08);
+  --accent-fill: rgba(244, 114, 182, 0.12);
+  --accent-mid: rgba(244, 114, 182, 0.16);
+  --accent-strong: rgba(244, 114, 182, 0.22);
   /* A pink accent would merge with the pink Dive Angle series, so the
      altitude line takes the same grey-tinted light blue as dark-green. */
   --chart-altitude: #9ab4c4;
   --chart-altitude-fill: rgba(154, 180, 196, 0.10);
+}
+
+/* High contrast · Dark: pure black, white text, borders bright enough to
+   separate the cards without a shade difference. Every text level is at
+   least 9:1 on black, the borders 5.9:1, the cyan accent 12.9:1. The chart
+   series keep their default colours, which all pass on black (5.3:1+). */
+[data-theme="hc-dark"] {
+  --bg-body: #000000;
+  --bg-card: #0a0a0a;
+  --bg-inset: #000000;
+  --bg-stronger: #262626;
+  --bg-stronger-hover: #3d3d3d;
+  --border: #8c8c8c;
+  --border-strong: #ffffff;
+  --text: #ffffff;
+  --text-strong: #ffffff;
+  --text-mid: #e6e6e6;
+  --text-muted: #c8c8c8;
+  --text-dim: #b3b3b3;
+  --accent: #00e5ff;
+  --accent-hover: #80f2ff;
+  --accent-on: #000000;
+  --accent-weak: rgba(0, 229, 255, 0.12);
+  --accent-fill: rgba(0, 229, 255, 0.16);
+  --accent-mid: rgba(0, 229, 255, 0.22);
+  --accent-strong: rgba(0, 229, 255, 0.30);
+  --backdrop: rgba(0, 0, 0, 0.9);
+  --page-drop-bg: rgba(0, 0, 0, 0.9);
+  --tooltip-bg: rgba(0, 0, 0, 0.96);
+  --tip-bg: #000000;
+  --tip-border: #ffffff;
+  --shadow-modal: rgba(0, 0, 0, 0.8);
+  --shadow-soft: rgba(0, 0, 0, 0.6);
+}
+
+/* High contrast · Light: white, black text, dark borders, deep blue accent
+   (8.4:1). The chart series and markers are darkened to at least 4.9:1 on
+   white; the bright defaults are close to invisible there. */
+[data-theme="hc-light"] {
+  --bg-body: #ffffff;
+  --bg-card: #ffffff;
+  --bg-inset: #f5f5f5;
+  --bg-stronger: #e0e0e0;
+  --bg-stronger-hover: #c8c8c8;
+  --border: #595959;
+  --border-strong: #000000;
+  --text: #000000;
+  --text-strong: #000000;
+  --text-mid: #1a1a1a;
+  --text-muted: #333333;
+  --text-dim: #4d4d4d;
+  --accent: #0047ab;
+  --accent-hover: #00307a;
+  --accent-on: #ffffff;
+  --accent-weak: rgba(0, 71, 171, 0.08);
+  --accent-fill: rgba(0, 71, 171, 0.12);
+  --accent-mid: rgba(0, 71, 171, 0.16);
+  --accent-strong: rgba(0, 71, 171, 0.24);
+  --chart-vspeed: #15803d;
+  --chart-ground: #b91c1c;
+  --chart-angle: #a21caf;
+  --chart-accel: #c2410c;
+  --chart-sats: #6d28d9;
+  --chart-vacc: #a16207;
+  --chart-marker: #333333;
+  --chart-best3s: #000000;
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --page-drop-bg: rgba(255, 255, 255, 0.92);
+  --tooltip-bg: rgba(255, 255, 255, 0.98);
+  --tip-bg: #ffffff;
+  --tip-border: #000000;
+  --shadow-modal: rgba(0, 0, 0, 0.3);
+  --shadow-soft: rgba(0, 0, 0, 0.2);
+}
+/* Both light themes: the fixed semantic text colours (zone yellow, valid
+   green, speed pink, warning red) are too faint on white; reuse the darkened
+   series colours. */
+:is([data-theme="light"], [data-theme="hc-light"]) .stat-value.zone,
+:is([data-theme="light"], [data-theme="hc-light"]) .stat-detail.zone { color: var(--chart-vacc); }
+:is([data-theme="light"], [data-theme="hc-light"]) .stat-value.speed { color: var(--chart-angle); }
+:is([data-theme="light"], [data-theme="hc-light"]) .stat-detail.acc-bad,
+:is([data-theme="light"], [data-theme="hc-light"]) .exit-warning { color: var(--chart-ground); }
+:is([data-theme="light"], [data-theme="hc-light"]) .exit-badge.badge-valid,
+:is([data-theme="light"], [data-theme="hc-light"]) .compare-table .compare-delta-col.up,
+:is([data-theme="light"], [data-theme="hc-light"]) .vt-marker-label.score { color: var(--chart-vspeed); }
+
+/* The main panels have no border and stand out from the page by shade alone,
+   which both high-contrast themes remove. An inset ring outlines them without
+   changing their size (a real border would shift the header alignment). */
+[data-theme^="hc-"] .chart-container,
+[data-theme^="hc-"] .map-container,
+[data-theme^="hc-"] .stats-panel,
+[data-theme^="hc-"] .notes-panel { box-shadow: inset 0 0 0 1px var(--border); }
+
+/* Both high-contrast themes: a clear keyboard focus ring on every control,
+   not only on the few that define one. !important beats the per-control
+   `outline: none` rules. */
+[data-theme^="hc-"] :focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -130,6 +262,39 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body
   position: sticky;
   top: 12px;
   min-width: 0;
+  /* Never taller than the window (12 px above and below), so a long jump list
+     scrolls inside the sidebar instead of running far below the footer, where
+     opening a jump left the user to scroll back up to see it. */
+  max-height: calc(100vh - 24px);
+}
+.sidebar > * { flex-shrink: 0; }
+.sidebar > .jump-list {
+  flex: 0 1 auto; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  /* A thin themed scrollbar: Chrome otherwise draws a light classic one in
+     every theme. scrollbar-color is standard (Firefox, Chrome 121+), and takes
+     the theme's own border colour on a transparent track. */
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+  /* The scrollbar sits in the gap beside the sidebar instead of over the day
+     cards' right border: the list reaches 14 px into the 24 px column gap and
+     pads back whatever the scrollbar doesn't take itself, so the cards keep
+     the dropzone's width and a thin classic scrollbar keeps a few px clear of
+     them. An overlay scrollbar (Firefox, macOS) takes no room, a classic one
+     (Chrome on Windows) its own width, so initJumpListTools() sets
+     --jump-list-pad from the measured width; 14 px is the overlay case. */
+  margin-right: -14px; padding-right: var(--jump-list-pad, 14px);
+}
+.sidebar > .jump-list > * { flex-shrink: 0; }
+/* A scroll box clips anything drawn outside it, so the list's tooltips sit to
+   the left of their button, arrow pointing right, rather than centred above
+   it, where the rightmost bubble lost its edge and the top rows their bubble. */
+.sidebar .jump-list [data-tip]::after {
+  bottom: auto; left: auto; top: 50%; right: calc(100% + 8px);
+  transform: translateY(-50%);
+}
+.sidebar .jump-list [data-tip]::before {
+  bottom: auto; left: auto; top: 50%; right: calc(100% + 4px); margin: -4.5px 0 0;
+  border-bottom: none; border-top: 1px solid var(--tip-border);
 }
 /* A column whose last child is the footer: margin-top:auto pins the footer to
    the bottom of the viewport while the column is short (no jump loaded) and
@@ -538,20 +703,126 @@ body.has-jumps .dropzone p { display: none; }
 .jump-day-delete + .jump-day-toggle { margin-left: 0; }
 .jump-day-count { color: var(--text-dim); display: none; }
 .jump-day.collapsed .jump-day-count { display: inline; }
-/* Date sort direction toggle — in its own bar above the day cards, right-aligned,
-   with the direction spelled out beside the arrow. */
-.jump-list-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: -4px;
-}
-.jump-list-bar .jump-sort-toggle {
-  background: none; border: none; padding: 0 2px;
-  color: var(--text-dim); cursor: pointer;
+/* Order and filter, in their own bar between the dropzone and the list (static
+   markup in index.html, synced by updateJumpListBar()). Each button opens its
+   own popover; the negative margin pulls the list up to the bar, cutting the
+   sidebar's 16 px gap to 6. */
+.jump-list-bar { display: flex; flex-direction: column; gap: 6px; margin-bottom: -10px; }
+.jump-list-bar[hidden] { display: none; }
+.jump-tools { position: relative; display: flex; justify-content: flex-end; align-items: center; gap: 2px; }
+.jump-tool-btn {
+  position: relative; height: 26px; padding: 0 6px; border-radius: 6px;
+  background: none; border: 1px solid transparent; color: var(--text-dim); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
   font-family: inherit; font-size: 0.7rem; line-height: 1;
   text-transform: uppercase; letter-spacing: 0.05em;
 }
-.jump-list-bar .jump-sort-toggle:hover { color: var(--accent); }
+.jump-tool-btn svg { flex: none; }
+.jump-tool-btn:hover { color: var(--accent); background: var(--bg-card); border-color: var(--border); }
+.jump-tool-btn[aria-expanded="true"] { color: var(--accent); background: var(--bg-card); border-color: var(--accent); }
+.jump-tool-btn.is-set { color: var(--accent); }
+.jump-tool-badge {
+  position: absolute; top: -6px; right: -6px; min-width: 15px; height: 15px; padding: 0 4px;
+  border-radius: 999px; background: var(--accent); color: var(--accent-on);
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 0; line-height: 15px; text-align: center;
+}
+.jump-tool-badge[hidden] { display: none; }
+.jump-tool-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 50;
+  background: var(--tip-bg); border: 1px solid var(--tip-border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); padding: 10px 12px;
+  font-size: 0.8rem; color: var(--text-mid);
+}
+.jump-tool-pop[hidden] { display: none; }
+.jump-tool-pop h4 {
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-dim); font-weight: 600; margin: 0 0 6px;
+}
+/* Order menu: a tick at the current choice, "default" beside newest first. */
+.jump-sort-menu { width: 210px; display: flex; flex-direction: column; }
+.jump-sort-menu[hidden] { display: none; }
+.jump-sort-menu button {
+  display: flex; align-items: center; gap: 8px; width: calc(100% + 12px); margin: 0 -6px;
+  text-align: left; background: none; border: none; border-radius: 5px; padding: 6px;
+  font: inherit; font-size: 0.8rem; color: var(--text-mid); cursor: pointer;
+}
+.jump-sort-menu button:hover,
+.jump-sort-menu button:focus-visible { background: var(--bg-stronger); color: var(--text-strong); outline: none; }
+.jump-sort-menu button[aria-checked="true"] { color: var(--accent); }
+.jump-sort-menu .check { width: 14px; flex: none; text-align: center; }
+.jump-sort-menu .hint { margin-left: auto; font-size: 0.7rem; color: var(--text-dim); }
+.jump-sort-menu hr { border: none; border-top: 1px solid var(--tip-border); margin: 4px 0; }
+/* Filter popover: labels left, controls right, in two sections. */
+.jump-filter-pop { width: 310px; }
+.jump-filter-pop:focus { outline: none; }
+.jump-filter-sec + .jump-filter-sec { border-top: 1px solid var(--tip-border); margin-top: 10px; padding-top: 10px; }
+.jump-filter-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; padding: 2px 0; }
+.jump-filter-row > label {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0;
+  color: var(--text-mid); line-height: 1.25; cursor: pointer;
+}
+.jump-filter-row > label small { font-size: 0.68rem; color: var(--text-dim); }
+.jump-filter-row .ctl { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; flex: none; width: 104px; }
+.jump-filter-row .unit { width: 30px; font-size: 0.75rem; color: var(--text-dim); }
+.jump-filter-num,
+.jump-filter-text,
+.jump-filter-select {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font: inherit; font-size: 0.75rem; padding: 4px 6px;
+}
+.jump-filter-num { width: 62px; text-align: right; }
+.jump-filter-row .ctl-wide { width: 160px; }
+.jump-filter-text { width: 100%; }
+.jump-filter-select { width: 104px; cursor: pointer; }
+.jump-filter-num:focus,
+.jump-filter-text:focus,
+.jump-filter-select:focus { outline: none; border-color: var(--accent); }
+.jump-filter-num:disabled,
+.jump-filter-select:disabled { opacity: 0.4; cursor: default; }
+.jump-filter-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 0.72rem; color: var(--text-dim); }
+.jump-filter-clear {
+  background: none; border: none; padding: 0; font: inherit; font-size: 0.72rem;
+  color: var(--text-dim); cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.jump-filter-clear:hover { color: var(--accent); }
+.jump-filter-clear:disabled { opacity: 0.4; cursor: default; color: var(--text-dim); }
+/* Toggle switch: a checkbox (role="switch") laid over a track and knob. */
+.switch { position: relative; width: 34px; height: 19px; flex: none; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.switch span {
+  position: absolute; inset: 0; border-radius: 10px; pointer-events: none;
+  background: var(--bg-stronger); border: 1px solid var(--border-strong);
+  transition: background 0.15s, border-color 0.15s;
+}
+.switch span::after {
+  content: ''; position: absolute; left: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%;
+  background: var(--text-muted); transition: transform 0.15s, background 0.15s;
+}
+.switch input:checked + span { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + span::after { transform: translateX(15px); background: var(--accent-on); }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch input:disabled { cursor: default; }
+.switch input:disabled + span { opacity: 0.4; }
+/* Active filters: "n of m jumps", then a removable chip per filter. */
+.jump-filter-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.jump-filter-chips[hidden] { display: none; }
+.jump-filter-count { font-size: 0.7rem; color: var(--text-dim); margin-right: 4px; }
+.jump-filter-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem;
+  background: var(--accent-mid); color: var(--accent); border: 1px solid var(--accent-strong);
+  border-radius: 999px; padding: 2px 4px 2px 10px;
+}
+.jump-filter-chip button {
+  width: 16px; height: 16px; border-radius: 50%; border: none; background: none; color: inherit;
+  cursor: pointer; font-size: 12px; line-height: 1; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.jump-filter-chip button:hover { background: var(--accent); color: var(--accent-on); }
+.jump-list-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border: 1px dashed var(--border); border-radius: 8px; padding: 18px 12px;
+  font-size: 0.8rem; color: var(--text-muted); text-align: center;
+}
 .jump-chip {
   background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 16px; cursor: pointer; transition: all 0.15s;
@@ -638,6 +909,29 @@ body.has-jumps .dropzone p { display: none; }
   box-shadow: inset 3px 0 0 var(--accent);
 }
 .jump-list .jump-day-jumps .jump-chip.loading:hover { background: transparent; }
+/* Speed sort: one ranked card, styled like a day card without a header; each
+   chip has its place on the left and its flight date under the name. */
+.jump-list .jump-rank {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card);
+}
+.jump-list .jump-rank .jump-chip {
+  border: none; border-radius: 0; border-bottom: 1px solid var(--border);
+  padding: 8px 12px 8px 8px; background: transparent;
+  box-shadow: inset 3px 0 0 transparent;
+}
+.jump-list .jump-rank .jump-chip:first-child { border-radius: 7px 7px 0 0; }
+.jump-list .jump-rank .jump-chip:last-child { border-bottom: none; border-radius: 0 0 7px 7px; }
+.jump-list .jump-rank .jump-chip:only-child { border-radius: 7px; }
+.jump-list .jump-rank .jump-chip:hover { background: var(--bg-inset); }
+.jump-list .jump-rank .jump-chip.active { background: var(--accent-mid); box-shadow: inset 3px 0 0 var(--accent); }
+.jump-list .jump-rank .jump-chip.loading:hover { background: transparent; }
+.jump-rank-no {
+  width: 24px; flex: none; text-align: right;
+  font-size: 0.72rem; color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+.jump-rank-name { display: flex; flex-direction: column; min-width: 0; }
+.jump-rank-date { font-size: 0.7rem; color: var(--text-dim); }
 @keyframes jump-chip-spin {
   to { transform: rotate(360deg); }
 }
@@ -697,7 +991,7 @@ body.has-jumps .dropzone p { display: none; }
 }
 .chart-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 canvas { width: 100% !important; }
-.chart-canvas-wrap { position: relative; width: 100%; aspect-ratio: 2.5; min-height: 300px; }
+.chart-canvas-wrap { position: relative; width: 100%; aspect-ratio: 2.5; min-height: 300px; max-height: 800px; }
 .chart-canvas-wrap canvas { height: 100% !important; }
 /* The chart's intro: a fade of the whole canvas, restarted on every rebuild by
    playChartFadeIn() in chart.js (Chart.js's own animation is off). */
@@ -859,7 +1153,8 @@ canvas { width: 100% !important; }
 .notes-input:focus { outline: none; border-color: var(--accent); }
 @media (max-width: 900px) {
   .page-layout { grid-template-columns: 1fr; }
-  .sidebar { position: static; }
+  .sidebar { position: static; max-height: none; }
+  .sidebar > .jump-list { overflow: visible; margin-right: 0; padding-right: 0; }
   .map-stats-row { grid-template-columns: 1fr; }
   .stats-panel { order: -1; }
   .map-container .map-split-handle { display: none; }
@@ -1011,7 +1306,7 @@ canvas { width: 100% !important; }
 
 /* ── Map ── */
 .map-container { background: var(--bg-card); border-radius: 12px; padding: 10px; position: relative; }
-#map { height: 500px; min-height: 500px; border-radius: 8px; }
+#map { height: 500px; min-height: 500px; max-height: 800px; border-radius: 8px; }
 /* New track + marker labels fading in after a jump switch (renderMap()). The
    panes are animated rather than each path, so it is one animation however
    many segments the track has. */
@@ -1281,7 +1576,7 @@ canvas { width: 100% !important; }
   font-variant-numeric: tabular-nums;
 }
 /* The date sort toggle lives here rather than in the first day header, where it
-   read as a property of that one day. Same button, same styling as the sidebar's. */
+   read as a property of that one day. The sidebar has an Order menu instead. */
 .compare-sort-slot { display: flex; align-items: center; margin-left: -4px; }
 .compare-select-all .jump-sort-toggle {
   background: none; border: none; padding: 0 2px;
@@ -1763,8 +2058,6 @@ canvas { width: 100% !important; }
   display: flex; align-items: center; justify-content: flex-end; min-height: 20px;
 }
 .export-info dt label { cursor: pointer; }
-.export-check { accent-color: var(--accent); margin: 0; width: 14px; height: 14px; cursor: pointer; }
-.export-check:disabled { cursor: not-allowed; }
 /* Marks an option that is still being tried out (Direct render). */
 .beta-tag {
   margin-left: 6px; padding: 0 5px; border-radius: 4px;
@@ -1859,22 +2152,20 @@ canvas { width: 100% !important; }
 }
 
 /* ── Widget config panel ── */
-.widget-config-checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
-.widget-config-checks label { font-size: 0.8rem; color: var(--text-mid); cursor: pointer; }
-.widget-config-checks input { accent-color: var(--accent); }
+.widget-config-checks { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.widget-config-checks label { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-mid); cursor: pointer; }
 /* Sections: "Display", then toggle sections (Background, Fade in) whose body
-   shows only while the heading's checkbox is ticked. Built by the helpers at
+   shows only while the heading's switch is on. Built by the helpers at
    the top of scripts/widgets/core.js. */
 .widget-config-section + .widget-config-section {
   border-top: 1px dashed var(--border); margin-top: 10px; padding-top: 10px;
 }
 .widget-config-section-head {
-  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
   font-size: 0.8rem; font-weight: 600; color: var(--text-strong);
 }
 label.widget-config-section-head { cursor: pointer; width: fit-content; }
-.widget-config-section-head input { accent-color: var(--accent); margin: 0; }
-.widget-config-section-body { padding-left: 22px; }
+.widget-config-section-body { padding-left: 0; }
 .widget-config-section-body[hidden] { display: none; }
 .widget-config-row {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;

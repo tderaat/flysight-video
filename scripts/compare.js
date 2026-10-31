@@ -284,7 +284,7 @@ async function syncCompareFromSidebar() {
   saveCollapsedDays(sidebarCollapsed, COMPARE_COLLAPSED_DAYS_KEY);
   saveCollapsedYears(sidebarYears, COMPARE_COLLAPSED_YEARS_KEY);
 
-  const { groups, undated } = buildJumpDayGroups(jumps, readJumpSort());
+  const { groups, undated } = buildJumpDayGroups(jumps, readJumpDateSort());
   const years = [...new Set(groups.map(g => g.date.getUTCFullYear()))];
   const newestYear = Math.max(...years);
   const yearOpen = y => years.length < 2 || !isYearCollapsed(sidebarYears, y, newestYear);
@@ -400,6 +400,9 @@ async function renderCompareJumpsList() {
 
   let scores = {};
   try { scores = JSON.parse(localStorage.getItem('flysight_scores') || '{}'); } catch (e) {}
+  // Day and year counts leave out files without a score, as in the sidebar.
+  const seasonCache = typeof readSeasonCache === 'function' ? readSeasonCache() : {};
+  const countOf = items => items.filter(it => jumpIsCounted(it.jump.name, scores, seasonCache) !== false).length;
 
   // The selection itself is set on open by syncCompareFromSidebar(); a
   // re-render (language switch, sort flip) keeps whatever the user ticked.
@@ -426,7 +429,7 @@ async function renderCompareJumpsList() {
   // Same day and year grouping as the sidebar list (shared helpers in
   // main.js), with its own collapse state so folding a day or year here
   // doesn't disturb the sidebar.
-  const sortMode = readJumpSort();
+  const sortMode = readJumpDateSort();
   const { groups, undated } = buildJumpDayGroups(jumps, sortMode);
   const collapsed = getCollapsedDays(COMPARE_COLLAPSED_DAYS_KEY);
   // List order, for every jump, including those in a year not built yet.
@@ -438,7 +441,7 @@ async function renderCompareJumpsList() {
     const { group, header, jumpsWrap } = makeJumpDayGroup({
       date: g.date,
       dayKey: g.dayKey,
-      count: g.items.length,
+      count: countOf(g.items),
       collapsed: collapsed.has(g.dayKey),
       storageKey: COMPARE_COLLAPSED_DAYS_KEY
     });
@@ -465,7 +468,7 @@ async function renderCompareJumpsList() {
       const yearDays = groups.filter(g => yearOf(g) === year);
       const section = makeJumpYearGroup({
         year: year,
-        count: yearDays.reduce((n, g) => n + g.items.length, 0),
+        count: yearDays.reduce((n, g) => n + countOf(g.items), 0),
         collapsed: isYearCollapsed(collapsedYears, year, newestYear),
         storageKey: COMPARE_COLLAPSED_YEARS_KEY,
         fill: body => yearDays.forEach(g => appendDay(body, g))

@@ -7,7 +7,7 @@
 // lives inline in index.html's <head>. This file wires up the dropdown
 // and triggers a chart/map re-render when the user switches themes.
 
-var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green', 'dark-pink'];
+var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green', 'dark-pink', 'hc-dark', 'hc-light'];
 var DEFAULT_THEME = 'dark-blue';
 
 function setThemeCookie(value) {
@@ -150,10 +150,12 @@ function updateFavicon(theme) {
 // backs the favicon fallback.
 var THEME_META = [
   { value: 'dark-blue',  swatch: '#38bdf8', key: 'theme.darkBlue' },
-  { value: 'light',      swatch: '#0284c7', dot: '#94a3b8', key: 'theme.light' },
-  { value: 'dark-red',   swatch: '#b91c1c', key: 'theme.darkRed' },
+  { value: 'light',      swatch: '#0369a1', dot: '#94a3b8', key: 'theme.light' },
+  { value: 'dark-red',   swatch: '#ff5252', key: 'theme.darkRed' },
   { value: 'dark-green', swatch: '#22ee5e', key: 'theme.darkGreen' },
-  { value: 'dark-pink',  swatch: '#ec4899', key: 'theme.darkPink' },
+  { value: 'dark-pink',  swatch: '#f472b6', key: 'theme.darkPink' },
+  { value: 'hc-dark',    swatch: '#00e5ff', key: 'theme.hcDark' },
+  { value: 'hc-light',   swatch: '#0047ab', key: 'theme.hcLight' },
 ];
 
 // (Re)build the theme dropdown — called on load and on language switch so the
