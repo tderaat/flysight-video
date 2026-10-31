@@ -32,6 +32,15 @@ function isFlySight2CSV(csvText) {
   return /^\s*\$FLYS\b/.test(csvText) || /^\s*\$(COL|GNSS)\s*,/m.test(csvText);
 }
 
+// Fewer timed rows than this (10 s at 5 Hz) is not a jump: a FlySight switched
+// on briefly, or switched off before it got a fix. The chart refuses to draw
+// such a file and the import skips it.
+var MIN_DATA_POINTS = 50;
+
+function hasEnoughDataPoints(csvText) {
+  return parseFlySightCSV(csvText).length >= MIN_DATA_POINTS;
+}
+
 function parseFlySightCSV(csvText) {
   if (!csvText) return [];
   if (isFlySight2CSV(csvText)) return parseFlySight2CSV(csvText);

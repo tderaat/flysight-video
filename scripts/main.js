@@ -281,16 +281,21 @@ async function handleFiles(files, opts) {
   let lastName = null;
   const takenNames = new Set();
   const storedNames = [];
+  const tooShort = [];
   for (const file of csvFiles) {
     const base = baseJumpName(file);
     try {
       const csv = await readFileAsText(file);
-      const name = resolveJumpName(base, csv, takenNames);
-      takenNames.add(name);
-      await storeJump(name, csv);
-      if (state.compareDataCache) state.compareDataCache.delete(name);
-      lastName = name;
-      storedNames.push(name);
+      if (!hasEnoughDataPoints(csv)) {
+        tooShort.push(file.name);
+      } else {
+        const name = resolveJumpName(base, csv, takenNames);
+        takenNames.add(name);
+        await storeJump(name, csv);
+        if (state.compareDataCache) state.compareDataCache.delete(name);
+        lastName = name;
+        storedNames.push(name);
+      }
     } catch (e) {
       // Individual file failures shouldn't block the rest of the batch.
       console.error('Failed to load', file.name, e);
@@ -306,12 +311,20 @@ async function handleFiles(files, opts) {
 
   if (lastName) selectJump(lastName);
   if (storedNames.length && typeof warmSeasonCache === 'function') warmSeasonCache(storedNames, scheduleJumpListRefresh);
+  alertTooShort(tooShort);
+}
+
+// Files left out for having fewer than MIN_DATA_POINTS timed rows. A folder
+// import counts them in its toast instead.
+function alertTooShort(names) {
+  if (names.length) alert(t('alert.tooFewPoints', { min: MIN_DATA_POINTS, files: names.join(', ') }));
 }
 
 // Large batches and folder imports. Same naming as handleFiles(), plus:
 //   - a file identical to the stored jump it resolves to is not rewritten, so
 //     re-importing a whole SD card only stores what is new or changed;
 //   - in folder mode, a CSV without GPS timestamps is skipped;
+//   - a CSV with fewer than MIN_DATA_POINTS timed rows is skipped;
 //   - the newest flight, not the last file read, becomes the open jump;
 //   - a folder import ends with a summary toast.
 async function importBulk(csvFiles, folder) {
@@ -324,12 +337,16 @@ async function importBulk(csvFiles, folder) {
   const changed = [];
   let unchanged = 0, skipped = 0;
   let newest = null;
+  const tooShort = [];
   for (const file of csvFiles) {
     try {
       const csv = await readFileAsText(file);
       const date = jumpFlightDate(csv);
       if (folder && !date) {
         skipped++;
+      } else if (!hasEnoughDataPoints(csv)) {
+        skipped++;
+        tooShort.push(file.name);
       } else {
         const name = resolveJumpName(baseJumpName(file), csv, takenNames);
         takenNames.add(name);
@@ -360,6 +377,7 @@ async function importBulk(csvFiles, folder) {
   await renderJumpList();
   if (newest) await selectJump(newest.name);
   if (folder) showImportToast(changed.length, unchanged, skipped);
+  else alertTooShort(tooShort);
   // Score the new and changed jumps in the background, so the season view
   // opens without a wait (warmSeasonCache in scripts/season.js).
   if (changed.length && typeof warmSeasonCache === 'function') warmSeasonCache(changed, scheduleJumpListRefresh);

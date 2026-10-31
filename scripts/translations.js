@@ -398,6 +398,7 @@ var I18N = {
 
     // Generic alerts
     'alert.onlyCsv': 'Only CSV files can be uploaded here.\n\nRejected: {files}\n\nTo add a video, click "Create video overlay".',
+    'alert.tooFewPoints': 'Skipped: fewer than {min} GPS data points, too little to be a jump.\n\n{files}',
     'alert.jumpExists': 'A jump named "{name}" already exists. Choose a different name.',
     'alert.storageFull': 'Storage is full. Remove some jumps to free space before adding new ones.',
     'alert.dbBlocked': 'FlySight Insights is open in another tab. Close the other tabs and reload this page to finish upgrading local storage.',
@@ -819,6 +820,7 @@ var I18N = {
 
     // Generic alerts
     'alert.onlyCsv': 'Hier können nur CSV-Dateien hochgeladen werden.\n\nAbgelehnt: {files}\n\nUm ein Video hinzuzufügen, klicken Sie auf "Video-Overlay erstellen".',
+    'alert.tooFewPoints': 'Übersprungen: weniger als {min} GPS-Datenpunkte, zu wenig für einen Sprung.\n\n{files}',
     'alert.jumpExists': 'Ein Sprung mit dem Namen "{name}" existiert bereits. Wählen Sie einen anderen Namen.',
     'alert.storageFull': 'Der Speicher ist voll. Entfernen Sie einige Sprünge, um Platz zu schaffen, bevor Sie neue hinzufügen.',
     'alert.dbBlocked': 'FlySight Insights ist in einem anderen Tab geöffnet. Schließen Sie die anderen Tabs und laden Sie diese Seite neu, um die Aktualisierung des lokalen Speichers abzuschließen.',
@@ -1240,6 +1242,7 @@ var I18N = {
 
     // Generic alerts
     'alert.onlyCsv': 'Hier kunnen alleen CSV-bestanden worden geüpload.\n\nGeweigerd: {files}\n\nKlik op "Video-overlay maken" om een video toe te voegen.',
+    'alert.tooFewPoints': 'Overgeslagen: minder dan {min} GPS-datapunten, te weinig voor een sprong.\n\n{files}',
     'alert.jumpExists': 'Er bestaat al een sprong met de naam "{name}". Kies een andere naam.',
     'alert.storageFull': 'De opslag is vol. Verwijder enkele sprongen om ruimte vrij te maken voordat je nieuwe toevoegt.',
     'alert.dbBlocked': 'FlySight Insights is in een ander tabblad geopend. Sluit de andere tabbladen en herlaad deze pagina om de upgrade van de lokale opslag te voltooien.',
@@ -1661,6 +1664,7 @@ var I18N = {
 
     // Generic alerts
     'alert.onlyCsv': 'Qui si possono caricare solo file CSV.\n\nRifiutati: {files}\n\nPer aggiungere un video, clicca su "Crea overlay video".',
+    'alert.tooFewPoints': 'Saltati: meno di {min} punti dati GPS, troppo pochi per un salto.\n\n{files}',
     'alert.jumpExists': 'Esiste già un lancio chiamato "{name}". Scegli un altro nome.',
     'alert.storageFull': 'Spazio di archiviazione pieno. Rimuovi alcuni lanci per liberare spazio prima di aggiungerne di nuovi.',
     'alert.dbBlocked': "FlySight Insights è aperto in un'altra scheda. Chiudi le altre schede e ricarica questa pagina per completare l'aggiornamento dell'archiviazione locale.",
@@ -2082,6 +2086,7 @@ var I18N = {
 
     // Generic alerts
     'alert.onlyCsv': 'Bara CSV-filer kan laddas upp här.\n\nAvvisade: {files}\n\nKlicka på "Skapa videooverlay" för att lägga till en video.',
+    'alert.tooFewPoints': 'Överhoppade: färre än {min} GPS-datapunkter, för få för ett hopp.\n\n{files}',
     'alert.jumpExists': 'Ett hopp med namnet "{name}" finns redan. Välj ett annat namn.',
     'alert.storageFull': 'Lagringen är full. Ta bort några hopp för att frigöra plats innan du lägger till nya.',
     'alert.dbBlocked': 'FlySight Insights är öppet i en annan flik. Stäng de andra flikarna och ladda om den här sidan för att slutföra uppgraderingen av den lokala lagringen.',
@@ -2503,6 +2508,7 @@ var I18N = {
 
     // Generic alerts
     'alert.onlyCsv': 'Aquí solo se pueden subir archivos CSV.\n\nRechazados: {files}\n\nPara añadir un vídeo, haz clic en "Crear superposición de vídeo".',
+    'alert.tooFewPoints': 'Omitidos: menos de {min} puntos de datos GPS, demasiado pocos para un salto.\n\n{files}',
     'alert.jumpExists': 'Ya existe un salto llamado "{name}". Elige otro nombre.',
     'alert.storageFull': 'El almacenamiento está lleno. Elimina algunos saltos para liberar espacio antes de añadir nuevos.',
     'alert.dbBlocked': 'FlySight Insights está abierto en otra pestaña. Cierra las demás pestañas y recarga esta página para terminar de actualizar el almacenamiento local.',
@@ -2924,6 +2930,7 @@ var I18N = {
 
     // Generic alerts
     'alert.onlyCsv': 'Tutaj można przesyłać tylko pliki CSV.\n\nOdrzucone: {files}\n\nAby dodać wideo, kliknij "Utwórz nakładkę wideo".',
+    'alert.tooFewPoints': 'Pominięto: mniej niż {min} punktów danych GPS, za mało na skok.\n\n{files}',
     'alert.jumpExists': 'Skok o nazwie "{name}" już istnieje. Wybierz inną nazwę.',
     'alert.storageFull': 'Pamięć jest pełna. Usuń kilka skoków, aby zwolnić miejsce przed dodaniem nowych.',
     'alert.dbBlocked': 'FlySight Insights jest otwarty w innej karcie. Zamknij pozostałe karty i odśwież tę stronę, aby zakończyć aktualizację pamięci lokalnej.',

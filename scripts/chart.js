@@ -185,7 +185,7 @@ async function renderCurrentJump(view) {
   document.body.classList.add('has-jump-loaded');
 
   const data = parseFlySightCSV(jump.csv);
-  if (data.length < 50) { section.innerHTML = '<p>' + t('chart.notEnoughData') + '</p>'; return; }
+  if (data.length < MIN_DATA_POINTS) { section.innerHTML = '<p>' + t('chart.notEnoughData') + '</p>'; return; }
 
   // Per-jump notes live below the map/stats row; refill the box for this jump.
   // After the row-count guard above, which replaces the whole section.
