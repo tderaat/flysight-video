@@ -1677,6 +1677,12 @@ canvas { width: 100% !important; }
   display: block; margin-top: 4px; font-size: 0.8rem; color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+/* "Or play H.265 directly" line with the HEVC extension link (Windows only). */
+.video-convert-or {
+  margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border);
+  font-size: 0.85rem; color: var(--text-mid);
+}
+.video-convert-or a { color: var(--accent); }
 .video-convert-manual { margin-top: 14px; font-size: 0.78rem; color: var(--text-dim); }
 .video-convert-manual summary { cursor: pointer; }
 .video-convert-manual code {

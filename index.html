@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v59">
+<meta name="app-build" content="flysight-v60">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -320,6 +320,9 @@
             <span class="video-convert-status" data-vc="status"></span>
             <button class="export-cancel-btn" data-vc="cancel" onclick="cancelVideoConvert()" data-i18n="convert.cancel">Cancel</button>
           </div>
+          <!-- H.265 on Windows only: the free HEVC Video Extensions let Chrome
+               and Edge play it without converting. Filled by convert.js. -->
+          <p class="video-convert-or" data-vc="hevcTip" style="display:none;"></p>
           <details class="video-convert-manual">
             <summary data-i18n="convert.manualTitle">Prefer to convert it yourself?</summary>
             <code id="videoConvertCmd"></code>

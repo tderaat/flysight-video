@@ -4,7 +4,7 @@
 // Release id. Must equal the app-build meta tag in index.html and
 // CACHE_VERSION in sw.js; index.html reloads once when they disagree, which
 // means the page and its scripts came from different releases.
-var APP_BUILD = 'flysight-v59';
+var APP_BUILD = 'flysight-v60';
 
 var state = {
   // Video overlay

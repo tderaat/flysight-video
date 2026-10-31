@@ -481,6 +481,36 @@ function convertSelectedCrf() {
   return CONVERT_CRF[sel && sel.value] || CONVERT_CRF.standard;
 }
 
+// On Windows, Chrome and Edge play H.265 once the OS has a decoder, which the
+// free "HEVC Video Extensions from Device Manufacturer" supply. Microsoft
+// hides that package from the Store search, so the link points at the
+// download page the user chose (Uptodown) rather than a Store search.
+var HEVC_EXTENSION_URL = 'https://hevc-video-extensions-from-device-manufacturer.en.uptodown.com/windows';
+
+function isWindowsPlatform() {
+  var uad = navigator.userAgentData;
+  if (uad && uad.platform) return uad.platform === 'Windows';
+  return /Windows/.test(navigator.userAgent);
+}
+
+// The "or play it directly" line under the step-1 offer: H.265 on Windows
+// only, since the extension does nothing elsewhere or for other codecs. Built
+// from DOM nodes so the translated sentence can carry the link.
+function renderHevcExtensionTip(job) {
+  var el = vcPart(job.panel, 'hevcTip');
+  if (!el) return;
+  var show = !job.codec.container && HEVC_FOURCC.indexOf(job.codec.fourcc) >= 0 && isWindowsPlatform();
+  el.style.display = show ? '' : 'none';
+  if (!show) return;
+  var parts = t('convert.hevcTip').split('{link}');
+  var a = document.createElement('a');
+  a.href = HEVC_EXTENSION_URL;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.textContent = t('convert.hevcTipLink');
+  el.replaceChildren(document.createTextNode(parts[0] || ''), a, document.createTextNode(parts[1] || ''));
+}
+
 // The message and the estimate are set from JS, so they are rendered through
 // one function that refreshVideoConvertLang() can call again.
 function renderConvertOfferText() {
@@ -493,6 +523,7 @@ function renderConvertOfferText() {
     msg.textContent = t('convert.hiresOffer', { res: convertSizeLabel(job.srcW, job.srcH) });
     return;
   }
+  renderHevcExtensionTip(job);
   msg.textContent = c.container
     ? t('convert.offerContainer', {
         container: CONTAINER_NAMES[c.container],
