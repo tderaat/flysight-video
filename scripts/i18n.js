@@ -163,15 +163,11 @@ function applyLanguage(lang) {
   if (typeof renderThemeMenu === 'function') { try { renderThemeMenu(); } catch (e) {} }
 }
 
-// Re-apply the JS-set bits of the video modal (play/pause button + "Not set"
-// exit timecode) so a mid-session language switch updates them too.
+// Re-apply the JS-set bits of the video modal (the play/pause button) so a
+// mid-session language switch updates them too.
 function refreshVideoModalLang() {
   var video = document.getElementById('videoPreview');
   if (video && typeof setVideoPlayButton === 'function') setVideoPlayButton(!video.paused);
-  var exitTc = document.getElementById('videoExitTimecode');
-  if (exitTc && typeof state !== 'undefined' && state.videoExitTime === null) {
-    exitTc.textContent = t('video.notSet');
-  }
   if (typeof refreshVideoSteps === 'function') refreshVideoSteps();
   if (typeof updateVideoModalTitle === 'function') updateVideoModalTitle();
 }

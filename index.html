@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v60">
+<meta name="app-build" content="flysight-v61">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -400,7 +400,7 @@
                 <p class="video-hint" data-i18n="video.hintExit">Play or scrub to the frame where you leave the aircraft, then mark it. This lines the video up with your FlySight data.</p>
                 <div class="video-sync-row">
                   <button class="trim-btn" onclick="markVideoExit()" data-i18n="video.useThisMoment">Use this moment</button>
-                  <span id="videoExitTimecode" class="video-timecode">Not set</span>
+                  <span id="videoExitTimecode" class="video-timecode"></span>
                 </div>
               </div>
             </section>

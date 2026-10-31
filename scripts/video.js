@@ -42,7 +42,7 @@ function closeVideoModal() {
   state.videoExitTime = null;
   state.videoCropStart = null;
   state.videoCropEnd = null;
-  document.getElementById('videoExitTimecode').textContent = t('video.notSet');
+  document.getElementById('videoExitTimecode').textContent = '';
   document.getElementById('videoTimecode').textContent = '0:00.000';
   document.getElementById('videoDuration').textContent = '/ 0:00.000';
 
@@ -724,7 +724,7 @@ function loadVideoIntoPreview(file, opts) {
         state.videoExitTime = null;
         state.videoCropStart = 0;
         state.videoCropEnd = video.duration;
-        document.getElementById('videoExitTimecode').textContent = t('video.notSet');
+        document.getElementById('videoExitTimecode').textContent = '';
         state.videoStep = 1;
       }
       refreshVideoSteps();
@@ -1039,6 +1039,9 @@ function setVideoStep(n) {
     state.selectedWidgetId = null;
     state.widgetDragState = null;
   }
+  // The export step is about setting the range, so playback stops there.
+  const video = document.getElementById('videoPreview');
+  if (n === 3 && !video.paused) video.pause();
   updateWidgetSettingsPanel(); // also calls refreshVideoSteps()
   drawOverlayPreview();
 }
@@ -1400,6 +1403,13 @@ const SEEK_ATTEMPT_MS = 10000;
 const SEEK_ATTEMPTS = 3;
 const SEEK_SLOW_MS = 3000;
 const SEEK_POLL_MS = 200;
+// How often one frame may reload the video element after a timed-out seek
+// before the export gives up.
+const SEEK_RELOADS_MAX = 2;
+// At most this many frames wait in front of the encoder. Each is a raw
+// canvas-sized frame (about 3.5 MB at 720p), and on integrated graphics they
+// share the system's memory, so a deep queue costs real RAM for no speed.
+const EXPORT_ENCODE_QUEUE_MAX = 8;
 function seekVideoTo(video, t, opts) {
   const onSlow = opts && opts.onSlow;
   const isCancelled = opts && opts.isCancelled;
@@ -1544,6 +1554,11 @@ function startExport() {
     exportWithWebCodecs(opts);
   }
 }
+
+// How often the frame-by-frame time left changes, and how far above the
+// measured pace it starts (+25% at the start, shrinking to nothing at the end).
+const EXPORT_ETA_REFRESH_MS = 2500;
+const EXPORT_ETA_START_MARGIN = 0.25;
 
 // "m:ss" for the time left in the progress line.
 function formatExportEta(secs) {
@@ -1868,6 +1883,444 @@ async function encodeExportAudio(file, container, trimStart, trimEnd, isCancelle
   return { config: { codec: pick.mux, numberOfChannels: channels, sampleRate: EXPORT_AUDIO_RATE }, chunks };
 }
 
+// ── Sequential decode (MP4) ──
+// The export's fast path for MP4/MOV: rather than seeking the <video> element
+// to every output frame (each seek decodes forward from the previous keyframe,
+// which on 1080p60 footage and integrated graphics can take seconds), the
+// video samples are read straight from the file and decoded once each, in
+// order, with a WebCodecs VideoDecoder. Memory stays flat, since only a few
+// frames are ever held. Anything this cannot read (rotated phone video,
+// complex edit lists, other codecs) falls back to seeking, and so does a
+// decoder that fails part way, from the frame it stopped at.
+
+// The video track's sample table, in decode order: { codec, description, hevc,
+// width, height, count, offsets, sizes, ptsUs, durUs, key }, timestamps in
+// presentation microseconds on the <video> element's own clock. null for
+// anything not handled.
+function readMp4VideoSamples(file) {
+  return readMoovBytes(file).then(function(moov) {
+    if (!moov) return null;
+    var dv = new DataView(moov.buffer, moov.byteOffset, moov.byteLength);
+    var child = function(box, type) {
+      return mp4ChildBoxes(moov, box.start, box.end).find(function(b) { return b.type === type; }) || null;
+    };
+    var top = mp4ChildBoxes(moov, 0, moov.length);
+    var mvhd = top.find(function(b) { return b.type === 'mvhd'; });
+    if (!mvhd) return null;
+    var movieScale = dv.getUint32(mvhd.start + (moov[mvhd.start] === 1 ? 20 : 12));
+    var traks = top.filter(function(b) { return b.type === 'trak'; });
+    for (var i = 0; i < traks.length; i++) {
+      var mdia = child(traks[i], 'mdia');
+      var hdlr = mdia && child(mdia, 'hdlr');
+      if (!hdlr || fourccAt(moov, hdlr.start + 8) !== 'vide') continue;
+      return readVideoTrak(moov, dv, child, traks[i], mdia, movieScale);
+    }
+    return null;
+  }).catch(function(e) {
+    console.warn('[FlySight] could not read the MP4 sample table', e);
+    return null;
+  });
+}
+
+function readVideoTrak(moov, dv, child, trak, mdia, movieScale) {
+  // A rotation matrix is applied by <video> but not to a decoded VideoFrame.
+  var tkhd = child(trak, 'tkhd');
+  if (!tkhd) return null;
+  var m = tkhd.start + (moov[tkhd.start] === 1 ? 52 : 40);
+  if (dv.getInt32(m) !== 0x10000 || dv.getInt32(m + 4) !== 0 ||
+      dv.getInt32(m + 12) !== 0 || dv.getInt32(m + 16) !== 0x10000) return null;
+
+  var mdhd = child(mdia, 'mdhd');
+  var minf = child(mdia, 'minf');
+  var stbl = minf && child(minf, 'stbl');
+  if (!mdhd || !stbl) return null;
+  var scale = dv.getUint32(mdhd.start + (moov[mdhd.start] === 1 ? 20 : 12));
+  if (!scale || !movieScale) return null;
+
+  // Edit list: an optional leading empty edit (a delay) and one plain edit
+  // (the media time playback starts at), the shape cameras write. Anything
+  // more involved is left to the browser.
+  var delayUs = 0, shift = 0;
+  var edts = child(trak, 'edts');
+  var elst = edts && child(edts, 'elst');
+  if (elst) {
+    var v1 = moov[elst.start] === 1;
+    var n = dv.getUint32(elst.start + 4);
+    var p = elst.start + 8, plain = 0;
+    for (var e = 0; e < n; e++) {
+      var segDur = v1 ? Number(dv.getBigUint64(p)) : dv.getUint32(p);
+      var mediaTime = v1 ? Number(dv.getBigInt64(p + 8)) : dv.getInt32(p + 4);
+      var rate = dv.getInt32(p + (v1 ? 16 : 8));
+      p += v1 ? 20 : 12;
+      if (mediaTime === -1) {
+        if (plain) return null;
+        delayUs += segDur / movieScale * 1e6;
+        continue;
+      }
+      if (plain++ || rate !== 0x10000) return null;
+      shift = mediaTime;
+    }
+  }
+
+  var stsd = child(stbl, 'stsd');
+  if (!stsd || stsd.start + 94 > stsd.end) return null;
+  var entry = stsd.start + 8;
+  var fourcc = fourccAt(moov, entry + 4);
+  var width = dv.getUint16(entry + 32), height = dv.getUint16(entry + 34);
+  var entryEnd = Math.min(stsd.end, entry + dv.getUint32(entry));
+  var configs = mp4ChildBoxes(moov, entry + 86, entryEnd);
+  var codec = null, cfg = null;
+  if (fourcc === 'avc1' || fourcc === 'avc3') {
+    cfg = configs.find(function(b) { return b.type === 'avcC'; });
+    if (!cfg || cfg.start + 4 > cfg.end) return null;
+    var hex = function(b) { return moov[b].toString(16).padStart(2, '0'); };
+    codec = fourcc + '.' + hex(cfg.start + 1) + hex(cfg.start + 2) + hex(cfg.start + 3);
+  } else if (fourcc === 'hvc1' || fourcc === 'hev1') {
+    cfg = configs.find(function(b) { return b.type === 'hvcC'; });
+    if (!cfg || cfg.start + 13 > cfg.end) return null;
+    codec = hevcCodecString(fourcc, moov, cfg.start);
+  } else {
+    return null;
+  }
+  var description = moov.slice(cfg.start, cfg.end);
+
+  var stts = child(stbl, 'stts'), stsz = child(stbl, 'stsz'), stsc = child(stbl, 'stsc');
+  var stco = child(stbl, 'stco'), co64 = child(stbl, 'co64');
+  var ctts = child(stbl, 'ctts'), stss = child(stbl, 'stss');
+  if (!stts || !stsz || !stsc || !(stco || co64)) return null;
+
+  var count = dv.getUint32(stsz.start + 8);
+  if (!count) return null;
+  var fixedSize = dv.getUint32(stsz.start + 4);
+  var sizes = new Uint32Array(count);
+  for (var s = 0; s < count; s++) sizes[s] = fixedSize || dv.getUint32(stsz.start + 12 + s * 4);
+
+  // Decode times and durations, in track ticks.
+  var dts = new Float64Array(count), dur = new Float64Array(count);
+  var k = 0, t = 0;
+  var sttsN = dv.getUint32(stts.start + 4);
+  for (var a = 0, q = stts.start + 8; a < sttsN && k < count; a++, q += 8) {
+    var c = dv.getUint32(q), d = dv.getUint32(q + 4);
+    for (var j = 0; j < c && k < count; j++, k++) { dts[k] = t; dur[k] = d; t += d; }
+  }
+  if (k !== count) return null;
+
+  // Composition offsets (B-frames). Read signed: version 0 is unsigned on
+  // paper, but writers put negative offsets there too.
+  var cto = new Float64Array(count);
+  if (ctts) {
+    k = 0;
+    var cttsN = dv.getUint32(ctts.start + 4);
+    for (var b = 0, r = ctts.start + 8; b < cttsN && k < count; b++, r += 8) {
+      var cc = dv.getUint32(r), off = dv.getInt32(r + 4);
+      for (var jj = 0; jj < cc && k < count; jj++) cto[k++] = off;
+    }
+  }
+
+  var key = new Uint8Array(count);
+  if (stss) {
+    var stssN = dv.getUint32(stss.start + 4);
+    for (var y = 0; y < stssN; y++) {
+      var num = dv.getUint32(stss.start + 8 + y * 4);
+      if (num >= 1 && num <= count) key[num - 1] = 1;
+    }
+  } else {
+    key.fill(1);
+  }
+  if (!key[0]) return null;
+
+  // File offsets: chunks from stco/co64, samples per chunk from stsc.
+  var chunkCount = dv.getUint32((stco || co64).start + 4);
+  var chunkOffset = function(ci) {
+    return stco ? dv.getUint32(stco.start + 8 + ci * 4)
+      : dv.getUint32(co64.start + 8 + ci * 8) * 4294967296 + dv.getUint32(co64.start + 12 + ci * 8);
+  };
+  var offsets = new Float64Array(count);
+  var stscN = dv.getUint32(stsc.start + 4);
+  k = 0;
+  for (var g = 0; g < stscN && k < count; g++) {
+    var base = stsc.start + 8 + g * 12;
+    var firstChunk = dv.getUint32(base) - 1;
+    var perChunk = dv.getUint32(base + 4);
+    var lastChunk = g + 1 < stscN ? dv.getUint32(base + 12) - 1 : chunkCount;
+    for (var ch = firstChunk; ch < lastChunk && k < count; ch++) {
+      var pos = chunkOffset(ch);
+      for (var z = 0; z < perChunk && k < count; z++, k++) { offsets[k] = pos; pos += sizes[k]; }
+    }
+  }
+  if (k !== count) return null;
+
+  var ptsUs = new Float64Array(count), durUs = new Float64Array(count);
+  for (var w = 0; w < count; w++) {
+    ptsUs[w] = Math.round((dts[w] + cto[w] - shift) / scale * 1e6 + delayUs);
+    durUs[w] = Math.round(dur[w] / scale * 1e6);
+  }
+  return { codec: codec, description: description, hevc: fourcc[0] === 'h', width: width, height: height,
+    count: count, offsets: offsets, sizes: sizes, ptsUs: ptsUs, durUs: durUs, key: key };
+}
+
+// RFC 6381 codec string for HEVC from the hvcC record, e.g. hvc1.1.6.L120.B0.
+function hevcCodecString(fourcc, bytes, p) {
+  var space = bytes[p + 1] >> 6;
+  var tier = (bytes[p + 1] >> 5) & 1;
+  var profile = bytes[p + 1] & 0x1f;
+  var compat = ((bytes[p + 2] << 24) | (bytes[p + 3] << 16) | (bytes[p + 4] << 8) | bytes[p + 5]) >>> 0;
+  var reversed = 0;
+  for (var i = 0; i < 32; i++) { reversed = (reversed << 1) | (compat & 1); compat >>>= 1; }
+  var s = fourcc + '.' + ['', 'A', 'B', 'C'][space] + profile + '.' + (reversed >>> 0).toString(16).toUpperCase() +
+    '.' + (tier ? 'H' : 'L') + bytes[p + 12];
+  var cons = [];
+  for (var j = 0; j < 6; j++) cons.push(bytes[p + 6 + j]);
+  while (cons.length && cons[cons.length - 1] === 0) cons.pop();
+  cons.forEach(function(c) { s += '.' + c.toString(16).toUpperCase(); });
+  return s;
+}
+
+// Whether a sample holds a picture the decoder can start from: an IRAP NAL
+// unit (types 16-23) in HEVC, an IDR slice (type 5) in H.264. The NAL length
+// field size comes from the hvcC / avcC record.
+function holdsKeyframe(bytes, description, hevc) {
+  const lenSize = ((hevc ? description[21] : description[4]) & 3) + 1;
+  let p = 0;
+  while (p + lenSize < bytes.length) {
+    let len = 0;
+    for (let i = 0; i < lenSize; i++) len = len * 256 + bytes[p + i];
+    const type = hevc ? (bytes[p + lenSize] >> 1) & 0x3f : bytes[p + lenSize] & 0x1f;
+    if (hevc ? type >= 16 && type <= 23 : type === 5) return true;
+    p += lenSize + len;
+  }
+  return false;
+}
+
+// Chunks waiting in the decoder, and how long it may go without producing a
+// frame before it counts as stuck.
+const DECODE_QUEUE_MAX = 4;
+const DECODE_STALL_MS = 20000;
+const DECODE_READ_WINDOW = 8 * 1024 * 1024;
+
+// Opens the sequential source for an export starting at trimStart. Resolves
+// to { drawFrame(ctx, w, h, timeSec, isCancelled) → Promise<bool>, close() },
+// or null when this file or browser cannot use it (the caller then seeks).
+// `video` is the preview element, seeked once to line the decoder's clock up
+// with the one the exit was marked on (see calibrateDecodeShift).
+async function openMp4FrameSource(file, trimStart, video) {
+  if (!file || typeof window.VideoDecoder !== 'function' || typeof window.EncodedVideoChunk !== 'function') return null;
+  const track = await readMp4VideoSamples(file);
+  if (!track) return null;
+  const config = { codec: track.codec, description: track.description, codedWidth: track.width, codedHeight: track.height };
+  try {
+    const s = await window.VideoDecoder.isConfigSupported(config);
+    if (!s || !s.supported) return null;
+  } catch { return null; }
+  const shiftUs = video ? await calibrateDecodeShift(file, track, config, trimStart, video) : 0;
+  if (shiftUs === null) return null;
+  return startSequentialDecode(file, track, config, trimStart, shiftUs);
+}
+
+// Browsers do not agree with the file, or with each other, on where frames
+// sit in time once edit lists and B-frame delays are involved: Chrome shows
+// this repo's sample a whole frame earlier than its own timestamps say. The
+// exit was marked on the element's clock, so that is the one that counts.
+// One frame is matched against the element instead of guessing the rule:
+// the decoded frames around a moment are compared with the element's picture
+// at that moment, and the best match gives the shift, in µs, from file time to
+// element time. A black or still stretch matches several frames equally, so a
+// few moments from the start on are tried until one gives a clear answer;
+// with none, no shift. null when the decoder cannot run on this file at all.
+const CALIBRATE_FRAMES = 3;
+const CALIBRATE_AT_SEC = [0, 1, 2.5, 5, 10, 20];
+// In mean grey levels (0-255): the best match must be at most CALIBRATE_MATCH
+// off (two decoders' colour conversion differs by about 0.25), and beat the
+// next one by CALIBRATE_CLEAR.
+const CALIBRATE_MATCH = 2;
+const CALIBRATE_CLEAR = 1;
+async function calibrateDecodeShift(file, track, config, startSec, video) {
+  const lastSec = (track.ptsUs.reduce((m, v) => Math.max(m, v), 0)) / 1e6;
+  for (const offset of CALIBRATE_AT_SEC) {
+    const at = startSec + offset;
+    if (at > lastSec) break;
+    const r = await calibrateDecodeShiftAt(file, track, config, at, video);
+    if (r === null) return null;
+    if (r.clear) return r.shiftUs;
+  }
+  return 0;
+}
+
+// One attempt at timeSec: { shiftUs, clear }, or null if the decoder failed.
+async function calibrateDecodeShiftAt(file, track, config, timeSec, video) {
+  const W = 96, H = 54;
+  const canvas = () => {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    return c.getContext('2d', { willReadFrequently: true });
+  };
+  const ref = canvas(), probeCtx = canvas();
+  try {
+    await seekVideoTo(video, timeSec, {});
+  } catch { return { shiftUs: 0, clear: false }; }
+  ref.drawImage(video, 0, 0, W, H);
+  const refPx = ref.getImageData(0, 0, W, H).data;
+
+  // Presentation times of the frames either side of the one the file puts
+  // on screen at timeSec.
+  const sorted = Array.from(track.ptsUs).sort((a, b) => a - b);
+  const targetUs = Math.round(timeSec * 1e6) + 1;
+  let pos = 0;
+  while (pos + 1 < sorted.length && sorted[pos + 1] <= targetUs) pos++;
+  // Too close to either end (or before the first frame) to compare both ways.
+  if (sorted[0] > targetUs || pos < CALIBRATE_FRAMES || pos + CALIBRATE_FRAMES >= sorted.length) {
+    return { shiftUs: 0, clear: false };
+  }
+  const from = pos - CALIBRATE_FRAMES, to = pos + CALIBRATE_FRAMES;
+
+  const probe = await startSequentialDecode(file, track, config, sorted[from] / 1e6, 0);
+  if (!probe) return null;
+  const scores = [];
+  try {
+    for (let p = from; p <= to; p++) {
+      if (!(await probe.drawFrame(probeCtx, W, H, sorted[p] / 1e6, () => false))) continue;
+      const px = probeCtx.getImageData(0, 0, W, H).data;
+      let sum = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        sum += Math.abs(px[i] - refPx[i]) + Math.abs(px[i + 1] - refPx[i + 1]) + Math.abs(px[i + 2] - refPx[i + 2]);
+      }
+      scores.push({ p, diff: sum / (W * H * 3) });
+    }
+  } catch (e) {
+    console.warn('[FlySight] decoder calibration failed', e);
+    return null;
+  } finally {
+    probe.close();
+  }
+  if (scores.length < 2) return { shiftUs: 0, clear: false };
+  scores.sort((a, b) => a.diff - b.diff);
+  return {
+    shiftUs: sorted[pos] - sorted[scores[0].p],
+    clear: scores[0].diff <= CALIBRATE_MATCH && scores[1].diff - scores[0].diff >= CALIBRATE_CLEAR,
+  };
+}
+
+// The decoder proper, with file times moved by shiftUs onto the element's
+// clock. null when no usable keyframe precedes the start.
+async function startSequentialDecode(file, track, config, trimStart, shiftUs) {
+  const { count, offsets, sizes, ptsUs, durUs, key } = track;
+  // Start at the keyframe that the frame on screen at trimStart depends on:
+  // the last one at or before it in both decode and presentation order.
+  const startUs = Math.round(trimStart * 1e6) - shiftUs + 1;
+  let shown = -1;
+  for (let k = 0; k < count; k++) {
+    if (ptsUs[k] <= startUs && (shown < 0 || ptsUs[k] > ptsUs[shown])) shown = k;
+  }
+  // Some cameras mark samples as sync that hold no real keyframe (intra
+  // refresh: no IDR at all). <video> copes, the decoder refuses them, so such
+  // a sample is skipped for an earlier one, and a file with none is seeked.
+  let next = -1;
+  for (let k = shown >= 0 ? shown : 0; k >= 0; k--) {
+    if (!key[k] || (shown >= 0 && ptsUs[k] > ptsUs[shown])) continue;
+    const bytes = await readFileBytes(file, offsets[k], sizes[k]);
+    if (holdsKeyframe(bytes, track.description, track.hevc)) { next = k; break; }
+  }
+  if (next < 0) return null;
+
+  const pending = [];   // decoded frames past the current one, in presentation order
+  let current = null;   // the frame on screen at the last target time
+  let error = null;
+  let flushing = null, flushed = false;
+  let wake = null;
+  const notify = () => { if (wake) { const w = wake; wake = null; w(); } };
+  const decoder = new window.VideoDecoder({
+    output: frame => {
+      let at = pending.length;
+      while (at > 0 && pending[at - 1].timestamp > frame.timestamp) at--;
+      pending.splice(at, 0, frame);
+      notify();
+    },
+    error: e => { error = error || e; notify(); },
+  });
+  decoder.configure(config);
+
+  // Samples are read through a window of the file, since consecutive samples
+  // sit close together and one read per sample would be slow.
+  let win = null, winStart = 0;
+  async function sampleBytes(k) {
+    const off = offsets[k], size = sizes[k];
+    if (!win || off < winStart || off + size > winStart + win.length) {
+      win = await readFileBytes(file, off, Math.max(DECODE_READ_WINDOW, size));
+      winStart = off;
+      if (win.length < size) throw new Error('the video file ends early');
+    }
+    return win.subarray(off - winStart, off - winStart + size);
+  }
+  async function feed() {
+    const k = next++;
+    const data = await sampleBytes(k);
+    decoder.decode(new window.EncodedVideoChunk({
+      type: key[k] ? 'key' : 'delta', timestamp: ptsUs[k], duration: durUs[k], data,
+    }));
+  }
+  function waitForOutput() {
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { wake = null; resolve(false); }, DECODE_STALL_MS);
+      wake = () => { clearTimeout(timer); resolve(true); };
+    });
+  }
+
+  async function drawFrame(ctx, w, h, timeSec, isCancelled) {
+    const limitUs = Math.round(timeSec * 1e6) - shiftUs + 1;
+    for (;;) {
+      if (error) throw error;
+      if (isCancelled()) return false;
+      while (pending.length && pending[0].timestamp <= limitUs) {
+        if (current) current.close();
+        current = pending.shift();
+      }
+      // A decoded frame past the target means the current one is on screen
+      // at that time; frames come out in presentation order.
+      if (pending.length || flushed) break;
+      if (next < count && decoder.decodeQueueSize < DECODE_QUEUE_MAX) { await feed(); continue; }
+      if (next >= count && !flushing) {
+        flushing = decoder.flush().then(() => { flushed = true; notify(); }, e => { error = error || e; notify(); });
+      }
+      if (!(await waitForOutput()) && !flushed) throw new Error('the video decoder stopped producing frames');
+    }
+    // Before the first frame, the first frame is what the element shows.
+    const frame = current || pending[0];
+    if (!frame) return false;
+    ctx.drawImage(frame, 0, 0, w, h);
+    return true;
+  }
+
+  function close() {
+    if (current) { current.close(); current = null; }
+    while (pending.length) pending.shift().close();
+    try { if (decoder.state !== 'closed') decoder.close(); } catch {}
+  }
+
+  return { drawFrame, close, codec: track.codec, shiftUs };
+}
+
+// Reloads the <video> element, which resets the browser's decoder after it got
+// stuck on a seek (seen on slow machines with integrated graphics, often after
+// many minutes). Resolves once the element can show a frame again.
+const VIDEO_RELOAD_TIMEOUT_MS = 30000;
+function reloadVideoElement(video) {
+  return new Promise((resolve, reject) => {
+    const done = ok => {
+      clearTimeout(timer);
+      video.removeEventListener('loadeddata', onData);
+      video.removeEventListener('error', onError);
+      if (ok) resolve(); else reject(new Error('the video could not be reloaded'));
+    };
+    const onData = () => done(true);
+    const onError = () => done(false);
+    const timer = setTimeout(() => done(false), VIDEO_RELOAD_TIMEOUT_MS);
+    video.addEventListener('loadeddata', onData);
+    video.addEventListener('error', onError);
+    video.load();
+    video.muted = true;
+  });
+}
+
 // The export: WebCodecs VideoEncoder, frame by frame. Decoupled from
 // real-time playback, so a slow CPU only makes it take longer; it never
 // stalls and the output timing is frame-accurate (explicit timestamps).
@@ -1887,6 +2340,7 @@ async function exportWithWebCodecs(opts) {
     document.getElementById('exportCancelBtn').disabled = true;
   };
 
+  let source = null;  // the sequential MP4 decoder, while it is in use
   try {
     let muxer, target, codec, fileExt, mimeType;
 
@@ -1967,9 +2421,39 @@ async function exportWithWebCodecs(opts) {
     // throw the figure off wildly.
     const loopStart = performance.now();
     let etaSmoothed = null;
+    let etaText = null, etaShownAt = 0;
     const keyEvery = Math.max(1, Math.round(FPS));
     video.muted = true;
     try { if (!video.paused) video.pause(); } catch {}
+
+    // MP4 is decoded straight from the file where possible; everything else,
+    // and whatever is left after a decoder failure, seeks the <video> element.
+    source = await openMp4FrameSource(opts.file, trimStart, video).catch(e => {
+      console.warn('[FlySight] sequential decode unavailable, seeking instead', e);
+      return null;
+    });
+    if (cancelled) { abortExport(); return; }
+
+    // Seeks to the frame and draws it. A seek that times out reloads the video
+    // element (resetting the browser's decoder) and tries the same frame
+    // again, so a stuck decoder no longer throws away the export so far.
+    const seekAndDraw = async (seekTime, i) => {
+      for (let reloads = 0; ; reloads++) {
+        try {
+          await seekVideoTo(video, seekTime, {
+            onSlow: () => setProgress((i / totalFrames) * 100, t('video.seekSlow')),
+            isCancelled: () => cancelled,
+          });
+          break;
+        } catch (e) {
+          if (cancelled || reloads >= SEEK_RELOADS_MAX) throw e;
+          console.warn('[FlySight] seek timed out at frame ' + (i + 1) + ', reloading the video', e);
+          setProgress((i / totalFrames) * 100, t('video.decoderRestart', { i: i + 1 }));
+          await reloadVideoElement(video);
+        }
+      }
+      if (!cancelled) ctx.drawImage(video, 0, 0, width, height);
+    };
 
     for (let i = 0; i < totalFrames; i++) {
       if (cancelled) break;
@@ -1979,14 +2463,25 @@ async function exportWithWebCodecs(opts) {
       // of the video, so trimEnd is video.duration).
       // Not named `t` — that's the global translation function, used below.
       const seekTime = Math.min(trimStart + i / FPS, trimEnd, Math.max(0, video.duration - 0.01));
-      await seekVideoTo(video, seekTime, {
-        onSlow: () => setProgress((i / totalFrames) * 100, t('video.seekSlow')),
-        isCancelled: () => cancelled,
-      });
+      let frameTime = seekTime;
+      let drawn = false;
+      if (source) {
+        try {
+          drawn = await source.drawFrame(ctx, width, height, seekTime, () => cancelled);
+        } catch (e) {
+          console.warn('[FlySight] sequential decode failed at frame ' + (i + 1) + ', seeking from here', e);
+          source.close();
+          source = null;
+        }
+      }
       if (cancelled) break;
+      if (!drawn) {
+        await seekAndDraw(seekTime, i);
+        if (cancelled) break;
+        frameTime = video.currentTime;
+      }
 
-      ctx.drawImage(video, 0, 0, width, height);
-      const dataIdx = videoTimeToDataIndex(video.currentTime);
+      const dataIdx = videoTimeToDataIndex(frameTime);
       drawExportWidgets(ctx, contentRect, dataIdx);
 
       const timestamp = Math.round((i / FPS) * 1e6);
@@ -1999,17 +2494,25 @@ async function exportWithWebCodecs(opts) {
       frame.close();
 
       const pct = ((i + 1) / totalFrames) * 100;
-      const elapsed = (performance.now() - loopStart) / 1000;
+      const now = performance.now();
+      const elapsed = (now - loopStart) / 1000;
       if (elapsed >= 3 && i >= 4) {
         const raw = elapsed / (i + 1) * (totalFrames - i - 1);
         etaSmoothed = etaSmoothed == null ? raw : etaSmoothed * 0.9 + raw * 0.1;
       }
-      setProgress(pct, etaSmoothed == null
+      // The figure shown changes every few seconds, not every frame, and
+      // starts on the high side: an export tends to slow down as it goes
+      // (graphics memory filling up), so the early pace flatters it.
+      if (etaSmoothed != null && (etaText == null || now - etaShownAt >= EXPORT_ETA_REFRESH_MS)) {
+        etaText = formatExportEta(etaSmoothed * (1 + EXPORT_ETA_START_MARGIN * (1 - pct / 100)));
+        etaShownAt = now;
+      }
+      setProgress(pct, etaText == null
         ? t('video.exportingFrame', { i: i + 1, total: totalFrames })
-        : t('video.exportingFrameEta', { i: i + 1, total: totalFrames, left: formatExportEta(etaSmoothed) }));
+        : t('video.exportingFrameEta', { i: i + 1, total: totalFrames, left: etaText }));
 
       // Backpressure: let the encoder drain so memory stays bounded.
-      while (encoder.encodeQueueSize > FPS * 2 && !cancelled) {
+      while (encoder.encodeQueueSize > EXPORT_ENCODE_QUEUE_MAX && !cancelled) {
         await new Promise(r => setTimeout(r, 10));
         if (encoderError) throw encoderError;
       }
@@ -2030,6 +2533,8 @@ async function exportWithWebCodecs(opts) {
     if (audioSkipped) alert(t('video.audioSkipped', { msg: audioSkipped }));
   } catch (e) {
     failExport(t('video.errExport', { msg: (e && e.message ? e.message : e) }), e);
+  } finally {
+    if (source) source.close();
   }
 }
 
