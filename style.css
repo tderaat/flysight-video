@@ -938,6 +938,11 @@ body.has-jumps .dropzone p { display: none; }
 
 /* ── Chart + stats ── */
 .chart-section { display: none; }
+/* A jump with fewer than MIN_DATA_POINTS rows shows only this message
+   (renderCurrentJump() toggles .no-data; the chart markup stays in place). */
+.chart-no-data { display: none; color: var(--text-muted); }
+.chart-section.no-data > * { display: none; }
+.chart-section.no-data > .chart-no-data { display: block; }
 .chart-container { background: var(--bg-card); border-radius: 12px; padding: 10px; position: relative; }
 .chart-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
 .chart-title { font-size: 1rem; color: var(--text-muted); }

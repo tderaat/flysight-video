@@ -185,10 +185,14 @@ async function renderCurrentJump(view) {
   document.body.classList.add('has-jump-loaded');
 
   const data = parseFlySightCSV(jump.csv);
-  if (data.length < MIN_DATA_POINTS) { section.innerHTML = '<p>' + t('chart.notEnoughData') + '</p>'; return; }
+  // Jumps stored before the import skipped short files can still get here.
+  // Toggle a class rather than replacing the section's markup: the next jump
+  // needs #chartTitle, the canvas, the map and the stats back.
+  const tooShort = data.length < MIN_DATA_POINTS;
+  section.classList.toggle('no-data', tooShort);
+  if (tooShort) return;
 
   // Per-jump notes live below the map/stats row; refill the box for this jump.
-  // After the row-count guard above, which replaces the whole section.
   renderJumpNotes();
 
   const firstT = parseTimestamp(data[0].time);
