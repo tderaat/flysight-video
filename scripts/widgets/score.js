@@ -83,7 +83,7 @@ function renderScoreWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   ctx.shadowOffsetY = p.fontSize * 0.1;
 
   if (config.showBackground !== false) {
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.fillStyle = widgetBackgroundFill(config);
     if (ctx.roundRect) {
       ctx.beginPath();
       ctx.roundRect(x, y, p.boxW, p.boxH, p.fontSize * 0.3);
@@ -133,30 +133,11 @@ function renderScorePreviewCard(ctx, canvas) {
 
 function buildScoreConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
   const wrap = document.createElement('div');
-
-  const checks = document.createElement('div');
-  checks.className = 'widget-config-checks';
-  [
-    { key: 'showLabel', label: t('cfg.showLabel') },
-    { key: 'showBackground', label: t('cfg.showBackground') },
-  ].forEach(({ key, label }) => {
-    const lbl = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    // Both default on and read `!== false`, so widgets saved before a key existed keep it on.
-    cb.checked = widget.config[key] !== false;
-    cb.addEventListener('change', () => {
-      widget.config[key] = cb.checked;
-      drawOverlayPreview();
-      state.scheduleSaveWidgetLayout();
-    });
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(' ' + label));
-    checks.appendChild(lbl);
-  });
-  wrap.appendChild(checks);
-
-  wrap.appendChild(buildUnitsConfig(widget));
-
+  // Both checkboxes default on and read `!== false`, so widgets saved before a key existed keep it on.
+  wrap.appendChild(buildConfigSection(t('cfg.display'), [
+    buildConfigChecks(widget, [{ key: 'showLabel', label: t('cfg.showLabel'), defaultOn: true }]),
+    buildUnitsConfig(widget),
+  ]));
+  wrap.appendChild(buildBackgroundSection(widget, true));
   return wrap;
 }

@@ -43,7 +43,7 @@ function renderGForceWidget(ctx, contentRect, widget, dataIdx, units, scale, opa
   }
 
   if (config.showBackground) {
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.fillStyle = widgetBackgroundFill(config);
     const bgX = cx - totalW / 2 - barW * 0.3;
     const bgW = totalW + barW * 0.6;
     if (ctx.roundRect) {
@@ -102,13 +102,13 @@ function renderGForceWidget(ctx, contentRect, widget, dataIdx, units, scale, opa
 
   const labelFontSize = barH * 0.1;
   ctx.font = '600 ' + labelFontSize + 'px "Segoe UI", system-ui, sans-serif';
-  ctx.fillStyle = '#94a3b8';
+  ctx.fillStyle = '#f8fafc';
   ctx.fillText('G', textX, cy + numFontSize * 0.8);
 
   if (config.showLabel) {
     const lFontSize = barH * 0.08;
     ctx.font = '600 ' + lFontSize + 'px "Segoe UI", system-ui, sans-serif';
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = '#f8fafc';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText('G-FORCE', cx, by - barW * 0.15);
@@ -151,35 +151,19 @@ function renderGForcePreviewCard(ctx, canvas) {
 
   const labelFontSize = barH * 0.12;
   ctx.font = '600 ' + labelFontSize + 'px "Segoe UI", system-ui, sans-serif';
-  ctx.fillStyle = '#94a3b8';
+  ctx.fillStyle = '#f8fafc';
   ctx.fillText('G', bx + barW + 4, canvas.height / 2 + numFontSize * 0.8);
 }
 
 function buildGForceConfigPanel(widget, drawOverlayPreview) {
   const wrap = document.createElement('div');
-  const checks = document.createElement('div');
-  checks.className = 'widget-config-checks';
-  [
-    { key: 'showLabel', label: t('cfg.showLabel') },
-    { key: 'showBackground', label: t('cfg.showBackground') },
-    { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
-    { key: 'fadeIn', label: t('cfg.fadeIn') },
-  ].forEach(({ key, label, defaultOn }) => {
-    const lbl = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    // defaultOn keys read `!== false` so widgets from a layout saved before the setting
-    // existed still get the shadow.
-    cb.checked = defaultOn ? widget.config[key] !== false : !!widget.config[key];
-    cb.addEventListener('change', () => {
-      widget.config[key] = cb.checked;
-      drawOverlayPreview();
-      state.scheduleSaveWidgetLayout();
-    });
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(' ' + label));
-    checks.appendChild(lbl);
-  });
-  wrap.appendChild(checks);
+  wrap.appendChild(buildConfigSection(t('cfg.display'), [
+    buildConfigChecks(widget, [
+      { key: 'showLabel', label: t('cfg.showLabel') },
+      { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
+    ]),
+  ]));
+  wrap.appendChild(buildBackgroundSection(widget));
+  wrap.appendChild(buildFadeInSection(widget));
   return wrap;
 }

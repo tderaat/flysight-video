@@ -15,7 +15,7 @@ function renderMiniMapWidget(ctx, contentRect, widget, dataIdx, units, scale, op
   ctx.globalAlpha = opacity !== undefined ? opacity : 1;
 
   if (config.showBackground) {
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.fillStyle = widgetBackgroundFill(config);
     if (ctx.roundRect) {
       ctx.beginPath();
       ctx.roundRect(x, y, size, size, size * 0.06);
@@ -159,27 +159,13 @@ function renderMiniMapPreviewCard(ctx, canvas) {
 
 function buildMiniMapConfigPanel(widget, drawOverlayPreview) {
   const wrap = document.createElement('div');
-  const checks = document.createElement('div');
-  checks.className = 'widget-config-checks';
-  [
-    { key: 'showLabel', label: t('cfg.showLabel') },
-    { key: 'showBackground', label: t('cfg.showBackground') },
-    { key: 'showExitMarker', label: t('cfg.showExitMarker') },
-    { key: 'fadeIn', label: t('cfg.fadeIn') },
-  ].forEach(({ key, label }) => {
-    const lbl = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!widget.config[key];
-    cb.addEventListener('change', () => {
-      widget.config[key] = cb.checked;
-      drawOverlayPreview();
-      state.scheduleSaveWidgetLayout();
-    });
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(' ' + label));
-    checks.appendChild(lbl);
-  });
-  wrap.appendChild(checks);
+  wrap.appendChild(buildConfigSection(t('cfg.display'), [
+    buildConfigChecks(widget, [
+      { key: 'showLabel', label: t('cfg.showLabel') },
+      { key: 'showExitMarker', label: t('cfg.showExitMarker') },
+    ]),
+  ]));
+  wrap.appendChild(buildBackgroundSection(widget));
+  wrap.appendChild(buildFadeInSection(widget));
   return wrap;
 }

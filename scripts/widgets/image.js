@@ -152,6 +152,9 @@ function renderImageWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   const img = widget._image;
   const ready = img && img.complete && img.naturalWidth > 0;
   if (ready) {
+    // Image opacity on top of the fade-in; the editor placeholder below stays fully visible.
+    const imageOpacity = Number.isFinite(widget.config.imageOpacity) ? widget.config.imageOpacity : 100;
+    ctx.globalAlpha *= imageOpacity / 100;
     ctx.drawImage(img, x, y, w, h);
   } else if (contentRect.isPreview) {
     // Editor only: an empty image widget draws nothing into the export.
@@ -209,14 +212,6 @@ function _formatFileSize(bytes) {
 function buildImageConfigPanel(widget, drawOverlayPreview) {
   const wrap = document.createElement('div');
 
-  // ── File picker group ──
-  const group = document.createElement('div');
-  group.className = 'widget-config-group';
-  const groupLabel = document.createElement('div');
-  groupLabel.className = 'widget-config-group-label';
-  groupLabel.textContent = t('cfg.imageFile');
-  group.appendChild(groupLabel);
-
   const status = document.createElement('div');
   status.style.cssText = 'font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px; word-break: break-all;';
   function refreshStatus() {
@@ -229,7 +224,6 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
     }
   }
   refreshStatus();
-  group.appendChild(status);
 
   const btnRow = document.createElement('div');
   btnRow.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap;';
@@ -276,26 +270,9 @@ function buildImageConfigPanel(widget, drawOverlayPreview) {
   });
   btnRow.appendChild(clearBtn);
 
-  group.appendChild(btnRow);
-  wrap.appendChild(group);
-
-  // ── Fade-in checkbox ──
-  const checks = document.createElement('div');
-  checks.className = 'widget-config-checks';
-  checks.style.marginTop = '10px';
-  const lbl = document.createElement('label');
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = !!widget.config.fadeIn;
-  cb.addEventListener('change', () => {
-    widget.config.fadeIn = cb.checked;
-    drawOverlayPreview();
-    state.scheduleSaveWidgetLayout();
-  });
-  lbl.appendChild(cb);
-  lbl.appendChild(document.createTextNode(' ' + t('cfg.fadeIn')));
-  checks.appendChild(lbl);
-  wrap.appendChild(checks);
+  wrap.appendChild(buildConfigSection(t('cfg.imageFile'), [status, btnRow]));
+  wrap.appendChild(buildConfigSection(t('cfg.display'), [buildOpacityRow(widget, 'imageOpacity', 100)]));
+  wrap.appendChild(buildFadeInSection(widget));
 
   return wrap;
 }

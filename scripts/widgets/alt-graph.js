@@ -1,3 +1,5 @@
+const ALT_GRAPH_LINE_COLOR = '#38bdf8';
+
 
 function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, opacity) {
   const fd = state.currentFlightData;
@@ -16,7 +18,7 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
   ctx.globalAlpha = opacity !== undefined ? opacity : 1;
 
   if (config.showBackground) {
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.fillStyle = widgetBackgroundFill(config);
     if (ctx.roundRect) {
       ctx.beginPath();
       ctx.roundRect(x, y, w, h, h * 0.06);
@@ -96,14 +98,15 @@ function renderAltGraphWidget(ctx, contentRect, widget, dataIdx, units, scale, o
     if (i === 0) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   }
-  ctx.strokeStyle = '#38bdf8';
+  const lineColor = configColor(config, 'lineColor', ALT_GRAPH_LINE_COLOR);
+  ctx.strokeStyle = lineColor;
   ctx.lineWidth = 1.5 * effectiveScale;
   ctx.stroke();
 
   ctx.lineTo(tx(times[times.length - 1]), y + h - pad);
   ctx.lineTo(tx(times[0]), y + h - pad);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.1)';
+  ctx.fillStyle = hexToRgba(lineColor, 0.1);
   ctx.fill();
   ctx.restore();
 
@@ -179,35 +182,20 @@ function buildAltGraphConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) 
   // Layouts saved before the value label existed have no units key.
   if (!widget.config.units) widget.config.units = 'metric';
   const wrap = document.createElement('div');
-  const checks = document.createElement('div');
-  checks.className = 'widget-config-checks';
-  [
-    { key: 'showLabel', label: t('cfg.showLabel') },
-    { key: 'showValue', label: t('cfg.showValue') },
-    { key: 'showBackground', label: t('cfg.showBackground') },
-    { key: 'showMeasuringZone', label: t('cfg.showMeasuringZone') },
-    { key: 'showScoringZone', label: t('cfg.showScoringZone') },
-    { key: 'fadeIn', label: t('cfg.fadeIn') },
-  ].forEach(({ key, label }) => {
-    const lbl = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!widget.config[key];
-    cb.addEventListener('change', () => {
-      widget.config[key] = cb.checked;
-      drawOverlayPreview();
-      state.scheduleSaveWidgetLayout();
-    });
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(' ' + label));
-    checks.appendChild(lbl);
-  });
-  wrap.appendChild(checks);
-
-  wrap.appendChild(buildUnitsConfig(widget, [
+  wrap.appendChild(buildConfigSection(t('cfg.display'), [
+    buildConfigChecks(widget, [
+      { key: 'showLabel', label: t('cfg.showLabel') },
+      { key: 'showValue', label: t('cfg.showValue') },
+      { key: 'showMeasuringZone', label: t('cfg.showMeasuringZone') },
+      { key: 'showScoringZone', label: t('cfg.showScoringZone') },
+    ]),
+    buildColorRow(widget, 'lineColor', ALT_GRAPH_LINE_COLOR, t('cfg.lineColor')),
+    buildUnitsConfig(widget, [
     { value: 'metric', label: t('cfg.metric') },
     { value: 'imperial', label: t('cfg.imperial') },
+  ]),
   ]));
-
+  wrap.appendChild(buildBackgroundSection(widget));
+  wrap.appendChild(buildFadeInSection(widget));
   return wrap;
 }

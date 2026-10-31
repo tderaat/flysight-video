@@ -69,7 +69,7 @@ function renderSpeedWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   }
 
   if (config.showBackground) {
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.fillStyle = widgetBackgroundFill(config);
     if (ctx.roundRect) {
       ctx.beginPath();
       ctx.roundRect(boxX, boxY, boxW, boxH, size * 0.06);
@@ -111,14 +111,14 @@ function renderSpeedWidget(ctx, contentRect, widget, dataIdx, units, scale, opac
   ctx.fillText(Math.round(speedDisplay).toString(), cx, arcCy + numOffset);
 
   ctx.font = '600 ' + unitFontSize + 'px "Segoe UI", system-ui, sans-serif';
-  ctx.fillStyle = '#94a3b8';
+  ctx.fillStyle = '#f8fafc';
   ctx.fillText(unitLabel, cx, arcCy + unitOffset);
 
   if (config.showLabel) {
     const labelText = config.dataSource === 'horzSpeed' ? 'HORIZ' : 'VERT';
     const labelFontSize = size * 0.07;
     ctx.font = '600 ' + labelFontSize + 'px "Segoe UI", system-ui, sans-serif';
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = '#f8fafc';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(labelText, cx, arcCy + numOffset - numFontSize * 0.65);
@@ -164,7 +164,7 @@ function drawSpeedPreviewCard(ctx, canvas, speedText, fraction) {
 
   const unitFontSize = size * 0.09;
   ctx.font = '600 ' + unitFontSize + 'px "Segoe UI", system-ui, sans-serif';
-  ctx.fillStyle = '#94a3b8';
+  ctx.fillStyle = '#f8fafc';
   ctx.fillText('KPH', cx, cy + size * 0.12 + numFontSize * 0.7);
 }
 
@@ -178,36 +178,17 @@ function renderHorzSpeedPreviewCard(ctx, canvas) {
 
 function buildSpeedConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
   const wrap = document.createElement('div');
-
-  const checks = document.createElement('div');
-  checks.className = 'widget-config-checks';
-  [
-    { key: 'showLabel', label: t('cfg.showLabel') },
-    { key: 'showBackground', label: t('cfg.showBackground') },
-    { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
-    { key: 'fadeIn', label: t('cfg.fadeIn') },
-  ].forEach(({ key, label, defaultOn }) => {
-    const lbl = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    // defaultOn keys read `!== false` so widgets from a layout saved before the setting
-    // existed still get the shadow.
-    cb.checked = defaultOn ? widget.config[key] !== false : !!widget.config[key];
-    cb.addEventListener('change', () => {
-      widget.config[key] = cb.checked;
-      drawOverlayPreview();
-      state.scheduleSaveWidgetLayout();
-    });
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(' ' + label));
-    checks.appendChild(lbl);
-  });
-  wrap.appendChild(checks);
-
-  wrap.appendChild(buildUnitsConfig(widget, [
+  wrap.appendChild(buildConfigSection(t('cfg.display'), [
+    buildConfigChecks(widget, [
+      { key: 'showLabel', label: t('cfg.showLabel') },
+      { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
+    ]),
+    buildUnitsConfig(widget, [
     { value: 'metric', label: t('cfg.metric') },
     { value: 'imperial', label: t('cfg.imperial') },
+  ]),
   ]));
-
+  wrap.appendChild(buildBackgroundSection(widget));
+  wrap.appendChild(buildFadeInSection(widget));
   return wrap;
 }

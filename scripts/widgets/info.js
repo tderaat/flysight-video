@@ -190,7 +190,7 @@ function renderInfoWidget(ctx, contentRect, widget, dataIdx, units, scale, opaci
   }
 
   if (config.showBackground !== false) {
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.fillStyle = widgetBackgroundFill(config);
     if (ctx.roundRect) {
       ctx.beginPath();
       ctx.roundRect(x, y, p.boxW, p.boxH, p.fontSize * 0.3);
@@ -250,38 +250,20 @@ function renderInfoPreviewCard(ctx, canvas) {
 
 function buildInfoConfigPanel(widget, drawOverlayPreview, buildUnitsConfig) {
   const wrap = document.createElement('div');
-
-  const checks = document.createElement('div');
-  checks.className = 'widget-config-checks';
-  [
-    { key: 'showTime', label: t('cfg.infoTime') },
-    { key: 'showAltitude', label: t('cfg.infoAltitude') },
-    { key: 'showSpeed', label: t('cfg.infoVertSpeed') },
-    { key: 'showHSpeed', label: t('cfg.infoHorzSpeed') },
-    { key: 'showDiveAngle', label: t('cfg.infoDiveAngle') },
-    { key: 'showScore', label: t('cfg.infoScore') },
-    { key: 'showBackground', label: t('cfg.showBackground') },
-    { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
-    { key: 'fadeIn', label: t('cfg.fadeIn') },
-  ].forEach(({ key, label, defaultOn }) => {
-    const lbl = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    // defaultOn keys read `!== false` so widgets from a layout saved before the setting
-    // existed still get the shadow.
-    cb.checked = defaultOn ? widget.config[key] !== false : !!widget.config[key];
-    cb.addEventListener('change', () => {
-      widget.config[key] = cb.checked;
-      drawOverlayPreview();
-      state.scheduleSaveWidgetLayout();
-    });
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(' ' + label));
-    checks.appendChild(lbl);
-  });
-  wrap.appendChild(checks);
-
-  wrap.appendChild(buildUnitsConfig(widget));
-
+  wrap.appendChild(buildConfigSection(t('cfg.display'), [
+    buildConfigChecks(widget, [
+      { key: 'showTime', label: t('cfg.infoTime') },
+      { key: 'showAltitude', label: t('cfg.infoAltitude') },
+      { key: 'showSpeed', label: t('cfg.infoVertSpeed') },
+      { key: 'showHSpeed', label: t('cfg.infoHorzSpeed') },
+      { key: 'showDiveAngle', label: t('cfg.infoDiveAngle') },
+      { key: 'showScore', label: t('cfg.infoScore') },
+      { key: 'showShadow', label: t('cfg.showShadow'), defaultOn: true },
+    ]),
+    buildUnitsConfig(widget),
+  ]));
+  // The renderer reads showBackground `!== false`, so the box is on by default.
+  wrap.appendChild(buildBackgroundSection(widget, true));
+  wrap.appendChild(buildFadeInSection(widget));
   return wrap;
 }

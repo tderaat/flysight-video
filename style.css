@@ -1860,10 +1860,63 @@ canvas { width: 100% !important; }
 .widget-config-checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .widget-config-checks label { font-size: 0.8rem; color: var(--text-mid); cursor: pointer; }
 .widget-config-checks input { accent-color: var(--accent); }
-.widget-config-group { margin-top: 8px; }
-.widget-config-group-label {
-  font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;
+/* Sections: "Display", then toggle sections (Background, Fade in) whose body
+   shows only while the heading's checkbox is ticked. Built by the helpers at
+   the top of scripts/widgets/core.js. */
+.widget-config-section + .widget-config-section {
+  border-top: 1px dashed var(--border); margin-top: 10px; padding-top: 10px;
 }
+.widget-config-section-head {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+  font-size: 0.8rem; font-weight: 600; color: var(--text-strong);
+}
+label.widget-config-section-head { cursor: pointer; width: fit-content; }
+.widget-config-section-head input { accent-color: var(--accent); margin: 0; }
+.widget-config-section-body { padding-left: 22px; }
+.widget-config-section-body[hidden] { display: none; }
+.widget-config-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 0.8rem; color: var(--text-mid);
+}
+.widget-config-checks + .widget-config-row { margin-top: 8px; }
+.widget-config-row + .widget-config-row { margin-top: 6px; }
+.widget-config-row-label { min-width: 64px; color: var(--text-muted); font-size: 0.75rem; }
+.widget-config-number {
+  width: 56px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); padding: 2px 4px; font: inherit; text-align: left;
+}
+
+/* Background colour + Reset (shown only once the colour differs from the default) */
+.widget-bg-color {
+  width: 28px; height: 22px; padding: 0; border: 1px solid var(--border-strong);
+  border-radius: 4px; background: none; cursor: pointer;
+}
+.widget-bg-color::-webkit-color-swatch-wrapper { padding: 2px; }
+.widget-bg-color::-webkit-color-swatch { border: 0; border-radius: 2px; }
+.widget-bg-color::-moz-color-swatch { border: 0; border-radius: 2px; }
+.widget-bg-hex { font-family: monospace; color: var(--text-mid); min-width: 62px; }
+.widget-bg-reset {
+  background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted);
+  font: inherit; font-size: 0.75rem; padding: 2px 8px; cursor: pointer;
+}
+.widget-bg-reset:hover { color: var(--text-strong); border-color: var(--border-strong); }
+.widget-bg-reset[hidden] { display: none; }
+
+/* Opacity slider with clickable snap-point labels under it. The labels' track
+   is inset by half a thumb so a label sits under the thumb at that value. */
+.widget-opacity { flex: 1; min-width: 150px; max-width: 260px; position: relative; padding-bottom: 14px; }
+.widget-opacity input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; display: block; }
+.widget-opacity-ticks { position: absolute; left: 8px; right: 8px; top: 18px; height: 12px; }
+.widget-opacity-ticks span {
+  position: absolute; transform: translateX(-50%); font-size: 0.65rem; color: var(--text-dim);
+  cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.widget-opacity-ticks span::before {
+  content: ''; position: absolute; left: 50%; top: -4px; width: 1px; height: 3px; background: var(--text-dim);
+}
+.widget-opacity-ticks span:hover { color: var(--text-strong); }
+.widget-opacity-ticks span.on { color: var(--accent); }
+.widget-opacity-value { min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-strong); }
 
 /* ── Progress bar ── */
 .progress-bar {
