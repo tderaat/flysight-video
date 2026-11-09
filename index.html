@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v68">
+<meta name="app-build" content="flysight-v69">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -25,7 +25,7 @@
   // Apply the persisted theme before paint to avoid a flash. Full
   // dropdown wiring is in scripts/theme.js (loaded later).
   (function() {
-    var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green', 'dark-pink', 'hc-dark', 'hc-light'];
+    var THEMES = ['dark-blue', 'light', 'dark-red', 'dark-green', 'dark-pink', 'holo', 'hc-dark', 'hc-light'];
     var t = null;
     try {
       var m = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
@@ -144,6 +144,8 @@
 <div class="header">
   <div class="logo">
     <svg viewBox="0 0 30 80" width="13" height="30" fill="#38bdf8" xmlns="http://www.w3.org/2000/svg">
+      <!-- Used only by the Holographic theme's logo fill (style.css) -->
+      <defs><linearGradient id="holoLogoGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5eead4"/><stop offset="0.5" stop-color="#a5b4fc"/><stop offset="1" stop-color="#f0abfc"/></linearGradient></defs>
       <!-- Speed skydiver head-down silhouette -->
       <path d="
         M15 0

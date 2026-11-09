@@ -633,6 +633,27 @@ async function renderCurrentJump(view) {
     ${exitWindAirHtml}
   `;
 
+  // The altitude line's stroke: a plain colour, or, when the theme sets
+  // --chart-altitude-gradient (Holographic), a left-to-right canvas gradient
+  // across the chart area, rebuilt only when that area changes size.
+  function altitudeLineColor(fallback) {
+    const stops = (getThemeColor('chart-altitude-gradient') || '')
+      .split(',').map(s => s.trim()).filter(Boolean);
+    if (stops.length < 2) return fallback;
+    let cached = null, cachedKey = '';
+    return function(context) {
+      const area = context.chart.chartArea;
+      if (!area) return fallback;
+      const key = area.left + ':' + area.right;
+      if (!cached || key !== cachedKey) {
+        cached = context.chart.ctx.createLinearGradient(area.left, 0, area.right, 0);
+        stops.forEach((c, i) => cached.addColorStop(i / (stops.length - 1), c));
+        cachedKey = key;
+      }
+      return cached;
+    };
+  }
+
   // ── Theme-aware colors (read fresh each render so theme switches take effect) ──
   const themeAccent     = getThemeColor('accent')      || '#38bdf8';
   const themeAccentFill = getThemeColor('accent-fill') || hexToRgba(themeAccent, 0.08);
@@ -673,7 +694,7 @@ async function renderCurrentJump(view) {
           label: t('chart.altitude'),
           seriesKey: 'altitude',
           data: chartAlts,
-          borderColor: themeAlt,
+          borderColor: altitudeLineColor(themeAlt),
           backgroundColor: themeAltFill,
           fill: true,
           yAxisID: 'yAlt',
@@ -910,7 +931,10 @@ async function renderCurrentJump(view) {
           callbacks: {
             labelPointStyle: () => ({ pointStyle: 'circle', rotation: 0 }),
             labelColor: function(ctx) {
-              const c = ctx.dataset.borderColor;
+              // The altitude stroke can be a gradient function (Holographic);
+              // the dot takes its plain colour instead.
+              let c = ctx.dataset.borderColor;
+              if (typeof c === 'function') c = themeAlt;
               return { backgroundColor: c, borderColor: c, borderWidth: 0 };
             },
             title: items => formatChartTooltipTime(items[0].parsed.x),

@@ -211,6 +211,74 @@
   --shadow-modal: rgba(0, 0, 0, 0.3);
   --shadow-soft: rgba(0, 0, 0, 0.2);
 }
+/* Holographic (the "unicorn" theme): midnight blue chrome with an iridescent
+   teal, periwinkle, orchid and rose gradient on the panel edges, the title,
+   the logo and the altitude line. The solid accent is the periwinkle middle
+   stop (9.0:1 on the cards). The chart series keep their default colours. */
+[data-theme="holo"] {
+  --bg-body: #0b1020;
+  --bg-card: #141a30;
+  --bg-inset: #0b1020;
+  --bg-stronger: #232b4a;
+  --bg-stronger-hover: #313b62;
+  --border: #2a3354;
+  --border-strong: #46507a;
+  --text: #e8ecff;
+  --text-strong: #f8f9ff;
+  --text-mid: #ccd3f2;
+  --text-muted: #98a2c8;
+  --text-dim: #7480a8;
+  --accent: #a5b4fc;
+  --accent-hover: #c7d2fe;
+  --accent-on: #0b1020;
+  --accent-weak: rgba(165, 180, 252, 0.07);
+  --accent-fill: rgba(165, 180, 252, 0.12);
+  --accent-mid: rgba(165, 180, 252, 0.16);
+  --accent-strong: rgba(165, 180, 252, 0.24);
+  /* Comma-separated stops; chart.js turns them into a horizontal canvas
+     gradient for the altitude line. Only this theme sets it. */
+  --chart-altitude-gradient: #5eead4, #a5b4fc, #f0abfc;
+  --holo-gradient: linear-gradient(120deg, #5eead4, #a5b4fc, #f0abfc, #fda4af);
+  --page-drop-bg: rgba(11, 16, 32, 0.85);
+  --tooltip-bg: rgba(11, 16, 32, 0.92);
+  --tip-bg: #232b4a;
+  --tip-border: #46507a;
+}
+/* A few faint glows and sparkles behind the page. */
+[data-theme="holo"] body {
+  background-color: var(--bg-body);
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 47% 6%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 83% 27%, rgba(240, 171, 252, 0.8), transparent),
+    radial-gradient(1px 1px at 68% 74%, rgba(94, 234, 212, 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 24% 88%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(600px 400px at 0% 0%, rgba(94, 234, 212, 0.06), transparent),
+    radial-gradient(700px 500px at 100% 100%, rgba(240, 171, 252, 0.06), transparent);
+  background-attachment: fixed;
+}
+/* Gradient edge on the main panels: a transparent 1 px border shows a
+   border-box gradient under a padding-box card fill. The padding drops by the
+   same 1 px, so the panels keep their size and the header alignment holds. */
+[data-theme="holo"] :is(.chart-container, .map-container, .stats-panel, .notes-panel) {
+  border: 1px solid transparent;
+  padding: 9px;
+  background: linear-gradient(var(--bg-card), var(--bg-card)) padding-box, var(--holo-gradient) border-box;
+}
+[data-theme="holo"] .jump-list .jump-day {
+  border-color: transparent;
+  background: linear-gradient(var(--bg-card), var(--bg-card)) padding-box, var(--holo-gradient) border-box;
+}
+[data-theme="holo"] .jump-chip.active {
+  background: linear-gradient(90deg, rgba(94, 234, 212, 0.14), rgba(240, 171, 252, 0.18));
+}
+[data-theme="holo"] .header h1 {
+  background: var(--holo-gradient);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+}
+[data-theme="holo"] .header .logo svg { fill: url(#holoLogoGradient); }
+
 /* Both light themes: the fixed semantic text colours (zone yellow, valid
    green, speed pink, warning red) are too faint on white; reuse the darkened
    series colours. */
