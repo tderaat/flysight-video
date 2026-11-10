@@ -121,6 +121,8 @@ var I18N = {
     'layout.classicHint': 'Same arrangement, fitted to the window',
     'layout.rail': 'Info rail',
     'layout.railHint': 'Info in a full-height column',
+    'layout.graph': 'Graph and info',
+    'layout.graphHint': 'Full-height graph, no map',
     'tip.layoutSplit': 'Drag to resize, double-click to reset',
 
     // Page-wide drop overlays
@@ -553,6 +555,8 @@ var I18N = {
     'layout.classicHint': 'Gleiche Anordnung, an das Fenster angepasst',
     'layout.rail': 'Info-Spalte',
     'layout.railHint': 'Info in einer Spalte über die volle Höhe',
+    'layout.graph': 'Diagramm und Info',
+    'layout.graphHint': 'Diagramm über die volle Höhe, ohne Karte',
     'tip.layoutSplit': 'Ziehen zum Anpassen, Doppelklick zum Zurücksetzen',
 
     // Page-wide drop overlays
@@ -985,6 +989,8 @@ var I18N = {
     'layout.classicHint': 'Zelfde indeling, passend in het venster',
     'layout.rail': 'Infokolom',
     'layout.railHint': 'Info in een kolom over de volle hoogte',
+    'layout.graph': 'Grafiek en info',
+    'layout.graphHint': 'Grafiek over de volle hoogte, zonder kaart',
     'tip.layoutSplit': 'Sleep om de grootte aan te passen, dubbelklik om te herstellen',
 
     // Page-wide drop overlays
@@ -1417,6 +1423,8 @@ var I18N = {
     'layout.classicHint': 'Stessa disposizione, adattata alla finestra',
     'layout.rail': 'Colonna info',
     'layout.railHint': 'Info in una colonna a tutta altezza',
+    'layout.graph': 'Grafico e info',
+    'layout.graphHint': 'Grafico a tutta altezza, senza mappa',
     'tip.layoutSplit': 'Trascina per ridimensionare, doppio clic per ripristinare',
 
     // Page-wide drop overlays
@@ -1849,6 +1857,8 @@ var I18N = {
     'layout.classicHint': 'Samma uppställning, anpassad till fönstret',
     'layout.rail': 'Infokolumn',
     'layout.railHint': 'Info i en kolumn med full höjd',
+    'layout.graph': 'Graf och info',
+    'layout.graphHint': 'Graf med full höjd, utan karta',
     'tip.layoutSplit': 'Dra för att ändra storlek, dubbelklicka för att återställa',
 
     // Page-wide drop overlays
@@ -2281,6 +2291,8 @@ var I18N = {
     'layout.classicHint': 'La misma disposición, ajustada a la ventana',
     'layout.rail': 'Columna de info',
     'layout.railHint': 'Info en una columna de altura completa',
+    'layout.graph': 'Gráfico e info',
+    'layout.graphHint': 'Gráfico a altura completa, sin mapa',
     'tip.layoutSplit': 'Arrastra para cambiar el tamaño, doble clic para restablecer',
 
     // Page-wide drop overlays
@@ -2713,6 +2725,8 @@ var I18N = {
     'layout.classicHint': 'Ten sam układ, dopasowany do okna',
     'layout.rail': 'Kolumna info',
     'layout.railHint': 'Info w kolumnie na całą wysokość',
+    'layout.graph': 'Wykres i info',
+    'layout.graphHint': 'Wykres na całą wysokość, bez mapy',
     'tip.layoutSplit': 'Przeciągnij, aby zmienić rozmiar, kliknij dwukrotnie, aby przywrócić',
 
     // Page-wide drop overlays

@@ -1245,6 +1245,8 @@ body.layout-locked .page-layout {
 }
 body.layout-locked[data-layout="a"] .page-layout { grid-template-areas: "jumps graph graph" "jumps map info"; }
 body.layout-locked[data-layout="b"] .page-layout { grid-template-areas: "jumps graph info" "jumps map info"; }
+body.layout-locked[data-layout="c"] .page-layout { grid-template-areas: "jumps graph info" "jumps graph info"; }
+body.layout-locked[data-layout="c"] .map-container { display: none; }
 body.layout-locked .main-content,
 body.layout-locked .map-stats-row { display: contents; }
 body.layout-locked .chart-section { display: contents !important; }

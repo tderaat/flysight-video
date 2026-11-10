@@ -24,6 +24,9 @@ var PAGE_LAYOUTS = [
     r: { jumps: [0, 0, 12, 30], graph: [14, 0, 34, 14], map: [14, 16, 24, 14], info: [40, 16, 8, 14] } },
   { id: 'b', key: 'layout.rail', cols: [0.22, 0.58, 0.20], rows: [0.55, 0.45], col3: 'info', rowPanes: ['map'],
     r: { jumps: [0, 0, 12, 30], graph: [14, 0, 24, 14], map: [14, 16, 24, 14], info: [40, 0, 8, 30] } },
+  // Info rail without the map: the graph takes the full height, no row splitter.
+  { id: 'c', key: 'layout.graph', cols: [0.22, 0.58, 0.20], rows: [0.5, 0.5], col3: 'info', rowPanes: [],
+    r: { jumps: [0, 0, 12, 30], graph: [14, 0, 24, 30], info: [40, 0, 8, 30] } },
 ];
 // Smallest pane, in px: the jump list column, the other two columns, a row.
 var LAYOUT_MIN_JUMPS = 240, LAYOUT_MIN_COL = 220, LAYOUT_MIN_ROW = 160;
@@ -156,6 +159,8 @@ function renderLayoutMenu() {
     setBox(splits.col1, j.right + 14 - p.left, dropTop - p.top, 10, j.bottom - dropTop);
     var c3 = PANES[def.col3].getBoundingClientRect();
     setBox(splits.col2, c3.left - 18 - p.left, c3.top - p.top, 12, c3.height);
+    splits.row.style.display = def.rowPanes.length ? '' : 'none';
+    if (!def.rowPanes.length) return;
     var rr = unionRect(def.rowPanes);
     setBox(splits.row, rr.left - p.left, rr.top - 14 - p.top, rr.right - rr.left, 12);
   }
@@ -301,12 +306,18 @@ function renderLayoutMenu() {
 
   // Leaflet doesn't notice its container resizing; Chart.js does by itself.
   if (mapEl && typeof ResizeObserver === 'function') {
-    var raf = 0;
+    var raf = 0, wasHidden = false;
     new ResizeObserver(function() {
       if (raf) return;
       raf = requestAnimationFrame(function() {
         raf = 0;
-        if (state.mapInstance) state.mapInstance.invalidateSize();
+        if (!state.mapInstance) return;
+        state.mapInstance.invalidateSize();
+        // Back from the map-less layout: a jump opened meanwhile was fitted to
+        // a 0 x 0 map, so fit the track again.
+        var hidden = !mapEl.offsetWidth;
+        if (wasHidden && !hidden && typeof syncMapToChart === 'function') syncMapToChart();
+        wasHidden = hidden;
       });
     }).observe(mapEl);
   }
