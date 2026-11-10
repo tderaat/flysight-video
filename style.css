@@ -586,8 +586,8 @@ body.has-jump-loaded .top-action { display: inline-flex; }
   position: absolute;
   top: 42px;
   right: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: var(--tip-bg);
+  border: 1px solid var(--tip-border);
   border-radius: 10px;
   padding: 6px;
   min-width: 168px;
@@ -595,6 +595,16 @@ body.has-jump-loaded .top-action { display: inline-flex; }
   box-shadow: 0 8px 24px var(--shadow-modal);
 }
 .picker.open .picker-menu { display: block; }
+/* Arrow pointing up at the button's centre (17 px from the right edge). Same
+   construction as the [data-tip] arrow. */
+.picker-menu::before {
+  content: '';
+  position: absolute; top: -5px; right: 11.5px;
+  width: 8px; height: 8px;
+  background: var(--tip-bg);
+  border-left: 1px solid var(--tip-border); border-top: 1px solid var(--tip-border);
+  transform: rotate(45deg);
+}
 .picker-option {
   display: flex;
   align-items: center;
@@ -606,7 +616,9 @@ body.has-jump-loaded .top-action { display: inline-flex; }
   color: var(--text-mid);
   white-space: nowrap;
 }
-.picker-option:hover { background: var(--bg-stronger); color: var(--text-strong); }
+/* --bg-stronger equals --tip-bg in the dark themes, so the hover row is a
+   tint of the text colour instead, which shows in every theme. */
+.picker-option:hover { background: color-mix(in srgb, var(--text-strong) 10%, transparent); color: var(--text-strong); }
 .picker-option.active { color: var(--text-strong); }
 .picker-option.active::after {
   content: "\2713";

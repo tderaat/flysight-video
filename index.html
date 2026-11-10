@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v71">
+<meta name="app-build" content="flysight-v72">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -133,7 +133,7 @@
   <!-- Page layout picker (scripts/layout.js): the button shows the active
        layout as a thumbnail. Shown with a jump loaded, above 900px. -->
   <div class="picker" id="layoutPicker">
-    <button type="button" class="picker-btn" id="layoutBtn" data-tip="Layout" data-i18n-tip="layout.tip" aria-label="Layout" data-i18n-aria="layout.tip" aria-haspopup="listbox" aria-expanded="false"></button>
+    <button type="button" class="picker-btn" id="layoutBtn" aria-label="Layout" data-i18n-aria="layout.tip" aria-haspopup="listbox" aria-expanded="false"></button>
     <div class="picker-menu layout-menu" id="layoutMenu" role="listbox"></div>
   </div>
   <div class="picker" id="langPicker">
