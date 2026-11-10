@@ -1209,9 +1209,11 @@ canvas { width: 100% !important; }
   display: block;
   width: 100%;
   min-height: 100px;
-  /* Height is set from JS to fit the content, so the box must never scroll
-     internally and must not be user-resizable (that would fight the autogrow). */
-  overflow-y: hidden;
+  /* Height is set from JS to fit the content, up to 400 px; a longer note
+     scrolls inside the box. Not user-resizable (that would fight the autogrow). */
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
   resize: none;
   background: var(--bg-inset);
   border: 1px solid var(--border);
@@ -1224,7 +1226,114 @@ canvas { width: 100% !important; }
 }
 .notes-input::placeholder { color: var(--text-dim); }
 .notes-input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Locked page layouts (scripts/layout.js) ──
+   body.layout-locked: a layout other than "scroll", a jump loaded, wider than
+   900 px. .page-layout fills the window as a 3 x 2 grid; layout.js sets the
+   track sizes inline. The wrappers between it and the four panels turn into
+   display: contents, so the panels are its grid items. The notes sit in the
+   info panel and the footer under the jump list (moved by layout.js). The top
+   bar keeps its place (y = 7..41); the panels start 5 px under it, and the
+   sidebar reaches up 39 px so the logo row stays level with the bar. */
+body.layout-locked { overflow: hidden; }
+body.layout-locked .page-layout {
+  position: relative;
+  height: 100vh;
+  max-width: none;
+  padding: 46px 24px 16px;
+  gap: 16px 24px;
+}
+body.layout-locked[data-layout="a"] .page-layout { grid-template-areas: "jumps graph graph" "jumps map info"; }
+body.layout-locked[data-layout="b"] .page-layout { grid-template-areas: "jumps graph info" "jumps map info"; }
+body.layout-locked .main-content,
+body.layout-locked .map-stats-row { display: contents; }
+body.layout-locked .chart-section { display: contents !important; }
+body.layout-locked .chart-section.no-data > .chart-no-data { grid-area: graph; }
+body.layout-locked .sidebar {
+  grid-area: jumps;
+  position: static;
+  align-self: stretch;
+  max-height: none;
+  min-height: 0;
+  margin-top: -39px;
+}
+body.layout-locked .sidebar > .page-footer { padding-top: 8px; font-size: 0.68rem; }
+body.layout-locked .chart-container { grid-area: graph; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+body.layout-locked .chart-canvas-wrap {
+  flex: 1 1 0;
+  height: auto !important;
+  aspect-ratio: auto !important;
+  min-height: 0;
+  max-height: none;
+}
+body.layout-locked .map-container { grid-area: map; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+body.layout-locked #map { flex: 1 1 0; height: auto !important; min-height: 0 !important; max-height: none; }
+body.layout-locked .stats-panel {
+  grid-area: info;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+}
+body.layout-locked .stats-panel > .notes-panel {
+  margin-top: auto;
+  padding: 12px 0 0;
+  border-radius: 0;
+  background: transparent;
+}
+body.layout-locked .chart-resize-handle,
+body.layout-locked .map-resize-handle,
+body.layout-locked .map-split-handle { display: none; }
+/* While the panels slide to their new places, their content is hidden. */
+body.layout-moving .sidebar > *,
+body.layout-moving .chart-container > *,
+body.layout-moving .map-container > *,
+body.layout-moving .stats-panel > * { opacity: 0; }
+.sidebar > *, .chart-container > *, .map-container > *, .stats-panel > * { transition: opacity 0.15s; }
+body.layout-moving .layout-split { visibility: hidden; }
+
+/* Splitters between the panels: a pill like the old resize handles. The
+   .page-layout prefix out-ranks the generic [data-tip] { position: relative },
+   which otherwise made them grid items in an extra row. */
+.page-layout > .layout-split {
+  display: none;
+  position: absolute;
+  z-index: 5;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+body.layout-locked .page-layout > .layout-split { display: flex; }
+.layout-split.col { cursor: ew-resize; }
+.layout-split.row { cursor: ns-resize; }
+.layout-split::before {
+  content: "";
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background 0.15s, width 0.15s, height 0.15s;
+}
+.layout-split.col::before { width: 8px; height: 26px; }
+.layout-split.row::before { width: 26px; height: 8px; }
+.layout-split.col:hover::before, .layout-split.col.dragging::before { background: var(--accent); height: 40px; }
+.layout-split.row:hover::before, .layout-split.row.dragging::before { background: var(--accent); width: 40px; }
+
+/* ── Layout picker (top bar) ── shown with a jump loaded, on wide screens. */
+#layoutPicker { display: none; }
+body.has-jump-loaded #layoutPicker { display: block; }
+#layoutBtn .layout-thumb rect { fill: currentColor; }
+.layout-menu { min-width: 260px; }
+.layout-option { gap: 12px; padding: 7px 10px; }
+.layout-thumb { flex: none; display: block; }
+.layout-option .t-jumps { fill: var(--text-dim); opacity: 0.55; }
+.layout-option .t-graph { fill: var(--accent); }
+.layout-option .t-map { fill: var(--chart-vspeed); opacity: 0.8; }
+.layout-option .t-info { fill: var(--text-muted); opacity: 0.8; }
+.layout-option .t-notes { fill: var(--text-dim); opacity: 0.35; }
+.layout-option .t-scroll { fill: var(--text-muted); }
+.layout-option-text { display: flex; flex-direction: column; line-height: 1.25; }
+.layout-option-hint { font-size: 0.72rem; color: var(--text-dim); }
+
 @media (max-width: 900px) {
+  #layoutPicker { display: none !important; }
   .page-layout { grid-template-columns: 1fr; }
   .sidebar { position: static; max-height: none; }
   .sidebar > .jump-list { overflow: visible; margin-right: 0; padding-right: 0; }
@@ -1356,7 +1465,7 @@ canvas { width: 100% !important; }
    they keep a plain bubble; :where() keeps that exclusion at zero specificity,
    so the variants elsewhere (.stat-info, .top-action, ...) win without
    depending on source order. */
-[data-tip]:not(:where(.chart-resize-handle, .map-resize-handle, .map-split-handle))::before {
+[data-tip]:not(:where(.chart-resize-handle, .map-resize-handle, .map-split-handle, .layout-split))::before {
   content: '';
   display: none;
   position: absolute; bottom: calc(100% + 4px); left: 50%; margin-left: -4.5px;
@@ -1366,7 +1475,7 @@ canvas { width: 100% !important; }
   transform: rotate(45deg);
   z-index: 5001; pointer-events: none;
 }
-[data-tip]:not(:where(.chart-resize-handle, .map-resize-handle, .map-split-handle)):hover::before { display: block; }
+[data-tip]:not(:where(.chart-resize-handle, .map-resize-handle, .map-split-handle, .layout-split)):hover::before { display: block; }
 /* Tooltips draw above everything: 5000 clears Leaflet's panes and controls
    (up to 1000), the modals (1000), the drop overlays (1100) and the chart's
    context menu (1200). A bubble can only rise as high as its element's own

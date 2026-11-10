@@ -161,6 +161,7 @@ function applyLanguage(lang) {
   if (typeof updateLangButton === 'function') { try { updateLangButton(); } catch (e) {} }
   if (typeof renderLangMenu === 'function') { try { renderLangMenu(); } catch (e) {} }
   if (typeof renderThemeMenu === 'function') { try { renderThemeMenu(); } catch (e) {} }
+  if (typeof renderLayoutMenu === 'function') { try { renderLayoutMenu(); } catch (e) {} }
 }
 
 // Re-apply the JS-set bits of the video modal (the play/pause button) so a

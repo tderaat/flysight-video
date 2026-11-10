@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Release id: keep equal to APP_BUILD in scripts/state.js and CACHE_VERSION in sw.js. -->
-<meta name="app-build" content="flysight-v69">
+<meta name="app-build" content="flysight-v70">
 <title>FlySight Insights</title>
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
@@ -73,6 +73,17 @@
   // sidebar doesn't shrink once the async IndexedDB read finishes.
   // renderJumpList() in scripts/main.js keeps the flag and the class in sync.
   try { if (localStorage.getItem('flysight_has_jumps') === '1') document.body.classList.add('has-jumps'); } catch (e) {}
+  // Same for a locked page layout (scripts/layout.js): lock before the first
+  // paint when a jump is about to reopen, rather than showing the scrolling
+  // page until it has rendered.
+  try {
+    var lm = document.cookie.match(/(?:^|;s*)flysight_layout=([^;]+)/);
+    var lv = lm ? lm[1] : localStorage.getItem('flysight_layout');
+    if (lv === 'a' || lv === 'b') {
+      document.body.dataset.layout = lv;
+      if (document.body.classList.contains('has-jumps') && window.innerWidth > 900) document.body.classList.add('layout-locked');
+    }
+  } catch (e) {}
 </script>
 
 <div class="top-pickers">
@@ -119,6 +130,12 @@
     </svg>
     <span class="top-action-label" data-i18n="btn.createVideoOverlay">Create video overlay</span>
   </button>
+  <!-- Page layout picker (scripts/layout.js): the button shows the active
+       layout as a thumbnail. Shown with a jump loaded, above 900px. -->
+  <div class="picker" id="layoutPicker">
+    <button type="button" class="picker-btn" id="layoutBtn" data-tip="Layout" data-i18n-tip="layout.tip" aria-label="Layout" data-i18n-aria="layout.tip" aria-haspopup="listbox" aria-expanded="false"></button>
+    <div class="picker-menu layout-menu" id="layoutMenu" role="listbox"></div>
+  </div>
   <div class="picker" id="langPicker">
     <button type="button" class="picker-btn" id="langBtn" aria-label="Select language" data-i18n-aria="lang.aria" aria-haspopup="listbox" aria-expanded="false">
       <span id="langBtnLabel">EN</span>
@@ -756,6 +773,7 @@
 <script src="scripts/compare.js"></script>
 <script src="scripts/season.js"></script>
 <script src="scripts/share.js"></script>
+<script src="scripts/layout.js"></script>
 <script src="scripts/main.js"></script>
 <script src="scripts/whats-new.js"></script>
 

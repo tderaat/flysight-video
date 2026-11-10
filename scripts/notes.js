@@ -105,7 +105,7 @@ function initJumpNotes() {
   });
 
   // Re-measure when the column width changes: rewrapping the text into more
-  // lines would otherwise be clipped, since overflow-y is hidden. A
+  // lines would otherwise leave the box too short for its text. A
   // ResizeObserver rather than a window `resize` listener, because the map /
   // stats splitter and the responsive breakpoints change the panel's width
   // without the window changing size. It watches the *panel*, and only reacts
